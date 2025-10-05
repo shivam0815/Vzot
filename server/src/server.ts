@@ -12,7 +12,8 @@ import path from 'path';
 import fs from 'fs';
 import http from 'http';
 import { Server, Socket } from 'socket.io';
-
+import { RateLimiterRedis, RateLimiterMemory } from 'rate-limiter-flexible';
+import Redis from 'ioredis';
 import { connectDatabase } from './config/database';
 import passport from './config/passport';
 
@@ -156,28 +157,146 @@ app.use((req, res, next) => {
 
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isProd ? 1000 : 10000,
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => ['/api/health', '/api/debug'].some((p) => req.path.startsWith(p)),
-  handler: (req, res) => {
-    console.warn('🚨 Rate limit exceeded', {
-      ip: req.ip,
-      path: req.path,
-      method: req.method,
-      timestamp: new Date().toISOString()
-    });
-    res.status(429).json({
-      error: 'Too many requests from this IP, please try again later.',
-      retryAfter: '15 minutes',
-      timestamp: new Date().toISOString(),
-      requestId: (req as any).requestId
-    });
+const parseCIDR = (cidr: string) => {
+  const [addr, maskStr] = cidr.split('/');
+  const mask = Number(maskStr ?? '32');
+  const toLong = (ip: string) => ip.split('.').reduce((acc, oct) => (acc << 8) + Number(oct), 0) >>> 0;
+  return { base: toLong(addr), maskBits: mask };
+};
+const allowlistEntries = (process.env.RATE_LIMIT_WHITELIST ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+const allowlist: Array<{type:'ip'|'cidr', value:string, base?:number, maskBits?:number}> =
+  allowlistEntries.map(v => {
+    if (v.includes('/')) {
+      const { base, maskBits } = parseCIDR(v);
+      return { type: 'cidr', value: v, base, maskBits };
+    }
+    return { type: 'ip', value: v };
+  });
+
+const isAllowlisted = (ip?: string) => {
+  if (!ip) return false;
+  for (const e of allowlist) {
+    if (e.type === 'ip' && e.value === ip) return true;
+    if (e.type === 'cidr') {
+      const toLong = (x: string) => x.split('.').reduce((acc, oct) => (acc << 8) + Number(oct), 0) >>> 0;
+      const ipLong = toLong(ip);
+      // maskBits N → compare top N bits
+      const shift = 32 - (e.maskBits ?? 32);
+      const mask = shift === 32 ? 0 : 0xffffffff << shift;
+      if ((ipLong & mask) === ((e.base ?? 0) & mask)) return true;
+    }
   }
-});
-app.use('/api', limiter);
+  return false;
+};
+
+// 2) Redis connection (prod) or memory (dev/tests)
+const redisUrl = process.env.REDIS_URL;
+const useRedis = !!redisUrl && process.env.NODE_ENV === 'production';
+const redis = useRedis ? new Redis(redisUrl!, { maxRetriesPerRequest: 2, enableOfflineQueue: false }) : null;
+
+const points = Number(process.env.RATE_LIMIT_POINTS ?? 6000);        // total tokens per window
+const duration = Number(process.env.RATE_LIMIT_DURATION ?? 900);     // window seconds (15m)
+const burstPoints = Number(process.env.RATE_LIMIT_BURST_POINTS ?? 150); // per-second burst
+const burstDuration = Number(process.env.RATE_LIMIT_BURST_DURATION ?? 1);
+
+// General window limiter (sliding window)
+const windowLimiter = useRedis
+  ? new RateLimiterRedis({ storeClient: redis!, keyPrefix: 'rlf:win', points, duration, execEvenly: true })
+  : new RateLimiterMemory({ keyPrefix: 'rlf:win', points, duration });
+
+// Short burst limiter (protects sudden spikes without hurting sustained flows)
+const burstLimiter = useRedis
+  ? new RateLimiterRedis({ storeClient: redis!, keyPrefix: 'rlf:burst', points: burstPoints, duration: burstDuration })
+  : new RateLimiterMemory({ keyPrefix: 'rlf:burst', points: burstPoints, duration: burstDuration });
+
+// Optional: per-route weights (heavier endpoints cost more tokens)
+const weightTable: Array<{ test: (req: express.Request) => boolean; cost: number }> = [
+  // Payments & orders are heavier
+  { test: req => req.path.startsWith('/api/payment'), cost: 5 },
+  { test: req => req.path.startsWith('/api/orders'), cost: 3 },
+  { test: req => req.path.startsWith('/api/admin'), cost: 2 },
+  // default weight below
+];
+
+const getWeight = (req: express.Request) => {
+  for (const rule of weightTable) if (rule.test(req)) return rule.cost;
+  return 1;
+};
+
+// Build limiter key: prefer user id when authenticated (fair to big B2B orgs behind NAT)
+const keyFromReq = (req: express.Request) => {
+  const userId = (req as any)?.user?.id || (req as any)?.user?._id;
+  if (userId) return `u:${String(userId)}`;
+  // fallback: IP (trust proxy already enabled)
+  return `ip:${req.ip}`;
+};
+
+// Standard response headers
+const setRateHeaders = (res: express.Response, rlRes?: { remainingPoints?: number; msBeforeNext?: number }, limitPoints = points, limitDuration = duration) => {
+  if (!rlRes) return;
+  const remaining = Math.max(0, (rlRes.remainingPoints ?? 0));
+  const resetSec = Math.ceil((rlRes.msBeforeNext ?? 0) / 1000);
+  res.setHeader('RateLimit-Policy', `sliding; window=${limitDuration}; burst=${burstPoints}`);
+  res.setHeader('RateLimit-Limit', String(limitPoints));
+  res.setHeader('RateLimit-Remaining', String(remaining));
+  res.setHeader('RateLimit-Reset', String(resetSec));
+};
+
+// Paths to skip limiting entirely (health, debug, webhooks you trust, etc.)
+const skipPaths = ['/api/health', '/api/debug', '/api/webhooks'];
+
+// Middleware
+const advancedRateLimit: express.RequestHandler = async (req, res, next) => {
+  try {
+    if (skipPaths.some(p => req.path.startsWith(p))) return next();
+    if (isAllowlisted(req.ip)) return next();
+
+    // Determine cost + key
+    const cost = getWeight(req);
+    const key = keyFromReq(req);
+
+    // Burst check first (failing this means too spiky)
+    try {
+      const burstRes = await burstLimiter.consume(key, cost);
+      setRateHeaders(res, burstRes as any, burstPoints, burstDuration);
+    } catch (burstErr: any) {
+      res.setHeader('Retry-After', Math.ceil((burstErr.msBeforeNext ?? 1000) / 1000));
+      return res.status(429).json({
+        error: 'Too many requests (burst)',
+        hint: 'Spread requests more evenly or lower concurrency.',
+        retryAfterSeconds: Math.ceil((burstErr.msBeforeNext ?? 1000) / 1000),
+        requestId: (req as any).requestId,
+      });
+    }
+
+    // Windowed budget
+    try {
+      const winRes = await windowLimiter.consume(key, cost);
+      setRateHeaders(res, winRes as any, points, duration);
+      return next();
+    } catch (winErr: any) {
+      res.setHeader('Retry-After', Math.ceil((winErr.msBeforeNext ?? 15_000) / 1000));
+      return res.status(429).json({
+        error: 'Too many requests',
+        windowSeconds: duration,
+        limit: points,
+        retryAfterSeconds: Math.ceil((winErr.msBeforeNext ?? 15_000) / 1000),
+        requestId: (req as any).requestId,
+      });
+    }
+  } catch (e) {
+    // In case Redis hiccups: fail-open for availability (B2B friendly)
+    console.warn('⚠️ rate limit bypass due to internal error:', (e as Error).message);
+    return next();
+  }
+};
+
+// Apply to all API routes (keep above CORS)
+app.use('/api', advancedRateLimit);
 // put this ABOVE app.use(cors(...))
 app.use((_, res, next) => {
   res.header('Vary', 'Origin');
