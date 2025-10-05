@@ -34,6 +34,11 @@ export interface Product {
   updatedAt?: Date | string;
   compareAtPrice?: number | null;
   brand?: string;
+
+  // ➕ NEW SEO & catalog fields
+  sku?: string;
+  metaTitle?: string;
+  metaDescription?: string;
 }
 
 /**
@@ -171,6 +176,11 @@ export interface IProduct {
   views?: number;
   brand?: string;
   stock?: number;
+
+  // ➕ NEW SEO & catalog fields
+  sku?: string;
+  metaTitle?: string;
+  metaDescription?: string;
 }
 
 export interface ICart {
