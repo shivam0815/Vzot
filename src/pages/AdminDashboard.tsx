@@ -301,7 +301,11 @@ const InventoryManagement = memo<{
       stock: product.stock,
       category: product.category,
       description: product.description || '',
-      status: product.status || 'active'
+      status: product.status || 'active',
+      // NEW
+      sku: product.sku || '',
+      metaTitle: product.metaTitle || '',
+      metaDescription: product.metaDescription || '',
     });
   };
 
@@ -329,6 +333,10 @@ const InventoryManagement = memo<{
       category: editFormData.category,
       description: editFormData.description || '',
       status: editFormData.status,
+      // NEW
+      sku: editFormData.sku?.trim() || undefined,
+      metaTitle: (editFormData.metaTitle || '').trim().slice(0, 60) || undefined,
+      metaDescription: (editFormData.metaDescription || '').trim().slice(0, 160) || undefined,
     };
     if (cmpNum === null) payload.compareAtPrice = null;
     else if (Number.isFinite(cmpNum)) payload.compareAtPrice = cmpNum;
@@ -407,17 +415,20 @@ const InventoryManagement = memo<{
   };
 
   const handleExportCSV = () => {
-    const headers = ['Name', 'Price','CompareAtPrice', 'Stock', 'Category', 'Status', 'Description', 'Specifications', 'images'];
+    const headers = ['Name','Price','CompareAtPrice','Stock','Category','Status','Description','SKU','MetaTitle','MetaDescription'];
     const csvData = [
       headers.join(','),
       ...products.map(product => [
-        `"${product.name}"`,
+        `"${String(product.name).replace(/"/g,'""')}"`,
         product.price,
         product.compareAtPrice ?? '',
         product.stock,
-        `"${product.category}"`,
+        `"${String(product.category).replace(/"/g,'""')}"`,
         product.status || 'active',
-        `"${product.description || ''}"`
+        `"${String(product.description || '').replace(/"/g,'""')}"`,
+        `"${String(product.sku || '').replace(/"/g,'""')}"`,
+        `"${String(product.metaTitle || '').slice(0,60).replace(/"/g,'""')}"`,
+        `"${String(product.metaDescription || '').slice(0,160).replace(/"/g,'""')}"`,
       ].join(','))
     ].join('\n');
     const blob = new Blob([csvData], { type: 'text/csv' });
@@ -559,15 +570,44 @@ const InventoryManagement = memo<{
                   </td>
                   <td>
                     {editingProduct === product._id ? (
-                      <input
-                        type="text"
-                        value={editFormData.name}
-                        onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                        className="edit-input"
-                      />
+                      <div>
+                        <input
+                          type="text"
+                          value={editFormData.name}
+                          onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
+                          className="edit-input"
+                          placeholder="Name"
+                          style={{marginBottom:6}}
+                        />
+                        {/* NEW mini SEO strip */}
+                        <div style={{display:'grid', gap:6}}>
+                          <input
+                            type="text"
+                            value={editFormData.sku}
+                            onChange={(e)=>setEditFormData({...editFormData, sku: e.target.value})}
+                            className="edit-input"
+                            placeholder="SKU"
+                          />
+                          <input
+                            type="text"
+                            value={editFormData.metaTitle}
+                            onChange={(e)=>setEditFormData({...editFormData, metaTitle: e.target.value.slice(0,60)})}
+                            className="edit-input"
+                            placeholder="Meta Title (≤60)"
+                          />
+                          <input
+                            type="text"
+                            value={editFormData.metaDescription}
+                            onChange={(e)=>setEditFormData({...editFormData, metaDescription: e.target.value.slice(0,160)})}
+                            className="edit-input"
+                            placeholder="Meta Description (≤160)"
+                          />
+                        </div>
+                      </div>
                     ) : (
                       <div className="product-name">
                         <strong>{product.name}</strong>
+                        {product.sku && <small>SKU: {product.sku}</small>}
                         {product.description && (<small>{product.description.substring(0, 50)}...</small>)}
                       </div>
                     )}
@@ -736,6 +776,10 @@ const ProductManagement = memo<{
     stock: '',
     category: '',
     description: '',
+    // NEW
+    sku: '',
+    metaTitle: '',
+    metaDescription: '',
   });
   const [uploadedImages, setUploadedImages] = useState<S3UploadResult[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -870,6 +914,10 @@ const ProductManagement = memo<{
               description: pick(row, ["description", "desc"]),
               specifications: pick(row, ["specifications", "specs"]),
               images: pick(row, ["images", "image urls", "image"]),
+              // NEW
+              sku: pick(row, ["sku"]),
+              metaTitle: pick(row, ["meta title","metatitle","meta_title"]),
+              metaDescription: pick(row, ["meta description","metadescription","meta_description"]),
               errors: [],
               isValid: true,
             };
@@ -915,6 +963,11 @@ const ProductManagement = memo<{
             if (typeof product.images === "string" && product.images.trim()) {
               product.images = splitImages(product.images);
             }
+
+            // clamp new SEO fields
+            if (typeof product.metaTitle === 'string') product.metaTitle = product.metaTitle.trim().slice(0, 60);
+            if (typeof product.metaDescription === 'string') product.metaDescription = product.metaDescription.trim().slice(0, 160);
+            if (typeof product.sku === 'string') product.sku = product.sku.trim();
 
             product.isValid = product.errors.length === 0;
             return product;
@@ -964,6 +1017,11 @@ const ProductManagement = memo<{
       uploadData.append('description', formData.description.trim());
       if (specificationsObj) uploadData.append('specifications', JSON.stringify(specificationsObj));
 
+      // NEW — SEO + SKU
+      if (formData.sku) uploadData.append('sku', formData.sku.trim());
+      if (formData.metaTitle) uploadData.append('metaTitle', formData.metaTitle.trim().slice(0, 60));
+      if (formData.metaDescription) uploadData.append('metaDescription', formData.metaDescription.trim().slice(0, 160));
+
       // S3 image URLs + keys
       if (uploadedImages.length > 0) {
         const urls = uploadedImages.map(u => u.url);
@@ -975,7 +1033,11 @@ const ProductManagement = memo<{
 
       const response = await uploadProduct(uploadData);
       if (response && response.success) {
-        setFormData({ name: '', price: '', stock: '', category: '', compareAtPrice: '', description: '' });
+        setFormData({
+          name: '', price: '', stock: '', category: '', compareAtPrice: '', description: '',
+          // reset new fields
+          sku: '', metaTitle: '', metaDescription: '',
+        });
         setUploadedImages([]);
         setUploadProgress(0);
         setSpecificationsText(''); setSpecificationsObj(null); setSpecificationsError(null);
@@ -1020,7 +1082,11 @@ const ProductManagement = memo<{
         tags: Array.isArray(product.tags) ? product.tags : String(product.tags || "")
           .split(/[;,]/).map((s: string) => s.trim()).filter(Boolean),
         status: product.status || "active",
-        isActive: true
+        isActive: true,
+        // NEW
+        sku: product.sku || undefined,
+        metaTitle: product.metaTitle || undefined,
+        metaDescription: product.metaDescription || undefined,
       }));
 
       const response = await bulkUploadProducts(productsData);
@@ -1044,10 +1110,9 @@ const ProductManagement = memo<{
 
   const downloadSampleCSV = () => {
     const sampleData = [
-      'name,price, compare at price, stock,category,description,specifications,images, ',
-      'Sample TWS Earbuds,1299,1500,50,TWS,"High-quality wireless earbuds","{""input"":""AC 100-240V"",""output"":""5V 2.4A"",""warranty"":""6 months""}"',
-      'Sample Bluetooth Neckband,899,1000,30,Bluetooth Neckbands,"Comfortable neckband","{""battery"":""220mAh"",""bluetooth"":""5.3""}"',
-      'Sample Data Cable,299,399,100,Data Cables,"Fast charging USB cable","{""length"":""1m"",""type"":""USB-C""}"'
+      'name,price,compare at price,stock,category,description,specifications,images,sku,meta title,meta description',
+      'Sample TWS Earbuds,1299,1500,50,TWS,"High-quality wireless earbuds","{""input"":""AC 100-240V"",""warranty"":""6 months""}","https://img1.jpg|https://img2.jpg",NKD-TWS-01,"Nakoda TWS Earbuds with ENC","Wireless earbuds with ENC, deep bass, 6-month warranty."',
+      'Sample Data Cable,299,399,100,Data Cables,"Fast charging USB cable","{""length"":""1m"",""type"":""USB-C""}","https://img.jpg",NKD-CBL-1M,"Nakoda USB-C Fast Cable 1m","1m fast-charge Type-C cable; durable & reliable."'
     ].join('\n');
     const blob = new Blob([sampleData], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -1118,38 +1183,58 @@ const ProductManagement = memo<{
               <textarea id="description" name="description" value={formData.description} onChange={handleInputChange} disabled={isSubmitting} placeholder="Enter product description" rows={3} />
             </div>
 
-            <div className="form-group">
-              <label htmlFor="specifications">Product Specifications (JSON)</label>
-              <textarea
-                id="specifications"
-                name="specifications"
-                value={specificationsText}
-                onChange={(e) => handleSpecificationsChange(e.target.value)}
-                disabled={isSubmitting}
-                placeholder={`{
-  "input": "AC 100-240V",
-  "output": "DC 5V 2.4A",
-  "ports": "USB-A x 2",
-  "cable": "Type-C 1m",
-  "warranty": "6 months",
-  "color": "Black"
-}`}
-                rows={8}
-                style={{ fontFamily: 'monospace', fontSize: '14px' }}
-              />
-              <small style={{ color: '#666', fontSize: 12, marginTop: 6, display: 'block' }}>
-                Paste valid JSON (object). Example above.
-              </small>
+            {/* NEW — SEO + SKU */}
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="sku">SKU</label>
+                <input
+                  type="text"
+                  id="sku"
+                  name="sku"
+                  value={formData.sku}
+                  onChange={handleInputChange}
+                  disabled={isSubmitting}
+                  placeholder="e.g. NKD-CHG-2PORT-BLK"
+                  maxLength={64}
+                />
+                <small style={{color:'#666'}}>Unique product code used for admin/ops.</small>
+              </div>
 
-              {specificationsError ? (
-                <div style={{ marginTop: 8, padding: 8, backgroundColor: '#fdecea', border: '1px solid #f5c2c7', borderRadius: 4, color: '#842029', fontSize: 12 }}>
-                  ❌ {specificationsError}
-                </div>
-              ) : specificationsObj ? (
-                <div style={{ marginTop: 8, padding: 8, backgroundColor: '#e7f5ff', border: '1px solid #a5d8ff', borderRadius: 4, color: '#0b7285', fontSize: 12 }}>
-                  ✅ {Object.keys(specificationsObj).length} specs loaded
-                </div>
-              ) : null}
+              <div className="form-group">
+                <label htmlFor="metaTitle">Meta Title</label>
+                <input
+                  type="text"
+                  id="metaTitle"
+                  name="metaTitle"
+                  value={formData.metaTitle}
+                  onChange={(e) => {
+                    const v = e.target.value.slice(0, 60);
+                    setFormData(prev => ({ ...prev, metaTitle: v }));
+                  }}
+                  disabled={isSubmitting}
+                  placeholder="Up to 60 characters"
+                  maxLength={60}
+                />
+                <small style={{color:'#666'}}>Keep under 60 chars; include brand + key feature.</small>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="metaDescription">Meta Description</label>
+              <textarea
+                id="metaDescription"
+                name="metaDescription"
+                value={formData.metaDescription}
+                onChange={(e) => {
+                  const v = e.target.value.slice(0, 160);
+                  setFormData(prev => ({ ...prev, metaDescription: v }));
+                }}
+                disabled={isSubmitting}
+                placeholder="Up to 160 characters (benefits + CTA)"
+                rows={2}
+                maxLength={160}
+              />
+              <small style={{color:'#666'}}>Aim ~155–160 chars, mention compatibility/benefits.</small>
             </div>
 
             {/* S3 Image Upload */}
@@ -1233,9 +1318,10 @@ const ProductManagement = memo<{
                         <th>Price</th>
                         <th>Stock</th>
                         <th>Category</th>
-                        <th>Status</th>
-                        <th>Specs</th>
-                        <th>Comapre</th>
+                        <th>Compare</th>
+                        <th>SKU</th>
+                        <th>Meta Title</th>
+                        <th>Meta Description</th>
                         <th>Validity</th>
                       </tr>
                     </thead>
@@ -1248,6 +1334,9 @@ const ProductManagement = memo<{
                           <td>{product.stock || '0'}</td>
                           <td>{product.category}</td>
                           <td>{product.compareAtPrice ? `₹${product.compareAtPrice}` : '—'}</td>
+                          <td>{product.sku || '—'}</td>
+                          <td>{product.metaTitle || '—'}</td>
+                          <td>{product.metaDescription || '—'}</td>
                           <td>
                             {product.isValid ? (
                               <span className="status-valid">✅ Valid</span>
@@ -1255,8 +1344,6 @@ const ProductManagement = memo<{
                               <span className="status-invalid" title={product.errors.join(', ')}>❌ Invalid</span>
                             )}
                           </td>
-                          <td>{/* spacer col in your original layout */}</td>
-                          <td>{/* spacer col in your original layout */}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1330,8 +1417,8 @@ const Navigation = memo<{
     <div className="nav-items">
       <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>📊 Overview</button>
       <button className={activeTab === 'products' ? 'active' : ''} onClick={() => setActiveTab('products')}>📦 Products</button>
-      <button className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')}>📦 Orders</button>
       <button className={activeTab === 'inventory' ? 'active' : ''} onClick={() => setActiveTab('inventory')}>📋 Inventory</button>
+      <button className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')}>📦 Orders</button>
       <button className={activeTab === 'returns' ? 'active' : ''} onClick={() => setActiveTab('returns')}>🔄 Returns</button>
       <button className={activeTab === 'reviews' ? 'active' : ''} onClick={() => setActiveTab('reviews')}>⭐ Reviews</button>
       <button className={activeTab === 'payments' ? 'active' : ''} onClick={() => setActiveTab('payments')}>💳 Payments</button>

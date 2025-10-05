@@ -57,6 +57,10 @@ export interface IProduct extends Document {
   discountPercent?: number;
   isHotDeal?: boolean;
   primaryImage?: string;
+
+    metaTitle?: string;        // <= 60 chars recommended
+  metaDescription?: string;  // <= 160 chars recommended
+
 }
 
 interface IProductModel extends Model<IProduct> {
@@ -135,6 +139,8 @@ const productSchema = new Schema<IProduct, IProductModel>(
     specifications: { type: Map, of: Schema.Types.Mixed, default: {} },
 
     tags: { type: [String], default: [] },
+     metaTitle:       { type: String, trim: true, maxlength: 160 },
+    metaDescription: { type: String, trim: true, maxlength: 160 },
     isActive: { type: Boolean, default: true },
     status: { type: String, enum: ['active', 'inactive', 'draft'], default: 'active' },
     businessName: String,

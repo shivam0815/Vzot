@@ -551,6 +551,11 @@ export const uploadProduct = async (req: AuthRequest, res: Response): Promise<vo
       specifications,
       compareAtPrice, // ✅ NEW
       originalPrice, // JSON string or object
+
+      // NEW (minimal SEO fields)
+      metaTitle: _metaTitle,
+      metaDescription: _metaDescription,
+      // sku already flows through via separate APIs (if you add it here later, keep it minimal)
     } = req.body as any;
 
     // Validation
@@ -637,23 +642,37 @@ export const uploadProduct = async (req: AuthRequest, res: Response): Promise<vo
     const bodyImageUrls = asArray(images);
     const finalImageUrls = [...bodyImageUrls, ...uploadedUrls];
 
+    // NEW: clamp meta fields if provided
+    const metaTitle =
+      typeof _metaTitle === 'string' && _metaTitle.trim()
+        ? _metaTitle.trim().slice(0, 60)
+        : undefined;
+    const metaDescription =
+      typeof _metaDescription === 'string' && _metaDescription.trim()
+        ? _metaDescription.trim().slice(0, 160)
+        : undefined;
+
     // Build and save product
     const newProduct = new Product({
       name: String(name).trim(),
       description: String(description || '').trim(),
       price: parsedPrice,
-      compareAtPrice: cmp ?? null, // ✅
+      compareAtPrice: cmp ?? null,
       originalPrice: cmp ?? null,
       stockQuantity: parsedStock,
       category: String(category).trim(),
-      images: finalImageUrls, // ✅ ALL images
+      images: finalImageUrls,
       features: asArray(features),
       tags: asArray(tags),
-      specifications: parseSpecs(specifications), // ✅ JSON -> object
+      specifications: parseSpecs(specifications),
       inStock: parsedStock > 0,
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
+
+      // NEW: only these two
+      metaTitle,
+      metaDescription,
     });
 
     const savedProduct = await newProduct.save();
@@ -672,6 +691,9 @@ export const uploadProduct = async (req: AuthRequest, res: Response): Promise<vo
         features: savedProduct.features,
         tags: savedProduct.tags,
         specifications: savedProduct.specifications,
+        // meta fields returned as saved
+        metaTitle: savedProduct.metaTitle,
+        metaDescription: savedProduct.metaDescription,
       },
     });
   } catch (error: any) {
@@ -719,6 +741,14 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
     if (patch.tags) patch.tags = asArray(patch.tags);
     if (patch.specifications) patch.specifications = parseSpecs(patch.specifications);
     if (patch.stock != null && patch.stockQuantity == null) patch.stockQuantity = Number(patch.stock);
+
+    // NEW: clamp metaTitle/metaDescription ONLY if provided
+    if (patch.metaTitle !== undefined && patch.metaTitle !== null) {
+      patch.metaTitle = String(patch.metaTitle).trim().slice(0, 60);
+    }
+    if (patch.metaDescription !== undefined && patch.metaDescription !== null) {
+      patch.metaDescription = String(patch.metaDescription).trim().slice(0, 160);
+    }
 
     const updated = await Product.findByIdAndUpdate(
       id,

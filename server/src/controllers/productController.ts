@@ -1,5 +1,6 @@
-// src/controllers/productController.ts - COMPLETE VERSION (with tolerant category/brand)
+// src/controllers/productController.ts - COMPLETE VERSION (with tolerant category/brand + minimal metaTitle/metaDescription + CSV handler)
 import { Request, Response } from 'express';
+import Papa from 'papaparse';
 import Product from '../models/Product';
 import type { AuthRequest } from '../types';
 
@@ -140,6 +141,11 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
       warrantyType: body.warrantyType,
       manufacturingDetails:
         typeof body.manufacturingDetails === 'object' ? body.manufacturingDetails : {},
+
+      // NEW: only these two SEO fields (clamped)
+      metaTitle: typeof body.metaTitle === 'string' ? body.metaTitle.trim().slice(0, 60) : undefined,
+      metaDescription:
+        typeof body.metaDescription === 'string' ? body.metaDescription.trim().slice(0, 160) : undefined,
     };
 
     const product = new Product(productData);
@@ -166,7 +172,7 @@ export const getProducts = async (req: Request, res: Response) => {
       page = 1,
       limit = 12,
       category,          // may be a slug ("car-charger") or name ("Car Charger")
-      brand,             // NEW: support brand filter similarly tolerant
+      brand,             // support brand filter similarly tolerant
       search,            // old param name
       q,                 // alias supported
       sort,              // new|popular|trending (homepage)
@@ -443,6 +449,14 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     if (updateData.isTrending !== undefined) updateData.isTrending = Boolean(updateData.isTrending);
     if (updateData.isPopular !== undefined) updateData.isPopular = Boolean(updateData.isPopular);
 
+    // NEW: clamp if provided
+    if (updateData.metaTitle !== undefined && updateData.metaTitle !== null) {
+      updateData.metaTitle = String(updateData.metaTitle).trim().slice(0, 60);
+    }
+    if (updateData.metaDescription !== undefined && updateData.metaDescription !== null) {
+      updateData.metaDescription = String(updateData.metaDescription).trim().slice(0, 160);
+    }
+
     const product = await Product.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
@@ -480,5 +494,95 @@ export const deleteProduct = async (req: AuthRequest, res: Response) => {
       success: false,
       message: error.message || 'Failed to delete product',
     });
+  }
+};
+
+/* ─────────────────────────── Bulk CSV Upload ─────────────────────────── */
+
+type CsvRow = {
+  Name: string;
+  Description: string;
+  Price: string;
+  Category: string;
+  Subcategory?: string;
+  Brand?: string;
+  SKU?: string;
+  ImageURL?: string;
+  Images?: string;        // comma-separated
+  StockQuantity?: string;
+
+  // NEW (exactly these two)
+  MetaTitle?: string;       // <= 60 chars
+  MetaDescription?: string; // <= 160 chars
+};
+
+export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
+  try {
+    const csvText: string =
+      (req as any).file ? (req as any).file.buffer.toString('utf8') : (req.body.csv || '');
+
+    const { data, errors } = Papa.parse<CsvRow>(csvText, {
+      header: true,
+      skipEmptyLines: true,
+    });
+
+    if (errors?.length) {
+      return res.status(400).json({ success: false, message: 'CSV parse error', errors });
+    }
+
+    const toInsert = data.map((r) => {
+      const imagesArr = r.Images
+        ? r.Images.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
+
+      // clamp the two SEO fields if provided (leave undefined if blank)
+      const metaTitle =
+        typeof r.MetaTitle === 'string' && r.MetaTitle.trim()
+          ? r.MetaTitle.trim().slice(0, 60)
+          : undefined;
+
+      const metaDescription =
+        typeof r.MetaDescription === 'string' && r.MetaDescription.trim()
+          ? r.MetaDescription.trim().slice(0, 160)
+          : undefined;
+
+      return {
+        name: r.Name,
+        description: r.Description,
+        price: Number(r.Price || 0),
+        category: r.Category,
+        subcategory: r.Subcategory || undefined,
+        brand: r.Brand || 'Nakoda',
+        imageUrl: r.ImageURL || undefined,
+        images: imagesArr,
+        stockQuantity: Number(r.StockQuantity || 0),
+        inStock: Number(r.StockQuantity || 0) > 0,
+
+        // SKU unchanged
+        sku: r.SKU?.trim() ? r.SKU.trim() : undefined,
+
+        // ONLY these two new fields
+        metaTitle,
+        metaDescription,
+
+        // keep same defaults
+        isActive: true,
+        status: 'active' as const,
+      };
+    });
+
+    // Keep your existing insert behavior
+    const inserted = await Product.insertMany(toInsert, { ordered: false });
+    return res.json({ success: true, inserted: inserted.length });
+  } catch (err: any) {
+    if (err?.writeErrors?.length) {
+      const dupes = err.writeErrors.filter((e: any) => e.code === 11000);
+      return res.status(207).json({
+        success: false,
+        message: 'Bulk upload partial success',
+        duplicates: dupes.map((e: any) => ({ index: e.index, errmsg: e.errmsg })),
+      });
+    }
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
