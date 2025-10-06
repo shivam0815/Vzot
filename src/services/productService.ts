@@ -32,8 +32,9 @@ export interface ProductFilters {
 }
 
 /* ─────────────────────────── Constants ─────────────────────────── */
-const DEFAULT_LIMIT = 24;   // pagination default
-const MAX_LIMIT = 100;      // safety cap
+// ↑↑ Align with backend (MAX_LIMIT=1000, DEFAULT_LIMIT=200)
+const DEFAULT_LIMIT = 200;
+const MAX_LIMIT = 1000;
 const MC_TTL = 15_000;      // in-memory TTL
 
 /* ─────────────────────────── Utilities ─────────────────────────── */
@@ -51,9 +52,9 @@ const extractUrlLike = (x: any): string => {
       x.secure_url ||
       x.url ||
       x.path ||
-      x.location || // some S3 libs
-      x.Location || // AWS SDK v2 putObject response
-      x.key ||      // if a raw key leaks through
+      x.location ||
+      x.Location ||
+      x.key ||
       ''
     );
   }
