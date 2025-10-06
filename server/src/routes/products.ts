@@ -29,7 +29,7 @@ function getSort(
   if (sb && sortMap[sb]) {
     const obj = { ...sortMap[sb] };
     const keys = Object.keys(obj);
-    if (keys.length === 1) obj[keys[0]] = ord;
+    if (keys.length === 1) obj[keys[0]] = ord; // only flip single-key sorts
     return obj;
   }
   return { createdAt: -1 };
@@ -259,29 +259,6 @@ router.get('/:id/related', async (req, res) => {
 });
 
 /**
- * GET /products/:id  (single)
- */
-router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({ success: false, message: 'Invalid product id format' });
-    }
-
-    const product = await Product.findById(id).select('-__v').lean();
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
-    }
-
-    res.json({ success: true, message: 'Product details fetched', product });
-  } catch (error: any) {
-    console.error('❌ /products/:id error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch product details', error: error.message });
-  }
-});
-
-/**
  * GET /products
  * Query:
  *  - category, brand, search, minPrice, maxPrice, excludeId
@@ -305,8 +282,8 @@ router.get('/', async (req, res) => {
     } = req.query as Record<string, string>;
 
     const p = Math.max(1, toNumber(page, 1));
-    const MAX_LIMIT = 100;
-    const DEFAULT_LIMIT = 24;
+    const MAX_LIMIT = 1000;          // ↑↑ allow big pages
+    const DEFAULT_LIMIT = 200;       // ↑↑ friendlier default for big catalogs
     const l = Math.min(MAX_LIMIT, Math.max(1, toNumber(limit, DEFAULT_LIMIT)));
 
     const filter: any = { isActive: true };
