@@ -99,8 +99,9 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     const total = subtotal + shipping + tax;
 
     // IDs
-    const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
-    const paymentOrderId = `PAY${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    // IDs
+const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
+const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
 
     // GST block
     const gstBlock = buildGstBlock(req.body, shippingAddress, { subtotal, tax });

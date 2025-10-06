@@ -2,7 +2,7 @@
 import { Request, Response } from 'express';
 import Order, { IOrder } from '../models/Order';
 import email from '../config/emailService';
-import { createPhonePeTransaction } from '../lib/phonepe';
+import { phonepePay /*, phonepeStatus*/ } from '../lib/phonepe';
 
 const asNum = (v: any) => (v === '' || v == null ? undefined : Number(v));
 const genMtx = (order: IOrder, suffix = 'SHIP') =>
@@ -19,11 +19,6 @@ function extractRedirectUrl(resp: any): string | undefined {
 
 /**
  * Admin sets package dims/weight/images and (optionally) creates a PhonePe Shipping Payment Link.
- * Body:
- * {
- *   lengthCm, breadthCm, heightCm, weightKg, notes, images: string[],
- *   amount, currency, createPaymentLink: boolean
- * }
  */
 export async function setPackageAndMaybeLink(req: Request, res: Response) {
   try {
@@ -48,9 +43,11 @@ export async function setPackageAndMaybeLink(req: Request, res: Response) {
 
     if (createPaymentLink && Number(amount) > 0) {
       const mtx = genMtx(order); // merchantTransactionId
-      const resp = await createPhonePeTransaction({
-        merchantTransactionId: mtx,
-        amountInPaise: Math.round(Number(amount) * 100),
+
+      // ✅ use phonepePay with correct param names
+      const resp = await phonepePay({
+        merchantTxnId: mtx,
+        amountPaise: Math.round(Number(amount) * 100),
         redirectUrl: process.env.PHONEPE_REDIRECT_URL!,
         callbackUrl: process.env.PHONEPE_CALLBACK_URL!,
         merchantUserId: String(order.userId),
@@ -60,8 +57,8 @@ export async function setPackageAndMaybeLink(req: Request, res: Response) {
       if (!shortUrl) throw new Error('PhonePe redirect URL missing from response');
 
       order.shippingPayment = {
-        linkId: mtx,            // store our MTX as link identifier
-        shortUrl,               // hosted pay page
+        linkId: mtx,
+        shortUrl,
         status: 'pending',
         currency,
         amount: Number(amount),
@@ -101,9 +98,11 @@ export async function createShippingPaymentLink(req: Request, res: Response) {
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
     const mtx = genMtx(order);
-    const resp = await createPhonePeTransaction({
-      merchantTransactionId: mtx,
-      amountInPaise: Math.round(Number(amount) * 100),
+
+    // ✅ FIX import + arg names
+    const resp = await phonepePay({
+      merchantTxnId: mtx,
+      amountPaise: Math.round(Number(amount) * 100),
       redirectUrl: process.env.PHONEPE_REDIRECT_URL!,
       callbackUrl: process.env.PHONEPE_CALLBACK_URL!,
       merchantUserId: String(order.userId),
