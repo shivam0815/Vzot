@@ -56,7 +56,7 @@ type PaymentResult = {
   redirected?: boolean;
   order?: any;
   paymentId?: string | null;
-  method: 'razorpay' | 'cod';
+  method: 'phonepe' | 'cod';
 };
 
 const emptyAddress: Address = {
@@ -85,7 +85,7 @@ const GIFT_WRAP_FEE = 0;
 const FIRST_ORDER_RATE = 0.1; // 10%
 const FIRST_ORDER_CAP = 300;
 
-// Online payment fee & GST-on-fee (applies to Razorpay)
+// Online payment fee & GST-on-fee (applies to PhonePe)
 const ONLINE_FEE_RATE = 0.02;      // 2% convenience fee (online methods only)
 const ONLINE_FEE_GST_RATE = 0.18;  // 18% GST on that convenience fee
 
@@ -107,7 +107,7 @@ const CheckoutPage: React.FC = () => {
   const [sameAsShipping, setSameAsShipping] = useState(true);
 
   // Payment / errors
-  const [method, setMethod] = useState<'razorpay' | 'cod'>('razorpay');
+  const [method, setMethod] = useState<'phonepe' | 'cod'>('phonepe');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Extras
@@ -215,7 +215,7 @@ const CheckoutPage: React.FC = () => {
   // Tax after discount, before shipping/cod/wrap (on goods/services)
   const tax = useMemo(() => Math.round(effectiveSubtotal * 0.18), [effectiveSubtotal]);
 
-  // Convenience fee for online methods + GST on that fee (online = Razorpay)
+  // Convenience fee for online methods + GST on that fee (online = PhonePe)
   const convenienceFee = useMemo(() => {
     if (method === 'cod') return 0;
     const baseBeforeFee = effectiveSubtotal + tax + shippingFee + giftWrapFee;
@@ -393,7 +393,7 @@ const CheckoutPage: React.FC = () => {
       // If a hosted checkout handled redirection/overlay, nothing else to do.
       if (result.redirected) return;
 
-      // Success path (COD / Razorpay)
+      // Success path (COD / PhonePe)
       clearCart();
       localStorage.setItem('hasOrderedBefore', '1');
 
@@ -632,7 +632,7 @@ const CheckoutPage: React.FC = () => {
                 </div>
               )}
 
-              {/* ✅ Single combined processing fee (Razorpay only) */}
+              {/* ✅ Single combined processing fee (PhonePe only) */}
               {method !== 'cod' && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Payment Processing Fee</span>
@@ -655,7 +655,7 @@ const CheckoutPage: React.FC = () => {
               <div className="flex items-center text-sm">
                 <Shield className="h-5 w-5 text-blue-600 mr-2" />
                 <span className="font-semibold text-blue-800">
-                  Secured by {method === 'razorpay' ? 'Razorpay' : 'Cash on Delivery'}
+                  Secured by {method === 'phonepe' ? 'PhonePe' : 'Cash on Delivery'}
                 </span>
               </div>
             </div>
@@ -885,7 +885,7 @@ const CheckoutPage: React.FC = () => {
             )}
 
 
-            {/* Payment Method (Razorpay / COD only) */}
+            {/* Payment Method (PhonePe / COD only) */}
             <div className="border-t border-gray-200 pt-6 sm:pt-8">
               <div className="flex items-center mb-6">
                 <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
@@ -895,27 +895,27 @@ const CheckoutPage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                {/* Razorpay */}
+                {/* PhonePe */}
                 <label
                   className={`relative p-4 sm:p-6 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:-translate-y-1 ${
-                    method === 'razorpay' ? 'border-blue-500 bg-blue-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
+                    method === 'phonepe' ? 'border-blue-500 bg-blue-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <input
                     type="radio"
                     name="paymentMethod"
-                    value="razorpay"
-                    checked={method === 'razorpay'}
-                    onChange={(e) => setMethod(e.target.value as 'razorpay')}
+                    value="phonepe"
+                    checked={method === 'phonepe'}
+                    onChange={(e) => setMethod(e.target.value as 'phonepe')}
                     className="sr-only"
                   />
-                  {method === 'razorpay' && <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-blue-600" />}
+                  {method === 'phonepe' && <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-blue-600" />}
                   <div className="text-center">
                     <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       <CreditCard className="h-6 w-6 text-blue-600" />
                     </div>
-                    <div className="font-bold text-sm sm:text-base text-gray-900 mb-1">Razorpay</div>
-                    <div className="text-xs text-gray-600">Cards, UPI, NetBanking</div>
+                    <div className="font-bold text-sm sm:text-base text-gray-900 mb-1">PhonePe</div>
+                    <div className="text-xs text-gray-600">UPI, Cards, NetBanking</div>
                     <div className="text-xs text-green-600 mt-1 font-semibold">Most Popular</div>
                   </div>
                 </label>
@@ -947,12 +947,12 @@ const CheckoutPage: React.FC = () => {
 
               {/* Method descriptions */}
               <div className="mb-6 sm:mb-8">
-                {method === 'razorpay' && (
+                {method === 'phonepe' && (
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
                     <p className="text-blue-800 text-sm flex items-start">
                       <Shield className="h-4 w-4 mr-2 mt-0.5 text-blue-600" />
                       <span>
-                        <strong>Razorpay Payment:</strong> Supports all major cards, UPI, net banking, and wallets with bank-level security.
+                        <strong>PhonePe Payment:</strong> Supports UPI, cards, net banking with bank-level security.
                       </span>
                     </p>
                   </div>
@@ -1050,14 +1050,14 @@ const CheckoutPage: React.FC = () => {
                 {isProcessing ? (
                   <>
                     <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent mr-3"></div>
-                    {method === 'razorpay' ? 'Opening Razorpay...' : 'Placing Order...'}
+                    {method === 'phonepe' ? 'Opening PhonePe...' : 'Placing Order...'}
                   </>
                 ) : (
                   <>
                     <Shield className="h-5 w-5 mr-2" />
                     {method === 'cod'
                       ? `Place Order - ${formatINR(total)}`
-                      : `Pay Securely - ${formatINR(total)}`}
+                      : `Pay with PhonePe - ${formatINR(total)}`}
                   </>
                 )}
               </button>

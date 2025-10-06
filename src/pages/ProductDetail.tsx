@@ -1,9 +1,8 @@
-// src/pages/ProductDetail.tsx — fully responsive & compact (B2C: no MOQ / no per-line max)
+// src/pages/ProductDetail.tsx — compact B2C detail page (no related rails)
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Star,
   ShoppingCart,
   Heart,
   Share2,
@@ -13,7 +12,6 @@ import {
   Truck,
   Shield,
   RotateCcw,
-  ChevronRight,
   MessageCircle,
   CreditCard,
 } from 'lucide-react';
@@ -25,7 +23,6 @@ import { resolveImageUrl } from '../utils/imageUtils';
 import toast from 'react-hot-toast';
 import SEO from '../components/Layout/SEO';
 import Reviews from '../components/Layout/Reviews';
-import { reviewsService } from '../services/reviewsService';
 import Breadcrumbs from './Breadcrumbs';
 
 /* ------------------------- Helpers for specs ------------------------- */
@@ -60,189 +57,11 @@ const renderSpecValue = (val: unknown) => {
   return <code className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(val, null, 2)}</code>;
 };
 
-/* --------------------- Helpers for product rails/cards --------------------- */
-const fmtINR = (v?: number) => (typeof v === 'number' ? `₹${v.toLocaleString('en-IN')}` : 'Contact for price');
-
+/* --------------------- Image helpers --------------------- */
 const safeImage = (src?: string | null, w = 400, h = 400) => {
   const resolved = resolveImageUrl(src ?? undefined);
   if (resolved) return resolved;
   return `https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=${w}&h=${h}&fit=crop&crop=center&auto=format&q=60`;
-};
-
-/** Hook: live review summary for a product card */
-const useReviewSummary = (productId?: string) => {
-  const [avg, setAvg] = useState(0);
-  const [count, setCount] = useState(0);
-
-  const load = async (pid: string) => {
-    try {
-      const s = await reviewsService.summary(pid);
-      setAvg(Number(s.averageRating || 0));
-      setCount(Number(s.reviewCount || 0));
-    } catch {/* ignore */}
-  };
-
-  useEffect(() => {
-    if (!productId) return;
-    let clean = false;
-    load(productId);
-
-    const onChanged = (e: any) => {
-      if (e?.detail?.productId === productId) load(productId);
-    };
-    window.addEventListener('reviews:changed', onChanged);
-
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === `reviews:changed:${productId}`) load(productId);
-    };
-    window.addEventListener('storage', onStorage);
-
-    return () => {
-      if (clean) return;
-      window.removeEventListener('reviews:changed', onChanged);
-      window.removeEventListener('storage', onStorage);
-      clean = true;
-    };
-  }, [productId]);
-
-  return { avg, count };
-};
-
-/** Mini product card used in rails */
-const MiniCard: React.FC<{ p: Product }> = ({ p }) => {
-  const navigate = useNavigate();
-  const { addToCart, isLoading } = useCart();
-
-  const pid: string = (p as any)._id || (p as any).id;
-  const firstImg =
-    (Array.isArray(p.images) ? p.images.find((i: string) => i && i !== 'null' && i !== 'undefined') : '') || '';
-
-  const { avg, count } = useReviewSummary(pid);
-  const rounded = Math.round(avg);
-
-  const add = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    try {
-      await addToCart(pid, 1);
-      toast.success('Added to cart!');
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to add to cart');
-    }
-  };
-
-  const buy = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    try {
-      await addToCart(pid, 1);
-      navigate('/cart');
-    } catch (err: any) {
-      toast.error(err?.message || 'Could not proceed to checkout');
-    }
-  };
-
-  return (
-    <Link
-      to={`/product/${pid}`}
-      className="group block rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all bg-white"
-    >
-      <div className="aspect-square w-full overflow-hidden rounded-t-xl bg-gray-50">
-        <img
-          src={safeImage(firstImg, 300, 300)}
-          alt={p.name}
-          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = safeImage(firstImg, 300, 300);
-          }}
-        />
-      </div>
-      <div className="p-3 space-y-2">
-        <div className="text-sm font-medium line-clamp-2 text-gray-900">{p.name}</div>
-
-        {/* Price + MRP */}
-        <div className="flex items-center gap-2">
-          <span className="text-base font-semibold text-gray-900">{fmtINR(p.price)}</span>
-          {(p as any).originalPrice && (p as any).originalPrice > (p.price ?? 0) && (
-            <>
-              <span className="text-xs text-gray-500 line-through">
-                ₹{(p as any).originalPrice.toLocaleString('en-IN')}
-              </span>
-              <span className="text-[10px] font-semibold text-red-700 bg-red-50 px-1.5 py-0.5 rounded">
-                {Math.round((((p as any).originalPrice - (p.price ?? 0)) / (p as any).originalPrice) * 100)}% OFF
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Live rating row – hidden when count = 0 */}
-        {count > 0 && (
-          <div className="flex items-center gap-1 text-xs text-gray-600">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Star key={i} className={`h-4 w-4 ${i < rounded ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} />
-            ))}
-            <span className="ml-1">({count} reviews)</span>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={add}
-            disabled={isLoading}
-            className="flex-1 inline-flex items-center justify-center h-9 px-3 text-xs rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-          >
-            <ShoppingCart className="h-4 w-4 mr-1" />
-            Add
-          </button>
-          <button
-            onClick={buy}
-            disabled={isLoading}
-            className="flex-1 inline-flex items-center justify-center h-9 px-3 text-xs rounded-lg bg-gray-900 text-white hover:bg-black disabled:opacity-60"
-          >
-            <CreditCard className="h-4 w-4 mr-1" />
-            Buy
-          </button>
-        </div>
-      </div>
-    </Link>
-  );
-};
-
-const ProductRail: React.FC<{ title: string; items: Product[]; to?: string }> = ({ title, items, to }) => {
-  if (!items?.length) return null;
-  return (
-    <section className="mt-8 sm:mt-10">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-base sm:text-lg font-semibold text-gray-900">{title}</h3>
-        {to && (
-          <Link to={to} className="text-sm text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">
-            View all <ChevronRight className="h-4 w-4" />
-          </Link>
-        )}
-      </div>
-
-      {/* mobile scroll */}
-      <div className="sm:hidden -mx-4 px-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none]">
-        <div className="flex gap-3 snap-x">
-          {items.map((p: Product) => {
-            const idKey: string = (p as any)._id || (p as any).id;
-            return (
-              <div className="snap-start min-w-[64%]" key={idKey}>
-                <MiniCard p={p} />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* desktop grid */}
-      <div className="hidden sm:grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-        {items.slice(0, 10).map((p: Product) => {
-          const idKey: string = (p as any)._id || (p as any).id;
-          return <MiniCard key={idKey} p={p} />;
-        })}
-      </div>
-    </section>
-  );
 };
 
 /* ------------------------------ Component ------------------------------ */
@@ -255,8 +74,8 @@ const ProductDetail: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<number>(0);
 
   // quantity (raw typing + committed value)
-  const [quantity, setQuantity] = useState<number>(1); // committed
-  const [rawQty, setRawQty] = useState<string>('1');   // user typing
+  const [quantity, setQuantity] = useState<number>(1);
+  const [rawQty, setRawQty] = useState<string>('1');
 
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
@@ -277,12 +96,6 @@ const ProductDetail: React.FC = () => {
       .filter((s: string) => typeof s === 'string' && s.trim() !== '' && s !== 'undefined' && s !== 'null');
   }, [product]);
 
-  // Related rails state
-  const [similarByCategory, setSimilarByCategory] = useState<Product[]>([]);
-  const [moreFromBrand, setMoreFromBrand] = useState<Product[]>([]);
-  const [trending, setTrending] = useState<Product[]>([]);
-  const [railsLoading, setRailsLoading] = useState<boolean>(false);
-
   /* Fetch product */
   useEffect(() => {
     const fetchProduct = async () => {
@@ -291,13 +104,11 @@ const ProductDetail: React.FC = () => {
         setLoading(true);
         setError(null);
         const response = await productService.getProduct(id);
-
         const normalizedProduct: Product = {
           ...(response.product as Product),
           specifications: normalizeSpecifications((response.product as any)?.specifications),
           reviewsCount: (response.product as any)?.reviewsCount ?? (response.product as any)?.reviews ?? 0,
         };
-
         setProduct(normalizedProduct);
       } catch (err: any) {
         setError(err.message || 'Failed to load product');
@@ -336,36 +147,6 @@ const ProductDetail: React.FC = () => {
     return final;
   };
 
-  /* Fetch rails after product is loaded */
-  useEffect(() => {
-    const run = async () => {
-      if (!product) return;
-      try {
-        setRailsLoading(true);
-        const pid: string = (product as any)._id || (product as any).id;
-
-        const [relCat, relBrand, top] = await Promise.all([
-          (productService as any).getRelatedProducts?.(pid) ??
-            (productService as any).list?.({ category: product.category, limit: 12 }) ??
-            [],
-          (product as any).brand
-            ? (productService as any).list?.({ brand: (product as any).brand, excludeId: pid, limit: 12 }) ?? []
-            : [],
-          productService.getTrending(12),
-        ]);
-
-        setSimilarByCategory(Array.isArray(relCat) ? (relCat as Product[]).filter((p: any) => ((p._id || p.id) !== pid)) : []);
-        setMoreFromBrand(Array.isArray(relBrand) ? (relBrand as Product[]) : []);
-        setTrending(Array.isArray(top) ? (top as Product[]) : []);
-      } catch {
-        // swallow rails errors
-      } finally {
-        setRailsLoading(false);
-      }
-    };
-    run();
-  }, [product]);
-
   /* If URL has #reviews, open tab and focus */
   useEffect(() => {
     if (window.location.hash === '#reviews') {
@@ -386,7 +167,7 @@ const ProductDetail: React.FC = () => {
     try {
       const productId: string = (product as any)._id || (product as any).id;
       if (!productId) { toast.error('Product ID not found'); return; }
-      const finalQty = commitQty(rawQty === '' ? 1 : rawQty); // commit before action
+      const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
       await addToCart(productId, finalQty);
       toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart!`);
     } catch (err: any) {
@@ -399,7 +180,7 @@ const ProductDetail: React.FC = () => {
     try {
       const productId: string = (product as any)._id || (product as any).id;
       if (!productId) { toast.error('Product ID not found'); return; }
-      const finalQty = commitQty(rawQty === '' ? 1 : rawQty); // commit before action
+      const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
       await addToCart(productId, finalQty);
       navigate('/checkout');
     } catch (err: any) {
@@ -449,7 +230,7 @@ const ProductDetail: React.FC = () => {
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
             name: 'Products',
-            url: 'https://nakodamobile.in/products',
+            url: 'https://nakodamobile.com/products',
           }}
         />
         <div className="text-center max-w-md mx-auto p-6">
@@ -508,7 +289,7 @@ const ProductDetail: React.FC = () => {
 
   /* -------------------------------- Render -------------------------------- */
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 sm:pb-10">{/* leave space for mobile sticky bar */}
+    <div className="min-h-screen bg-gray-50 pb-24 sm:pb-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Breadcrumb */}
         <Breadcrumbs
@@ -600,7 +381,7 @@ const ProductDetail: React.FC = () => {
                 ) : null}
               </div>
 
-              {/* Quantity (B2C: 1..stock) with raw typing */}
+              {/* Quantity */}
               {(product as any).inStock && (
                 <div className="flex items-center gap-3 sm:gap-4">
                   <label className="text-gray-700 text-sm sm:text-base font-medium">Qty</label>
@@ -623,10 +404,10 @@ const ProductDetail: React.FC = () => {
                       placeholder="1"
                       onChange={(e) => {
                         const v = e.target.value;
-                        if (v === '') { setRawQty(''); return; }              // allow empty while typing
-                        if (/^\d+$/.test(v)) {                               // digits only
+                        if (v === '') { setRawQty(''); return; }
+                        if (/^\d+$/.test(v)) {
                           setRawQty(v);
-                          setQuantity(parseInt(v, 10));                      // live update (no clamp yet)
+                          setQuantity(parseInt(v, 10));
                         }
                       }}
                       onBlur={() => commitQty(rawQty === '' ? 1 : rawQty)}
@@ -650,9 +431,8 @@ const ProductDetail: React.FC = () => {
                 </div>
               )}
 
-              {/* Actions — mobile-first (icons visible) */}
+              {/* Actions */}
               <div className="grid grid-cols-2 gap-2 sm:flex sm:items-stretch sm:gap-3">
-                {/* Add to Cart */}
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -669,7 +449,6 @@ const ProductDetail: React.FC = () => {
                   <span>Add to Cart</span>
                 </motion.button>
 
-                {/* Buy Now */}
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -684,9 +463,7 @@ const ProductDetail: React.FC = () => {
                   <span>Buy Now</span>
                 </motion.button>
 
-                {/* Icons row — centered on mobile, left on desktop */}
                 <div className="col-span-2 flex items-center justify-center sm:justify-start gap-3 mt-1 sm:mt-0">
-                  {/* Wishlist */}
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -700,7 +477,6 @@ const ProductDetail: React.FC = () => {
                     <Heart className={`h-5 w-5 ${inWishlist ? 'fill-current' : ''}`} />
                   </motion.button>
 
-                  {/* Share */}
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -724,7 +500,6 @@ const ProductDetail: React.FC = () => {
                     <Share2 className="h-5 w-5" />
                   </motion.button>
 
-                  {/* WhatsApp (always visible incl. mobile) */}
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(`${product.name} ${window.location.href}`)}`}
                     target="_blank"
@@ -849,34 +624,8 @@ const ProductDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Product rails */}
-        <div className="mt-6 sm:mt-8">
-          {railsLoading && (
-            <div className="animate-pulse grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-              {Array.from({ length: 10 }).map((_, i: number) => (
-                <div key={i} className="h-64 sm:h-72 bg-white rounded-xl border border-gray-200" />
-              ))}
-            </div>
-          )}
-
-          <ProductRail
-            title="Similar products you may like"
-            items={similarByCategory}
-            to={`/products?category=${encodeURIComponent(product.category)}`}
-          />
-
-          {(product as any).brand && (
-            <ProductRail
-              title={`More from ${(product as any).brand}`}
-              items={moreFromBrand}
-              to={`/products?brand=${encodeURIComponent((product as any).brand)}`}
-            />
-          )}
-
-          <ProductRail title="Trending now" items={trending} to="/products?sort=trending" />
-        </div>
-
-        {/* SEO: product structured data */}
+        {/* No related rails rendered */}
+        {/* Structured data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -884,7 +633,7 @@ const ProductDetail: React.FC = () => {
               '@context': 'https://schema.org/',
               '@type': 'Product',
               name: product.name,
-              image: validImages?.map((i: string) => safeImage(i))?.slice(0, 6),
+              image: (normalizedImages || []).map((i: string) => safeImage(i)).slice(0, 6),
               description: product.description,
               sku: productId,
               brand: (product as any).brand ? { '@type': 'Brand', name: (product as any).brand } : undefined,

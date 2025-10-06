@@ -11,7 +11,7 @@ const isProd = NODE_ENV === "production";
 /** Comma-separated list; include both apex & www in prod */
 const FRONTEND_ORIGINS = (
   process.env.FRONTEND_ORIGINS ??
-  "https://nakodamobile.in,https://www.nakodamobile.in,http://localhost:5173,http://127.0.0.1:5173"
+  "https://nakodamobile.com,https://www.nakodamobile.com,http://localhost:5173,http://127.0.0.1:5173"
 )
   .split(",")
   .map((s) => s.trim())

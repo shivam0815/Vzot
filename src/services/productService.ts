@@ -1,19 +1,20 @@
 // src/services/productService.ts
 import api from '../config/api';
 import { Product } from '../types';
-import { resolveImageUrl } from '../utils/imageUtils'; // ← S3/Cloudinary-aware
+import { resolveImageUrl } from '../utils/imageUtils';
 
+/* ───────────────────────────── Types ───────────────────────────── */
 export interface ProductsResponse {
   products: Product[];
   totalPages: number;
   currentPage: number;
   total: number;
-  pagination?: {
-    currentPage: number;
-    totalPages: number;
-    totalProducts: number;
-    hasMore: boolean;
+  pagination: {
+    page: number;
     limit: number;
+    total: number;
+    pages: number;
+    hasMore: boolean;
   };
 }
 
@@ -22,15 +23,20 @@ export interface ProductFilters {
   limit?: number;
   category?: string;
   brand?: string;
-  search?: string;
+  search?: string;      // FE uses "search"; we also accept "q" and normalize
   minPrice?: number;
   maxPrice?: number;
-  sortBy?: string;
+  sortBy?: 'createdAt' | 'price' | 'rating' | 'trending';
   sortOrder?: 'asc' | 'desc';
   excludeId?: string;
 }
 
-/* ---------- helpers ---------- */
+/* ─────────────────────────── Constants ─────────────────────────── */
+const DEFAULT_LIMIT = 24;   // pagination default
+const MAX_LIMIT = 100;      // safety cap
+const MC_TTL = 15_000;      // in-memory TTL
+
+/* ─────────────────────────── Utilities ─────────────────────────── */
 const coerceNumber = (v: any): number | undefined => {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
@@ -56,7 +62,6 @@ const extractUrlLike = (x: any): string => {
 
 // Normalize imageUrl + images (handles S3 keys and Cloudinary URLs)
 function normalizeImages(p: any): { imageUrl?: string; images: string[] } {
-  // Gather possible arrays
   const arrayCandidates: any[] =
     (Array.isArray(p?.images) && p.images) ||
     (Array.isArray(p?.gallery) && p.gallery) ||
@@ -64,13 +69,11 @@ function normalizeImages(p: any): { imageUrl?: string; images: string[] } {
     (Array.isArray(p?.pictures) && p.pictures) ||
     [];
 
-  // Map to strings then resolve to absolute public URLs (S3 keys → public, Cloudinary URL → same)
   const imagesResolved = arrayCandidates
     .map(extractUrlLike)
     .map((s) => resolveImageUrl(s))
     .filter(Boolean) as string[];
 
-  // Pick a primary image: prefer explicit fields, else first of images[]
   const primaryCandidates = [
     p?.imageUrl,
     p?.imageURL,
@@ -82,12 +85,12 @@ function normalizeImages(p: any): { imageUrl?: string; images: string[] } {
     p?.s3Key,
     imagesResolved[0],
   ];
+
   const imageUrl = (primaryCandidates
     .map(extractUrlLike)
     .map((s) => resolveImageUrl(s))
     .find(Boolean) || undefined) as string | undefined;
 
-  // Ensure primary is first in images (without duplicates)
   const images =
     imageUrl && imagesResolved.length
       ? [imageUrl, ...imagesResolved.filter((u) => u !== imageUrl)]
@@ -113,9 +116,6 @@ function normalizeSpecifications(input: any): Record<string, any> {
   return {};
 }
 
-/**
- * Standardize fields so UI always finds them.
- */
 function normalizeProduct(p: any): Product {
   const avg =
     coerceNumber(p?.averageRating) ??
@@ -136,80 +136,51 @@ function normalizeProduct(p: any): Product {
 
   return {
     ...p,
-    // normalized aggregates
     averageRating: avg,
     rating: avg,
     ratingsCount: count,
     reviewCount: count,
     reviewsCount: count,
-    // normalized images (S3 or Cloudinary)
     imageUrl,
     images,
-    // normalized specs
     specifications: normalizeSpecifications(p?.specifications),
   } as Product;
 }
 
 function normalizeProductsResponse(data: any): ProductsResponse {
-  // Accept multiple common shapes
-  const raw =
+  // Accept common shapes
+  const rawArray =
     (Array.isArray(data?.products) && data.products) ||
     (Array.isArray(data?.data) && data.data) ||
     (Array.isArray(data) && data) ||
     [];
 
-  const products: Product[] = raw.map(normalizeProduct);
+  const products: Product[] = rawArray.map(normalizeProduct);
 
-  const pagination = data?.pagination ?? {};
-
-  const totalPages = Number(
-    data?.totalPages ??
-      pagination.totalPages ??
-      pagination.pages ??
-      1
-  );
-
-  const currentPage = Number(
-    data?.currentPage ??
-      pagination.currentPage ??
-      pagination.page ??
-      1
-  );
-
-  const total = Number(
-    data?.total ??
-      pagination.totalProducts ??
-      pagination.total ??
-      products.length
-  );
-
-  const limit = Number(
-    pagination.limit ??
-      data?.limit ??
-      (products.length || 12)
-  );
-
-  const hasMore = Boolean(
-    pagination.hasMore ??
-      (Number(currentPage) < Number(totalPages))
-  );
+  const pag = data?.pagination ?? {};
+  const pages =
+    Number(pag.pages ?? data?.pages ?? data?.totalPages ?? 1) || 1;
+  const page =
+    Number(pag.page ?? data?.page ?? data?.currentPage ?? 1) || 1;
+  const total =
+    Number(pag.total ?? data?.total ?? products.length) || products.length;
+  const limit =
+    Number(pag.limit ?? data?.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT;
+  const hasMore =
+    typeof pag.hasMore === 'boolean'
+      ? pag.hasMore
+      : page * limit < total;
 
   return {
     products,
-    totalPages,
-    currentPage,
+    totalPages: pages,
+    currentPage: page,
     total,
-    pagination: {
-      currentPage,
-      totalPages,
-      totalProducts: total,
-      hasMore,
-      limit,
-    },
+    pagination: { page, limit, total, pages, hasMore },
   };
 }
 
-// --- category/brand normalization helpers ---
+// slug helpers
 const slugify = (s: string) =>
   (s || '')
     .toLowerCase()
@@ -219,10 +190,9 @@ const slugify = (s: string) =>
 
 const unslug = (s?: string) => (s ? s.replace(/-/g, ' ').trim() : '');
 
-// Canonical map: slug/aliases -> exact display name used in DB
+// Canonical map: slug/aliases -> exact DB name
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
-  // exact slugs
-  'tws': 'TWS',
+  tws: 'TWS',
   'bluetooth-neckband': 'Bluetooth Neckbands',
   'bluetooth-neckbands': 'Bluetooth Neckbands',
   'data-cable': 'Data Cables',
@@ -237,73 +207,64 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   'power-banks': 'Power Banks',
   'integrated-circuits-chips': 'Integrated Circuits & Chips',
   'mobile-repairing-tools': 'Mobile Repairing Tools',
-  'electronics': 'Electronics',
-  'accessories': 'Accessories',
-  'Mobile ICs': 'Mobile ICs',
-  'Mobile Accessories': 'Mobile Accessories',
-  'others': 'Others',
-
-  // friendly shortcuts / plurals
-  'chargers': 'Mobile Chargers',     // << your case
-  'neckband': 'Bluetooth Neckbands',
-  'neckbands': 'Bluetooth Neckbands',
-  'cables': 'Data Cables',
-  'speakers': 'Bluetooth Speakers',
-  'banks': 'Power Banks',
-  'ICs': 'Integrated Circuits & Chips',
-
+  electronics: 'Electronics',
+  accessories: 'Accessories',
+  'mobile-ics': 'Mobile ICs',
+  'mobile-accessories': 'Mobile Accessories',
+  others: 'Others',
+  chargers: 'Mobile Chargers',
+  neckband: 'Bluetooth Neckbands',
+  neckbands: 'Bluetooth Neckbands',
+  cables: 'Data Cables',
+  speakers: 'Bluetooth Speakers',
+  banks: 'Power Banks',
+  ics: 'Integrated Circuits & Chips',
 };
 
-// Normalize filters coming from UI/URL
 const normalizeFiltersForApi = (f: ProductFilters = {}): ProductFilters => {
   const out: ProductFilters = { ...f };
 
-  // Map `q` -> `search` if someone set it on the UI side
+  // allow q alias
   const anyF = f as any;
   if (anyF.q && !out.search) out.search = anyF.q;
   delete (out as any).q;
 
-  // Category: accept slugs/aliases and return exact DB name
   if (out.category) {
     const slug = slugify(String(out.category));
     out.category = CATEGORY_ALIAS_TO_NAME[slug] || String(out.category);
   }
 
-  // Brand: if sluggy, unslug (backend likely stores plain words)
   if (out.brand) {
-    const looksSlug = /-/.test(String(out.brand));
-    if (looksSlug) out.brand = unslug(String(out.brand));
+    if (/-/.test(String(out.brand))) out.brand = unslug(String(out.brand));
   }
 
   return out;
 };
 
-
-/* ---------- tiny in-memory cache (per-tab) ---------- */
+// tiny in-memory cache
 const memCache = new Map<string, { data: ProductsResponse; ts: number }>();
-const MC_TTL = 15_000;
 
 const keyOf = (path: string, params?: Record<string, any>) =>
-  `${path}?${new URLSearchParams(
+  `${path}?` +
+  new URLSearchParams(
     Object.entries(params || {}).reduce((acc, [k, v]) => {
       if (v != null) acc[k] = String(v);
       return acc;
     }, {} as Record<string, string>)
-  ).toString()}`;
+  ).toString();
 
-/* ---------- constants ---------- */
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 1000;
-
-/* ---------- service ---------- */
+/* ─────────────────────────── Service ─────────────────────────── */
 export const productService = {
+  /* Core paginated getter */
   async getProducts(filters: ProductFilters = {}, forceRefresh = false): Promise<ProductsResponse> {
     try {
-          const nf = normalizeFiltersForApi(filters);
+      const nf = normalizeFiltersForApi(filters);
+
+      // Build params; clamp limit after spread
       const params: Record<string, any> = {
-        page: filters.page ?? 1,
-        ...filters,
-        limit: Math.min(MAX_LIMIT, Number(filters.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT),
+        page: nf.page ?? 1,
+        ...nf,
+        limit: Math.min(MAX_LIMIT, Number(nf.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT),
         ...(forceRefresh ? { _t: Date.now() } : {}),
       };
 
@@ -325,53 +286,50 @@ export const productService = {
     } catch (error) {
       console.error('❌ Failed to fetch products:', error);
       const cached = this.getCachedProducts();
-      if (cached) {
-        console.log('📦 Using cached products as fallback');
-        return cached;
-      }
+      if (cached) return cached;
       throw error;
     }
   },
 
+  /* Convenience list returning only array */
   async list(filters: ProductFilters = {}, limit = filters.limit ?? DEFAULT_LIMIT): Promise<Product[]> {
     const res = await this.getProducts({ ...filters, limit });
-    const items = res.products.filter(p => {
+    const items = res.products.filter((p) => {
       const pid = (p as any)._id || (p as any).id;
       return !filters.excludeId || pid !== filters.excludeId;
     });
     return items;
   },
 
-  async getRelatedProducts(id: string, limit = 15): Promise<Product[]> {
+  async getRelatedProducts(id: string, limit = 12): Promise<Product[]> {
     try {
-      try {
-        const r1 = await api.get(`/products/${id}/related`, { params: { limit } });
-        const list = (Array.isArray(r1?.data?.products) ? r1.data.products : r1?.data) || [];
-        if (list.length) return list.map(normalizeProduct);
-      } catch {}
-      try {
-        const r2 = await api.get(`/products/related/${id}`, { params: { limit } });
-        const list = (Array.isArray(r2?.data?.products) ? r2.data.products : r2?.data) || [];
-        if (list.length) return list.map(normalizeProduct);
-      } catch {}
+      // Primary endpoint
+      const r1 = await api.get(`/products/${id}/related`, { params: { limit } });
+      const list1 = (Array.isArray(r1?.data?.products) ? r1.data.products : r1?.data) || [];
+      if (list1.length) return list1.map(normalizeProduct);
+    } catch {}
 
+    // Fallback: by category
+    try {
       const { product } = await this.getProduct(id);
-      const byCat = await this.list({ category: (product as any).category, excludeId: (product as any)._id || (product as any).id }, limit + 5);
+      const byCat = await this.list(
+        { category: (product as any).category, excludeId: (product as any)._id || (product as any).id },
+        limit + 5
+      );
       if (byCat.length) return byCat.slice(0, limit);
+    } catch {}
 
-      return await this.getTrending(limit);
-    } catch (e) {
-      console.warn('getRelatedProducts fallback due to error', e);
-      return this.getTrending(limit);
-    }
+    // Last resort: trending
+    return this.getTrending(limit);
   },
 
-  async getTrending(limit = 15): Promise<Product[]> {
+  async getTrending(limit = 12): Promise<Product[]> {
     try {
       const r = await api.get('/products/trending', { params: { limit } });
       const arr = (Array.isArray(r?.data?.products) ? r.data.products : r?.data) || [];
       if (arr.length) return arr.map(normalizeProduct);
     } catch {}
+    // Fallback via generic list with sortBy=trending
     const list = await this.list({ sortBy: 'trending', sortOrder: 'desc' }, limit);
     return list.slice(0, limit);
   },
@@ -388,17 +346,19 @@ export const productService = {
 
   async getProduct(id: string): Promise<{ success: boolean; product: Product; message?: string }> {
     try {
-      console.log('📤 Fetching single product:', id);
-      if (!id || id.length !== 24) throw new Error('Invalid product ID format. Product IDs must be 24-character MongoDB ObjectIds.');
+      if (!id || id.length !== 24) {
+        throw new Error('Invalid product ID format. Product IDs must be 24-character MongoDB ObjectIds.');
+      }
       const response = await api.get(`/products/${id}`);
       const product = normalizeProduct(response?.data?.product);
-      console.log('✅ Single product fetched:', product?.name || 'Unknown');
       return { success: true, product, message: response?.data?.message };
     } catch (error: any) {
       console.error('❌ Failed to fetch single product:', error);
       if (error.response?.status === 404) throw new Error('Product not found or has been removed.');
       if (error.response?.status === 400) throw new Error('Invalid product ID. Please check the product link.');
-      if (error.message?.includes('Cast to ObjectId')) throw new Error('Invalid product ID format. Product IDs must be 24-character MongoDB ObjectIds.');
+      if (error.message?.includes('Cast to ObjectId')) {
+        throw new Error('Invalid product ID format. Product IDs must be 24-character MongoDB ObjectIds.');
+      }
       throw new Error(error.response?.data?.message || 'Failed to load product details. Please try again.');
     }
   },
@@ -428,10 +388,10 @@ export const productService = {
     return response.data;
   },
 
+  /* Cache + refresh flags */
   setRefreshFlag() {
     sessionStorage.setItem('force-refresh-products', 'true');
     localStorage.setItem('force-refresh-products', Date.now().toString());
-    console.log('🔄 Set refresh flag for all sessions');
   },
 
   shouldRefresh(): boolean {
@@ -452,7 +412,6 @@ export const productService = {
     localStorage.removeItem('products-cache');
     sessionStorage.removeItem('products-cache');
     memCache.clear();
-    console.log('🗑️ Product cache cleared');
   },
 
   getCachedProducts(): ProductsResponse | null {

@@ -1,176 +1,117 @@
-// src/controllers/paymentController.ts - COMPLETE FIXED VERSION (GST persisted)
+// src/controllers/paymentController.ts — PHONEPE VERSION (GST persisted)
 import { Request, Response } from 'express';
-import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
+import axios from 'axios';
 import Order from '../models/Order';
 import Cart from '../models/Cart';
 import Payment from '../models/Payment';
 import { startOfDay, endOfDay } from 'date-fns';
 
 interface AuthenticatedUser {
-  id: string;
-  role: string;
-  email?: string;
-  name?: string;
-  isVerified?: boolean;
-  twoFactorEnabled?: boolean;
+  id: string; role: string; email?: string; name?: string;
+  isVerified?: boolean; twoFactorEnabled?: boolean;
 }
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
+/* ----------------------- PhonePe env ----------------------- */
+const ENV = (process.env.PHONEPE_ENV || 'sandbox').toLowerCase();
+const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID!;
+const SALT_KEY = process.env.PHONEPE_SALT_KEY!;
+const SALT_INDEX = process.env.PHONEPE_SALT_INDEX || '1';
+const BASE_URL = ENV === 'production'
+  ? process.env.PHONEPE_BASE_URL_PROD!
+  : process.env.PHONEPE_BASE_URL_SANDBOX!;
+const REDIRECT_URL = process.env.PHONEPE_REDIRECT_URL!;
+const CALLBACK_URL = process.env.PHONEPE_CALLBACK_URL!;
 
-/* ----------------------- GST helpers (same logic as orderController) ----------------------- */
-const cleanGstin = (s?: any) =>
-  (s ?? '').toString().toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15);
+const sha256Hex = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
+const xHeaders = (body: object | '', path: string) => {
+  const b64 = body === '' ? '' : Buffer.from(JSON.stringify(body)).toString('base64');
+  const xVerify = `${sha256Hex(b64 + path + SALT_KEY)}###${SALT_INDEX}`;
+  return { 'Content-Type': 'application/json', 'X-VERIFY': xVerify, 'X-MERCHANT-ID': MERCHANT_ID };
+};
 
-function buildGstBlock(
-  payload: any,
-  shippingAddress: any,
-  computed: { subtotal: number; tax: number }
-) {
+/* ----------------------- GST helpers ----------------------- */
+const cleanGstin = (s?: any) => (s ?? '').toString().toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15);
+function buildGstBlock(payload: any, shippingAddress: any, computed: { subtotal: number; tax: number }) {
   const ex = payload?.orderData?.extras ?? payload?.extras ?? {};
-
-  const rawGstin =
-    ex.gstin ??
-    ex.gstNumber ??
-    ex.gst?.gstin ??
-    ex.gst?.gstNumber ??
-    payload?.gst?.gstin ??
-    payload?.gstNumber ??
-    payload?.gstin;
-
+  const rawGstin = ex.gstin ?? ex.gstNumber ?? ex.gst?.gstin ?? ex.gst?.gstNumber ?? payload?.gst?.gstin ?? payload?.gstNumber ?? payload?.gstin;
   const gstin = cleanGstin(rawGstin);
-
-  const wantInvoice =
-    Boolean(
-      ex.wantGSTInvoice ??
-        ex.gst?.wantInvoice ??
-        payload?.needGSTInvoice ??
-        payload?.needGstInvoice ??
-        payload?.gst?.wantInvoice ??
-        payload?.gst?.requested
-    ) || !!gstin;
-
+  const wantInvoice = Boolean(ex.wantGSTInvoice ?? ex.gst?.wantInvoice ?? payload?.needGSTInvoice ?? payload?.needGstInvoice ?? payload?.gst?.wantInvoice ?? payload?.gst?.requested) || !!gstin;
   const taxPercent =
     Number(payload?.pricing?.gstPercent ?? payload?.orderData?.pricing?.gstPercent ?? payload?.pricing?.taxRate) ||
     (computed.subtotal > 0 ? Math.round((computed.tax / computed.subtotal) * 100) : 0);
-
-  const clientRequestedAt =
-    ex.gst?.requestedAt ??
-    payload?.gst?.requestedAt ??
-    ex.requestedAt ??
-    payload?.requestedAt;
-
-  const requestedAt = clientRequestedAt
-    ? new Date(clientRequestedAt)
-    : wantInvoice
-    ? new Date()
-    : undefined;
+  const clientRequestedAt = ex.gst?.requestedAt ?? payload?.gst?.requestedAt ?? ex.requestedAt ?? payload?.requestedAt;
+  const requestedAt = clientRequestedAt ? new Date(clientRequestedAt) : wantInvoice ? new Date() : undefined;
 
   return {
     wantInvoice,
     gstin: gstin || undefined,
-    legalName:
-      (ex.gst?.legalName ??
-        ex.gstLegalName ??
-        payload?.gst?.legalName ??
-        shippingAddress?.fullName)?.toString().trim() || undefined,
-    placeOfSupply:
-      (ex.gst?.placeOfSupply ??
-        ex.placeOfSupply ??
-        payload?.gst?.placeOfSupply ??
-        shippingAddress?.state)?.toString().trim() || undefined,
+    legalName: (ex.gst?.legalName ?? ex.gstLegalName ?? payload?.gst?.legalName ?? shippingAddress?.fullName)?.toString().trim() || undefined,
+    placeOfSupply: (ex.gst?.placeOfSupply ?? ex.placeOfSupply ?? payload?.gst?.placeOfSupply ?? shippingAddress?.state)?.toString().trim() || undefined,
     taxPercent,
     taxBase: computed.subtotal || 0,
     taxAmount: computed.tax || 0,
     requestedAt,
-    email:
-      (ex.gst?.email ??
-        payload?.gst?.email ??
-        shippingAddress?.email)?.toString().trim() || undefined,
+    email: (ex.gst?.email ?? payload?.gst?.email ?? shippingAddress?.email)?.toString().trim() || undefined,
   };
 }
 
 /* ----------------------- utils ----------------------- */
 const generateOrderNumber = (): string => {
-  const ts = Date.now();
-  const rnd = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  const ts = Date.now(); const rnd = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
   return `ORD${ts}${rnd}`;
 };
 
 /* ===========================================================================================
-   CREATE PAYMENT ORDER  —  this is where GST must be persisted
+   CREATE PAYMENT ORDER (PhonePe + COD) — GST persisted
 =========================================================================================== */
 export const createPaymentOrder = async (req: Request, res: Response): Promise<void> => {
   try {
     const { amount, currency = 'INR', paymentMethod, orderData } = req.body;
     const user = req.user as AuthenticatedUser;
 
-    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      res.status(500).json({ success: false, message: 'Payment gateway configuration error' });
-      return;
-    }
-    if (!user) {
-      res.status(401).json({ success: false, message: 'User not authenticated' });
-      return;
-    }
-    if (!amount || amount <= 0) {
-      res.status(400).json({ success: false, message: 'Invalid amount' });
-      return;
-    }
-    if (!orderData || !orderData.items?.length) {
-      res.status(400).json({ success: false, message: 'Invalid order data - items are required' });
-      return;
-    }
-    if (!orderData.shippingAddress) {
-      res.status(400).json({ success: false, message: 'Shipping address is required' });
-      return;
-    }
+    if (!user) { res.status(401).json({ success: false, message: 'User not authenticated' }); return; }
+    if (!amount || amount <= 0) { res.status(400).json({ success: false, message: 'Invalid amount' }); return; }
+    if (!orderData?.items?.length) { res.status(400).json({ success: false, message: 'Invalid order data - items are required' }); return; }
+    if (!orderData.shippingAddress) { res.status(400).json({ success: false, message: 'Shipping address is required' }); return; }
 
     let paymentOrderId = '';
+    let phonepeRedirect: string | undefined;
 
-    if (paymentMethod === 'razorpay') {
-      const shortReceipt = `ord_${Date.now().toString().slice(-8)}_${user.id.slice(-8)}`;
-      if (shortReceipt.length > 40) throw new Error(`Receipt too long (${shortReceipt.length})`);
-
-      const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(amount * 100),
-        currency,
-        receipt: shortReceipt,
-        notes: {
-          userId: user.id,
-          orderType: 'product_purchase',
-          itemCount: orderData.items.length,
-          customerEmail: user.email || 'unknown',
-          fullTimestamp: Date.now().toString(),
-        },
-      });
-      paymentOrderId = razorpayOrder.id;
+    if (paymentMethod === 'phonepe') {
+      if (!MERCHANT_ID || !SALT_KEY) { res.status(500).json({ success: false, message: 'PhonePe not configured' }); return; }
+      const orderId = `ORD-${Date.now()}`; // merchantTransactionId
+      const body = {
+        merchantId: MERCHANT_ID,
+        merchantTransactionId: orderId,
+        merchantUserId: user.id,
+        amount: Math.round(Number(amount) * 100), // paise
+        redirectUrl: REDIRECT_URL,
+        callbackUrl: CALLBACK_URL,
+        instrumentType: 'PAY_PAGE',
+      };
+      const path = '/checkout/v2/pay';
+      const { data } = await axios.post(`${BASE_URL}${path}`, body, { headers: xHeaders(body, path), timeout: 10000 });
+      paymentOrderId = orderId;
+      phonepeRedirect = data?.data?.instrumentResponse?.redirectInfo?.url || data?.data?.instrumentResponse?.intentUrl;
     } else if (paymentMethod === 'cod') {
       paymentOrderId = `cod_${Date.now().toString().slice(-8)}_${user.id.slice(-8)}`;
     } else {
-      res.status(400).json({ success: false, message: 'Invalid payment method. Supported: razorpay, cod' });
-      return;
+      res.status(400).json({ success: false, message: 'Invalid payment method. Supported: phonepe, cod' }); return;
     }
 
-    // Compute/fallback pricing if frontend didn’t send them
+    // Pricing fallbacks
     const fallbackSubtotal =
       typeof orderData.subtotal === 'number'
         ? orderData.subtotal
-        : orderData.items.reduce(
-            (s: number, it: any) => s + Number(it.price || 0) * Number(it.quantity || 1),
-            0
-          );
+        : orderData.items.reduce((s: number, it: any) => s + Number(it.price || 0) * Number(it.quantity || 1), 0);
 
     const subtotal = Math.max(0, Number(fallbackSubtotal));
     const tax = typeof orderData.tax === 'number' ? Number(orderData.tax) : Math.round(subtotal * 0.18);
     const shipping = typeof orderData.shipping === 'number' ? Number(orderData.shipping) : 0;
     const total = typeof orderData.total === 'number' ? Number(orderData.total) : amount;
 
-    // Build GST from payload
     const gstBlock = buildGstBlock(req.body, orderData.shippingAddress, { subtotal, tax });
 
     const order = new Order({
@@ -181,18 +122,13 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
       billingAddress: orderData.billingAddress || orderData.shippingAddress,
       paymentMethod,
       paymentOrderId,
-      subtotal,
-      tax,
-      shipping,
-      total,
+      subtotal, tax, shipping, total,
       status: 'pending',
       orderStatus: 'pending',
       paymentStatus: paymentMethod === 'cod' ? 'cod_pending' : 'awaiting_payment',
-      gst: gstBlock, // ⬅️ PERSIST GST
-      customerNotes:
-        (orderData?.extras?.orderNotes || '').toString().trim() || undefined,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      gst: gstBlock,
+      customerNotes: (orderData?.extras?.orderNotes || '').toString().trim() || undefined,
+      createdAt: new Date(), updatedAt: new Date(),
     });
 
     await order.save();
@@ -202,10 +138,9 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
       orderId: order._id,
       orderNumber: order.orderNumber,
       paymentOrderId,
-      amount: total,
-      currency,
+      amount: total, currency,
       paymentMethod,
-      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      phonepeRedirect,         // <— redirect user here if present
       order: {
         _id: order._id,
         orderNumber: order.orderNumber,
@@ -213,54 +148,36 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
         orderStatus: order.orderStatus,
         paymentStatus: order.paymentStatus,
         items: order.items,
-        gst: order.gst, // ⬅️ return for quick verification
+        gst: order.gst,
       },
     });
   } catch (error: any) {
-    console.error('❌ Payment order creation error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to create payment order',
-    });
+    console.error('❌ Payment order creation error:', error?.response?.data || error);
+    res.status(500).json({ success: false, message: error.message || 'Failed to create payment order' });
   }
 };
 
 /* ===========================================================================================
-   VERIFY PAYMENT — unchanged logic, kept for completeness
+   VERIFY PAYMENT — PhonePe: check order status (X-VERIFY on path)
 =========================================================================================== */
-export const verifyPayment = async (req: Request, res: Response): Promise<void> => {
+export const verifyPayment = async (req: Request, res: Response) => {
   try {
     const user = req.user as AuthenticatedUser;
-    const body = req.body || {};
-    const paymentId = body.paymentId ?? body.razorpay_payment_id;
-    const orderId   = body.orderId   ?? body.razorpay_order_id;
-    const signature = body.signature ?? body.razorpay_signature;
-    const paymentMethod = body.paymentMethod;
+    const { orderId, paymentMethod } = req.body || {};
 
-    if (!user) {
-      res.status(401).json({ success: false, message: 'User not authenticated' });
-      return;
-    }
-    if (!paymentId || !orderId || !paymentMethod) {
-      res.status(400).json({ success: false, message: 'Missing required payment verification data' });
-      return;
-    }
+    if (!user) { res.status(401).json({ success: false, message: 'User not authenticated' }); return; }
+    if (!orderId || !paymentMethod) { res.status(400).json({ success: false, message: 'Missing verification data' }); return; }
 
     let paymentVerified = false;
-    if (paymentMethod === 'razorpay') {
-      if (!signature) {
-        res.status(400).json({ success: false, message: 'Payment signature is required for Razorpay' });
+    if (paymentMethod === 'phonepe') {
+      const path = `/checkout/v2/order/${orderId}/status`;
+      const { data } = await axios.get(`${BASE_URL}${path}`, { headers: xHeaders('', path), timeout: 8000 });
+      const status = data?.data?.status;
+      paymentVerified = status === 'SUCCESS';
+      if (!paymentVerified && status !== 'PENDING') {
+        res.status(400).json({ success: false, message: 'Payment not successful', data });
         return;
       }
-      if (!process.env.RAZORPAY_KEY_SECRET) {
-        res.status(500).json({ success: false, message: 'Payment gateway misconfiguration' });
-        return;
-      }
-      const expected = crypto
-        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-        .update(`${orderId}|${paymentId}`)
-        .digest('hex');
-      paymentVerified = expected === signature;
     } else if (paymentMethod === 'cod') {
       paymentVerified = true;
     } else {
@@ -268,34 +185,26 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    if (!paymentVerified) {
-      res.status(400).json({ success: false, message: 'Payment verification failed. Please try again or contact support.' });
-      return;
-    }
-
     const order = await Order.findOne({ paymentOrderId: orderId });
-    if (!order) {
-      res.status(404).json({ success: false, message: 'Order not found' });
-      return;
-    }
-
+    if (!order) { res.status(404).json({ success: false, message: 'Order not found' }); return; }
     const same = (v: any) => (v && v.toString ? v.toString() : String(v));
     if (same(order.userId) !== same(user.id)) {
       res.status(403).json({ success: false, message: 'Unauthorized access to order' });
       return;
     }
 
-    order.paymentStatus   = paymentMethod === 'cod' ? 'cod_pending' : 'paid';
-    order.orderStatus     = 'confirmed';
-    order.status          = 'confirmed';
-    order.paymentId       = paymentId;
-    order.paymentSignature= signature;
-    order.paidAt          = new Date();
-    order.updatedAt       = new Date();
+    if (!paymentVerified) { res.json({ success: false, message: 'Payment pending' }); return; }
+
+    order.paymentStatus = paymentMethod === 'cod' ? 'cod_pending' : 'paid';
+    order.orderStatus = 'confirmed';
+    order.status = 'confirmed';
+    order.paymentId = order.paymentOrderId;
+    order.paidAt = new Date();
+    order.updatedAt = new Date();
     await order.save();
 
     await Payment.findOneAndUpdate(
-      { transactionId: paymentId },
+      { transactionId: order.paymentOrderId },
       {
         userId: user.id,
         userName: user.name || '',
@@ -303,7 +212,7 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
         amount: order.total,
         paymentMethod,
         status: 'completed',
-        transactionId: paymentId,
+        transactionId: order.paymentOrderId,
         orderId: order.id.toString(),
         paymentDate: new Date(),
       },
@@ -318,7 +227,7 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
       message: 'Payment verified and order confirmed! 🎉',
       order: populatedOrder,
       paymentDetails: {
-        paymentId,
+        paymentId: order.paymentOrderId,
         paymentMethod,
         amount: order.total,
         paidAt: order.paidAt,
@@ -328,6 +237,7 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ success: false, error: error?.message || 'Payment verification failed' });
   }
 };
+
 
 /* ===========================================================================================
    Status / listings – unchanged
@@ -342,10 +252,7 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
 
     const order = await Order.findById(orderId).populate('items.productId');
     if (!order) { res.status(404).json({ success: false, message: 'Order not found' }); return; }
-    if (!order.userId.equals(user.id)) {
-      res.status(403).json({ success: false, message: 'Unauthorized access to order' });
-      return;
-    }
+    if (!order.userId.equals(user.id)) { res.status(403).json({ success: false, message: 'Unauthorized access to order' }); return; }
 
     res.json({
       success: true,
@@ -365,44 +272,26 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
 };
 
 export const generateShortReceipt = (prefix: string, userId: string): string => {
-  const timestamp = Date.now().toString().slice(-8);
-  const userIdShort = userId.slice(-8);
-  const receipt = `${prefix}_${timestamp}_${userIdShort}`;
+  const ts = Date.now().toString().slice(-8);
+  const uid = userId.slice(-8);
+  const receipt = `${prefix}_${ts}_${uid}`;
   if (receipt.length > 40) throw new Error(`Receipt too long: ${receipt.length} chars (max 40)`);
   return receipt;
 };
 
-export const getTodayPaymentsSummary = async (req: Request, res: Response) => {
+export const getTodayPaymentsSummary = async (_req: Request, res: Response) => {
   try {
-    const start = startOfDay(new Date());
-    const end = endOfDay(new Date());
-
-    const payments = await Payment.aggregate([
+    const start = startOfDay(new Date()); const end = endOfDay(new Date());
+    const agg = await Payment.aggregate([
       { $match: { status: 'completed', paymentDate: { $gte: start, $lte: end } } },
       { $group: { _id: null, totalAmount: { $sum: '$amount' }, count: { $sum: 1 } } },
     ]);
-
-    const todayList = await Payment.find({
-      status: 'completed',
-      paymentDate: { $gte: start, $lte: end },
-    }).sort({ paymentDate: -1 });
-
-    res.json({
-      success: true,
-      totalAmount: payments[0]?.totalAmount || 0,
-      count: payments[0]?.count || 0,
-      transactions: todayList,
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+    const list = await Payment.find({ status: 'completed', paymentDate: { $gte: start, $lte: end } }).sort({ paymentDate: -1 });
+    res.json({ success: true, totalAmount: agg[0]?.totalAmount || 0, count: agg[0]?.count || 0, transactions: list });
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 };
 
-export const getAllPayments = async (req: Request, res: Response) => {
-  try {
-    const payments = await Payment.find().sort({ paymentDate: -1 });
-    res.json({ success: true, data: payments });
-  } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+export const getAllPayments = async (_req: Request, res: Response) => {
+  try { const payments = await Payment.find().sort({ paymentDate: -1 }); res.json({ success: true, data: payments }); }
+  catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 };

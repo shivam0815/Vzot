@@ -274,7 +274,7 @@ const Products: React.FC = () => {
           '@context': 'https://schema.org',
           '@type': 'CollectionPage',
           name: normalizedCategoryForApi ? `${normalizedCategoryForApi} Products` : 'Products',
-          url: 'https://nakodamobile.in/products',
+          url: 'https://nakodamobile.com/products',
         }}
       />
 

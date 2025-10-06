@@ -1,4 +1,4 @@
-// products.routes.ts
+// src/routes/products.routes.ts
 import express from 'express';
 import mongoose, { SortOrder } from 'mongoose';
 import Product from '../models/Product';
@@ -14,9 +14,9 @@ const isNonEmpty = (v: any) => typeof v === 'string' && v.trim() !== '';
 /** Translate FE sort tokens to Mongo sort objects */
 const sortMap: Record<string, Record<string, SortOrder>> = {
   createdAt: { createdAt: -1 },
-  price: { price: 1 },                                   // will flip with `order`
+  price: { price: 1 },
   rating: { rating: -1, reviews: -1 },
-  trending: { trendingScore: -1, updatedAt: -1, createdAt: -1 }, // for aggregate
+  trending: { trendingScore: -1, updatedAt: -1, createdAt: -1 },
 };
 
 function getSort(
@@ -29,12 +29,11 @@ function getSort(
   if (sb && sortMap[sb]) {
     const obj = { ...sortMap[sb] };
     const keys = Object.keys(obj);
-    if (keys.length === 1) obj[keys[0]] = ord; // only flip single-key sorts
+    if (keys.length === 1) obj[keys[0]] = ord;
     return obj;
   }
   return { createdAt: -1 };
 }
-
 
 /* ------------------------------------------------------------------ */
 /* Routes                                                             */
@@ -296,18 +295,18 @@ router.get('/', async (req, res) => {
       brand,
       search,
       sortBy = 'createdAt',
-      order = 'desc',              // FE may send 'sortOrder'
+      order = 'desc',
       page = '1',
-      limit,                       // let clamp handle default
+      limit,
       minPrice,
       maxPrice,
       excludeId,
-      sortOrder,                   // accept alias
+      sortOrder,
     } = req.query as Record<string, string>;
 
     const p = Math.max(1, toNumber(page, 1));
-    const MAX_LIMIT = 1000;
-    const DEFAULT_LIMIT = 200;
+    const MAX_LIMIT = 100;
+    const DEFAULT_LIMIT = 24;
     const l = Math.min(MAX_LIMIT, Math.max(1, toNumber(limit, DEFAULT_LIMIT)));
 
     const filter: any = { isActive: true };
@@ -329,7 +328,6 @@ router.get('/', async (req, res) => {
       ];
     }
 
-    // If trending, do the aggregate path FIRST and return
     const effOrder = sortOrder ?? order;
     if (sortBy === 'trending') {
       const now = new Date();
@@ -392,7 +390,6 @@ router.get('/', async (req, res) => {
       });
     }
 
-    // Normal find() path
     const sort = getSort(sortBy, effOrder);
 
     const [products, total] = await Promise.all([

@@ -13,7 +13,7 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 
-export type PaymentMethod = "razorpay" | "cod";
+export type PaymentMethod = "phonepe" | "cod";
 export type PaymentStatus =
   | "awaiting_payment"
   | "paid"
@@ -290,14 +290,14 @@ const OrderSchema = new Schema<IOrder, IOrderModel, IOrderMethods>(
     shippingAddress: { type: AddressSchema, required: true },
     billingAddress: { type: AddressSchema, required: true },
 
-    paymentMethod: { type: String, enum: ["razorpay", "cod"], required: true },
+    paymentMethod: { type: String, enum: ["phonepe", "cod"], required: true },
 
     // ✅ Optional when COD
     paymentOrderId: {
       type: String,
       trim: true,
       required: function (this: IOrder) {
-        return this.paymentMethod === "razorpay";
+        return this.paymentMethod === "phonepe";
       },
     },
     paymentId: { type: String, trim: true },
