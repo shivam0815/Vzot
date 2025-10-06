@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
-  CreditCard,
   IndianRupee,
   Truck,
   User,
@@ -13,9 +12,7 @@ import {
   Lock,
   CheckCircle,
   Package,
-  Tag,
   Gift,
-  BadgePercent,
 } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
@@ -35,7 +32,6 @@ interface Address {
   landmark: string;
 }
 
-// NEW — GST payload shape stored on the order
 type GstDetails = {
   gstin: string;
   legalName: string;
@@ -44,19 +40,12 @@ type GstDetails = {
   requestedAt?: string;
 };
 
-type CouponResult = {
-  code: string;
-  amount: number; // monetary discount (₹)
-  freeShipping?: boolean;
-  message: string;
-};
-
 type PaymentResult = {
   success: boolean;
   redirected?: boolean;
   order?: any;
   paymentId?: string | null;
-  method: 'phonepe' | 'cod';
+  method: 'cod';
 };
 
 const emptyAddress: Address = {
@@ -71,23 +60,13 @@ const emptyAddress: Address = {
   landmark: '',
 };
 
-// Simple state list for Place of Supply (trim or reorder as you like)
 const INDIAN_STATES = [
   'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu & Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Dadra & Nagar Haveli & Daman & Diu','Andaman & Nicobar Islands'
 ];
 
-// (Kept for reference; shipping is now added after packing, so not used here)
-const SHIPPING_FREE_THRESHOLD = 999;
+const SHIPPING_FREE_THRESHOLD = 4999;
 const BASE_SHIPPING_FEE = 100;
-
-const COD_FEE = 25;
 const GIFT_WRAP_FEE = 0;
-const FIRST_ORDER_RATE = 0.1; // 10%
-const FIRST_ORDER_CAP = 300;
-
-// Online payment fee & GST-on-fee (applies to PhonePe)
-const ONLINE_FEE_RATE = 0.02;      // 2% convenience fee (online methods only)
-const ONLINE_FEE_GST_RATE = 0.18;  // 18% GST on that convenience fee
 
 const formatINR = (n: number) => `₹${Math.max(0, Math.round(n)).toLocaleString()}`;
 
@@ -97,7 +76,7 @@ const CheckoutPage: React.FC = () => {
   const { processPayment, isProcessing } = usePayment();
   const navigate = useNavigate();
 
-  // Shipping / Billing
+  // Addresses
   const [shipping, setShipping] = useState<Address>({
     ...emptyAddress,
     fullName: user?.name || '',
@@ -106,8 +85,7 @@ const CheckoutPage: React.FC = () => {
   const [billing, setBilling] = useState<Address>(emptyAddress);
   const [sameAsShipping, setSameAsShipping] = useState(true);
 
-  // Payment / errors
-  const [method, setMethod] = useState<'phonepe' | 'cod'>('phonepe');
+  // Errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Extras
@@ -121,127 +99,16 @@ const CheckoutPage: React.FC = () => {
   });
   const [giftWrap, setGiftWrap] = useState(false);
 
-  // Coupons & first order
-  const [couponInput, setCouponInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<CouponResult | null>(null);
-
-  // Calculations
+  // Totals
   const rawSubtotal = useMemo(() => getTotalPrice(), [getTotalPrice, cartItems]);
-
-  // Heuristic: consider user first-order if backend says so OR we don't have a local flag
-  const isFirstOrderCandidate = useMemo(() => {
-    const localFlag = localStorage.getItem('hasOrderedBefore') === '1';
-    const byBackend =
-      (user as any)?.ordersCount === 0 ||
-      (user as any)?.isFirstOrder === true ||
-      (user as any)?.firstOrderDone === false;
-    return !localFlag && (byBackend || true); // default TRUE if unknown
-  }, [user]);
-
-  // First order discount (if no better coupon is applied)
-  const firstOrderDiscount = useMemo(() => {
-    if (!isFirstOrderCandidate || rawSubtotal <= 0) return 0;
-    const natural = Math.min(Math.round(rawSubtotal * FIRST_ORDER_RATE), FIRST_ORDER_CAP);
-    if (appliedCoupon && appliedCoupon.amount > 0) {
-      return appliedCoupon.amount >= natural ? 0 : natural;
-    }
-    return natural;
-  }, [isFirstOrderCandidate, rawSubtotal, appliedCoupon]);
-
-  // Coupon checker
-  const evalCoupon = (code: string, subtotal: number): CouponResult | null => {
-    const c = code.trim().toUpperCase();
-    if (!c) return null;
-
-    switch (c) {
-      case 'WELCOME10': {
-        if (!isFirstOrderCandidate) throw new Error('WELCOME10 is only valid on your first order');
-        const amt = Math.min(Math.round(subtotal * 0.1), 300);
-        return { code: c, amount: amt, message: '10% off (up to ₹300) for your first order' };
-      }
-      case 'SAVE50': {
-        if (subtotal < 499) throw new Error('SAVE50 requires minimum order of ₹499');
-        return { code: c, amount: 50, message: '₹50 off' };
-      }
-      case 'FREESHIP': {
-        return { code: c, amount: 0, freeShipping: true, message: 'Free shipping applied' };
-      }
-      case 'NKD150': {
-        if (subtotal < 1499) throw new Error('NKD150 requires minimum order of ₹1,499');
-        return { code: c, amount: 150, message: '₹150 off' };
-      }
-      default:
-        throw new Error('Invalid or unsupported coupon code');
-    }
-  };
-
-  const onApplyCoupon = () => {
-    try {
-      const res = evalCoupon(couponInput, rawSubtotal);
-      if (!res) {
-        setAppliedCoupon(null);
-        toast('Coupon cleared');
-        return;
-      }
-      setAppliedCoupon(res);
-      toast.success(res.message);
-    } catch (e: any) {
-      setAppliedCoupon(null);
-      toast.error(e.message || 'Coupon not applicable');
-    }
-  };
-
-  // Derived numbers
-  const couponDiscount = appliedCoupon?.amount || 0;
-  const monetaryDiscount = Math.max(couponDiscount, firstOrderDiscount); // no stacking of ₹ discounts
-
-  const discountLabel = useMemo(() => {
-    if (appliedCoupon && appliedCoupon.amount >= firstOrderDiscount && appliedCoupon.amount > 0) {
-      return `${appliedCoupon.code} discount`;
-    }
-    if (firstOrderDiscount > 0) return 'First order discount';
-    return '';
-  }, [appliedCoupon, firstOrderDiscount]);
-
-  const effectiveSubtotal = Math.max(0, rawSubtotal - monetaryDiscount);
-
-  // 🔔 SHIPPING IS NOT CHARGED AT CHECKOUT ANYMORE
-  const shippingFee = 0;
-  const shippingAddedPostPack = true;
-
-  const giftWrapFee = giftWrap ? GIFT_WRAP_FEE : 0;
-  const codCharges = method === 'cod' ? COD_FEE : 0;
-
-  // Tax after discount, before shipping/cod/wrap (on goods/services)
+  const effectiveSubtotal = Math.max(0, rawSubtotal);
   const tax = useMemo(() => Math.round(effectiveSubtotal * 0.18), [effectiveSubtotal]);
-
-  // Convenience fee for online methods + GST on that fee (online = PhonePe)
-  const convenienceFee = useMemo(() => {
-    if (method === 'cod') return 0;
-    const baseBeforeFee = effectiveSubtotal + tax + shippingFee + giftWrapFee;
-    return Math.round(baseBeforeFee * ONLINE_FEE_RATE);
-  }, [method, effectiveSubtotal, tax, shippingFee, giftWrapFee]);
-
-  const convenienceFeeGst = useMemo(() => {
-    if (method === 'cod') return 0;
-    return Math.round(convenienceFee * ONLINE_FEE_GST_RATE);
-  }, [method, convenienceFee]);
-
-  // ✅ Combined fee for display (includes 2% + 18% GST on that 2%)
-  const totalProcessingFee = useMemo(() => {
-    if (method === 'cod') return 0;
-    return convenienceFee + convenienceFeeGst; // both already rounded above
-  }, [method, convenienceFee, convenienceFeeGst]);
-
-  const total = Math.max(
-    0,
-    effectiveSubtotal +
-      tax +
-      shippingFee + // 0
-      codCharges +
-      giftWrapFee +
-      (method !== 'cod' ? convenienceFee + convenienceFeeGst : 0)
+  const shippingFee = useMemo(
+    () => (effectiveSubtotal < SHIPPING_FREE_THRESHOLD ? BASE_SHIPPING_FEE : 0),
+    [effectiveSubtotal]
   );
+  const giftWrapFee = giftWrap ? GIFT_WRAP_FEE : 0;
+  const total = Math.max(0, effectiveSubtotal + tax + shippingFee + giftWrapFee);
 
   // Restore saved address
   useEffect(() => {
@@ -285,21 +152,13 @@ const CheckoutPage: React.FC = () => {
       if (!regPin.test(billing.pincode)) e.billing_pincode = 'Valid 6-digit pincode required';
     }
 
-    // GST validations (only when requested)
+    // GST validations
     if (wantGSTInvoice) {
       const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
-      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) {
-        e.gst_gstin = 'Please enter a valid 15-character GSTIN';
-      }
-      if (!gst.legalName.trim()) {
-        e.gst_legalName = 'Legal/Business name is required';
-      }
-      if (!gst.placeOfSupply.trim()) {
-        e.gst_placeOfSupply = 'Place of supply (state) is required';
-      }
-      if (gst.email && !regEmail.test(gst.email)) {
-        e.gst_email = 'Enter a valid email';
-      }
+      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) e.gst_gstin = 'Please enter a valid 15-character GSTIN';
+      if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name is required';
+      if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply (state) is required';
+      if (gst.email && !regEmail.test(gst.email)) e.gst_email = 'Enter a valid email';
     }
 
     setErrors(e);
@@ -308,14 +167,12 @@ const CheckoutPage: React.FC = () => {
 
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-
     if (!validate()) {
       toast.error('Please correct the errors below');
       return;
     }
 
     try {
-      // Save address locally (for next time)
       localStorage.setItem('checkout:shipping', JSON.stringify(shipping));
 
       const orderData = {
@@ -346,31 +203,19 @@ const CheckoutPage: React.FC = () => {
         },
         pricing: {
           rawSubtotal,
-          discount: monetaryDiscount,
-          discountLabel: discountLabel || undefined,
-          coupon: appliedCoupon?.code || undefined,
-          couponFreeShipping: appliedCoupon?.freeShipping || false,
+          discount: 0,
           effectiveSubtotal,
           tax,
-          shippingFee,                 // 0 at checkout
-          shippingAddedPostPack,       // flag for backend
-          codCharges,
+          shippingFee,            // charged now
+          shippingAddedPostPack: false,
+          codCharges: 0,
           giftWrapFee,
-
-          // Online fee details (ignored if COD)
-          convenienceFee,
-          convenienceFeeGst,
-          convenienceFeeRate: ONLINE_FEE_RATE,
-          convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
-
-          // Nice to have for admin rendering
           gstSummary: {
             requested: wantGSTInvoice,
             rate: 0.18,
-            taxableValue: effectiveSubtotal, // adjust if your prices are GST-inclusive
+            taxableValue: effectiveSubtotal,
             gstAmount: tax,
           },
-
           total,
         },
       };
@@ -381,24 +226,19 @@ const CheckoutPage: React.FC = () => {
         phone: shipping.phoneNumber,
       };
 
+      // COD only
       const result = (await processPayment(
         total,
-        method,
+        'cod',
         orderData,
         userDetails
       )) as PaymentResult;
 
       if (!result?.success) return;
-
-      // If a hosted checkout handled redirection/overlay, nothing else to do.
       if (result.redirected) return;
 
-      // Success path (COD / PhonePe)
       clearCart();
-      localStorage.setItem('hasOrderedBefore', '1');
-
       const ord = result.order || {};
-
       const orderId =
         ord.orderNumber ||
         ord._id ||
@@ -409,7 +249,7 @@ const CheckoutPage: React.FC = () => {
       const successState = {
         orderId,
         order: ord,
-        paymentMethod: result.method,
+        paymentMethod: 'cod' as const,
         paymentId: result.paymentId ?? null,
       };
 
@@ -424,10 +264,7 @@ const CheckoutPage: React.FC = () => {
 
       localStorage.setItem(
         'lastOrderSuccess',
-        JSON.stringify({
-          ...successState,
-          snapshot,
-        })
+        JSON.stringify({ ...successState, snapshot })
       );
 
       const qs = orderId ? `?id=${encodeURIComponent(orderId)}` : '';
@@ -438,7 +275,7 @@ const CheckoutPage: React.FC = () => {
     }
   };
 
-  // Loading state
+  // Loading
   if (cartLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -451,7 +288,7 @@ const CheckoutPage: React.FC = () => {
     );
   }
 
-  // Authentication required
+  // Auth
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -518,6 +355,11 @@ const CheckoutPage: React.FC = () => {
           <div className="w-32" />
         </div>
 
+        {/* Site-wide note */}
+        <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm">
+          <strong>Note:</strong> Today we only accept Cash on Delivery. Thanks for your support.
+        </div>
+
         <form onSubmit={onSubmit} className="grid lg:grid-cols-5 gap-8">
           {/* Order Summary */}
           <section className="lg:col-span-2 order-2 lg:order-1 bg-white rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xl border border-gray-100 h-fit lg:sticky lg:top-8">
@@ -546,84 +388,21 @@ const CheckoutPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Coupon */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-800 mb-2">
-                <div className="flex items-center gap-2">
-                  <Tag className="h-4 w-4 text-rose-600" />
-                  Apply Coupon
-                </div>
-              </label>
-              <div className="flex gap-2">
-                <input
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value)}
-                  className="flex-1 px-4 py-3 border-2 rounded-xl bg-gray-50 border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  placeholder="WELCOME10, SAVE50, FREESHIP, NKD150"
-                />
-                <button
-                  type="button"
-                  onClick={onApplyCoupon}
-                  className="px-4 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
-                >
-                  Apply
-                </button>
-              </div>
-              {appliedCoupon && (
-                <div className="mt-2 text-sm text-green-700 flex items-center gap-1">
-                  <BadgePercent className="h-4 w-4" />
-                  {appliedCoupon.message}
-                </div>
-              )}
-            </div>
-
-            {/* Gift wrap */}
-            <div className="mb-6">
-              <label className="inline-flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={giftWrap}
-                  onChange={(e) => setGiftWrap(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                <span className="flex items-center gap-2">
-                  <Gift className="h-4 w-4 text-pink-600" />
-                  <span className="text-sm text-gray-800">
-                    Add gift wrap <span className="text-gray-500">({formatINR(GIFT_WRAP_FEE)})</span>
-                  </span>
-                </span>
-              </label>
-            </div>
-
             <div className="border-t border-gray-200 pt-6 space-y-2 sm:space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal</span>
                 <span className="font-semibold">{formatINR(rawSubtotal)}</span>
               </div>
 
-              {monetaryDiscount > 0 && (
-                <div className="flex justify-between text-green-700">
-                  <span>{discountLabel || 'Discount'}</span>
-                  <span className="font-semibold">− {formatINR(monetaryDiscount)}</span>
-                </div>
-              )}
-
               <div className="flex justify-between">
                 <span className="text-gray-600">Tax (18% GST)</span>
                 <span className="font-semibold">{formatINR(tax)}</span>
               </div>
 
-              {/* 🚚 Shipping note instead of amount */}
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs sm:text-sm">
-                <strong>Note:</strong> Shipping fees will be added after your order is packed.
+              <div className="flex justify-between">
+                <span className="text-gray-600">Shipping</span>
+                <span className="font-semibold">{shippingFee ? formatINR(shippingFee) : 'Free'}</span>
               </div>
-
-              {method === 'cod' && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">COD Charges</span>
-                  <span className="font-semibold">{formatINR(codCharges)}</span>
-                </div>
-              )}
 
               {giftWrap && (
                 <div className="flex justify-between">
@@ -632,31 +411,16 @@ const CheckoutPage: React.FC = () => {
                 </div>
               )}
 
-              {/* ✅ Single combined processing fee (PhonePe only) */}
-              {method !== 'cod' && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Payment Processing Fee</span>
-                  <span className="font-semibold">{formatINR(totalProcessingFee)}</span>
-                </div>
-              )}
-
               <div className="flex justify-between font-bold text-base sm:text-lg pt-3 sm:pt-4 border-t border-gray-200">
                 <span>Total Amount</span>
                 <span className="text-blue-600">{formatINR(total)}</span>
               </div>
-
-              {monetaryDiscount > 0 && (
-                <p className="text-xs text-gray-500 mt-1">Best discount applied: {discountLabel}</p>
-              )}
             </div>
 
-            {/* Payment method indicator */}
             <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
               <div className="flex items-center text-sm">
                 <Shield className="h-5 w-5 text-blue-600 mr-2" />
-                <span className="font-semibold text-blue-800">
-                  Secured by {method === 'phonepe' ? 'PhonePe' : 'Cash on Delivery'}
-                </span>
+                <span className="font-semibold text-blue-800">Secured by Cash on Delivery</span>
               </div>
             </div>
           </section>
@@ -670,14 +434,7 @@ const CheckoutPage: React.FC = () => {
                   <MapPin className="h-5 w-5 text-green-600" />
                 </div>
                 <h2 className="text-xl font-bold text-gray-900">Shipping Address</h2>
-                {isFirstOrderCandidate && (
-                  <span className="ml-3 px-2 py-1 text-xs rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    First order discount available
-                  </span>
-                )}
               </div>
-
-               
 
               <div className="space-y-5 sm:space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -715,7 +472,7 @@ const CheckoutPage: React.FC = () => {
                 </div>
 
                 <Input
-                  field="HouseNo and Floor"
+                  field="addressLine1"
                   label="HouseNo and Floor *"
                   value={shipping.addressLine1}
                   onChange={(v) => handleAddr(setShipping)('addressLine1', v)}
@@ -723,7 +480,6 @@ const CheckoutPage: React.FC = () => {
                   icon={MapPin}
                   errors={errors}
                 />
-                
 
                 <Input
                   field="landmark"
@@ -789,7 +545,7 @@ const CheckoutPage: React.FC = () => {
               </label>
             </div>
 
-            {/* Billing form (if different) */}
+            {/* Billing form */}
             {!sameAsShipping && (
               <div className="mb-8">
                 <div className="flex items-center mb-5 sm:mb-6">
@@ -833,7 +589,7 @@ const CheckoutPage: React.FC = () => {
                   />
 
                   <Input
-                    field="billing_HouseNo and Floor"
+                    field="billing_addressLine1"
                     label="HouseNo and Floor *"
                     value={billing.addressLine1}
                     onChange={(v) => handleAddr(setBilling)('addressLine1', v)}
@@ -884,57 +640,19 @@ const CheckoutPage: React.FC = () => {
               </div>
             )}
 
-
-            {/* Payment Method (PhonePe / COD only) */}
+            {/* Payment Method — COD only */}
             <div className="border-t border-gray-200 pt-6 sm:pt-8">
               <div className="flex items-center mb-6">
                 <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
-                  <CreditCard className="h-5 w-5 text-purple-600" />
+                  <IndianRupee className="h-5 w-5 text-purple-600" />
                 </div>
                 <h2 className="text-xl font-bold text-gray-900">Payment Method</h2>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                {/* PhonePe */}
-                <label
-                  className={`relative p-4 sm:p-6 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:-translate-y-1 ${
-                    method === 'phonepe' ? 'border-blue-500 bg-blue-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="phonepe"
-                    checked={method === 'phonepe'}
-                    onChange={(e) => setMethod(e.target.value as 'phonepe')}
-                    className="sr-only"
-                  />
-                  {method === 'phonepe' && <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-blue-600" />}
-                  <div className="text-center">
-                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                      <CreditCard className="h-6 w-6 text-blue-600" />
-                    </div>
-                    <div className="font-bold text-sm sm:text-base text-gray-900 mb-1">PhonePe</div>
-                    <div className="text-xs text-gray-600">UPI, Cards, NetBanking</div>
-                    <div className="text-xs text-green-600 mt-1 font-semibold">Most Popular</div>
-                  </div>
-                </label>
-
-                {/* COD */}
-                <label
-                  className={`relative p-4 sm:p-6 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:-translate-y-1 ${
-                    method === 'cod' ? 'border-green-500 bg-green-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="paymentMethod"
-                    value="cod"
-                    checked={method === 'cod'}
-                    onChange={(e) => setMethod(e.target.value as 'cod')}
-                    className="sr-only"
-                  />
-                  {method === 'cod' && <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-green-600" />}
+                <label className="relative p-4 sm:p-6 border-2 rounded-2xl transition-all duration-200 shadow-lg border-green-500 bg-green-50">
+                  <input type="radio" className="sr-only" checked readOnly />
+                  <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-green-600" />
                   <div className="text-center">
                     <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       <IndianRupee className="h-6 w-6 text-green-600" />
@@ -945,27 +663,11 @@ const CheckoutPage: React.FC = () => {
                 </label>
               </div>
 
-              {/* Method descriptions */}
-              <div className="mb-6 sm:mb-8">
-                {method === 'phonepe' && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-blue-800 text-sm flex items-start">
-                      <Shield className="h-4 w-4 mr-2 mt-0.5 text-blue-600" />
-                      <span>
-                        <strong>PhonePe Payment:</strong> Supports UPI, cards, net banking with bank-level security.
-                      </span>
-                    </p>
-                  </div>
-                )}
-
-                {method === 'cod' && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                    <p className="text-amber-800 text-sm flex items-start">
-                      <Truck className="h-4 w-4 mr-2 mt-0.5 text-amber-600" />
-                      <span>Pay in cash when your order arrives at your doorstep.</span>
-                    </p>
-                  </div>
-                )}
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6">
+                <p className="text-amber-800 text-sm flex items-start">
+                  <Truck className="h-4 w-4 mr-2 mt-0.5 text-amber-600" />
+                  <span>Shipping is {shippingFee ? formatINR(shippingFee) : 'Free'} on this order.</span>
+                </p>
               </div>
 
               {/* Order Notes & GST */}
@@ -1050,14 +752,12 @@ const CheckoutPage: React.FC = () => {
                 {isProcessing ? (
                   <>
                     <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent mr-3"></div>
-                    {method === 'phonepe' ? 'Opening PhonePe...' : 'Placing Order...'}
+                    Placing Order...
                   </>
                 ) : (
                   <>
                     <Shield className="h-5 w-5 mr-2" />
-                    {method === 'cod'
-                      ? `Place Order - ${formatINR(total)}`
-                      : `Pay with PhonePe - ${formatINR(total)}`}
+                    {`Place Order - ${formatINR(total)}`}
                   </>
                 )}
               </button>
@@ -1068,10 +768,6 @@ const CheckoutPage: React.FC = () => {
                   <div className="flex items-center">
                     <Shield className="h-4 w-4 text-green-500 mr-1" />
                     SSL Encrypted
-                  </div>
-                  <div className="flex items-center">
-                    <Lock className="h-4 w-4 text-blue-500 mr-1" />
-                    Secure Payment
                   </div>
                   <div className="flex items-center">
                     <Truck className="h-4 w-4 text-green-500 mr-1" />
