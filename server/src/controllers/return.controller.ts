@@ -4,12 +4,8 @@ import { Types } from 'mongoose';
 import Order from '../models/Order';
 import ReturnRequest from '../models/ReturnRequest';
 import { v2 as cloudinary } from 'cloudinary';
-import Razorpay from 'razorpay';
+
 const RETURN_WINDOW_DAYS = Number(process.env.RETURN_WINDOW_DAYS || 7);
-const razor = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID!,
-  key_secret: process.env.RAZORPAY_KEY_SECRET!,
-});
 
 const withinReturnWindow = (deliveredAt?: Date) => {
   if (!deliveredAt) return false;
@@ -19,12 +15,12 @@ const withinReturnWindow = (deliveredAt?: Date) => {
 
 // What we expect an order item to minimally look like.
 type OrderItem = {
-  _id?: any;            // may be absent in some orders
-  id?: any;             // fallback some apps use
+  _id?: any;
+  id?: any;
   productId: string | Types.ObjectId;
   quantity: number;
-  price?: number;       // preferred per-unit price
-  unitPrice?: number;   // legacy fallback
+  price?: number;
+  unitPrice?: number;
   name?: string;
   image?: string;
 };
@@ -35,7 +31,6 @@ type IncomingItem = {
   quantity: number;
   reason?: string;
 };
-
 
 const idStr = (v: any): string => {
   if (!v) return '';
@@ -50,13 +45,11 @@ const idStr = (v: any): string => {
 
 export const createReturnRequest = async (req: any, res: Response) => {
   try {
-    // 1) Auth guard
     const authUserId: string | undefined = req.user?._id || req.user?.id;
     if (!authUserId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
-    // 2) Parse body; items may arrive stringified when using FormData
     const body = req.body || {};
     const orderId: string = body.orderId;
     const reasonType: string = body.reasonType;
@@ -80,7 +73,6 @@ export const createReturnRequest = async (req: any, res: Response) => {
       return res.status(400).json({ success: false, message: 'reasonType is required' });
     }
 
-    // 3) Fetch order. Your schema uses userId; keep fallbacks for old docs.
     const order =
       (await Order.findOne({ _id: orderId, userId: authUserId })) ||
       (await Order.findOne({ _id: orderId, user: authUserId })) ||
@@ -90,7 +82,6 @@ export const createReturnRequest = async (req: any, res: Response) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // Must be delivered & within return window
     const status = String((order as any).orderStatus || order.status || '').toLowerCase();
     const deliveredAt = (order as any).deliveredAt || (order as any).updatedAt;
     if (status !== 'delivered' || !withinReturnWindow(deliveredAt)) {
@@ -100,79 +91,71 @@ export const createReturnRequest = async (req: any, res: Response) => {
       });
     }
 
-    // 4) Build items strictly from order data (do NOT trust client productId)
-   // 4) Build items strictly from order data (robust productId matching)
-const orderItems: OrderItem[] = Array.isArray((order as any).items)
-  ? (order as any).items
-  : [];
+    // ---------- Build items robustly from order ----------
+    const orderItems: OrderItem[] = Array.isArray((order as any).items)
+      ? (order as any).items
+      : [];
 
-// index order items by normalized productId
-const productIndex = new Map<string, OrderItem[]>();
-for (const oi of orderItems) {
-  const pid = idStr((oi as any).productId);
-  if (!pid) continue;
-  const arr = productIndex.get(pid) || [];
-  arr.push(oi);
-  productIndex.set(pid, arr);
-}
+    const productIndex = new Map<string, OrderItem[]>();
+    for (const oi of orderItems) {
+      const pid = idStr((oi as any).productId);
+      if (!pid) continue;
+      const arr = productIndex.get(pid) || [];
+      arr.push(oi);
+      productIndex.set(pid, arr);
+    }
 
-const builtItems = itemsPayload.map((it) => {
-  const wantedPid = idStr(it.productId);
-  if (!wantedPid) {
-    throw new Error('Missing productId in request item');
-  }
-  if (!Types.ObjectId.isValid(wantedPid)) {
-    throw new Error(`Invalid productId format: ${wantedPid}`);
-  }
+    const builtItems = itemsPayload.map((it) => {
+      const wantedPid = idStr(it.productId);
+      if (!wantedPid) {
+        throw new Error('Missing productId in request item');
+      }
+      if (!Types.ObjectId.isValid(wantedPid)) {
+        throw new Error(`Invalid productId format: ${wantedPid}`);
+      }
 
-  // candidates for this product in the order
-  const candidates = productIndex.get(wantedPid) || [];
+      const candidates = productIndex.get(wantedPid) || [];
+      const match = it.orderItemId
+        ? candidates.find((oi) => idStr((oi as any)._id ?? (oi as any).id) === String(it.orderItemId))
+        : candidates[0];
 
-  // if orderItemId is provided, prefer exact row; otherwise take first candidate
-  const match = it.orderItemId
-    ? candidates.find((oi) => idStr((oi as any)._id ?? (oi as any).id) === String(it.orderItemId))
-    : candidates[0];
+      if (!match) {
+        throw new Error(`Item not found on order for productId ${wantedPid}`);
+      }
 
-  if (!match) {
-    // better error to debug: tell which product wasn’t found
-    throw new Error(`Item not found on order for productId ${wantedPid}`);
-  }
+      const purchasedQty = Number((match as any).quantity || 1);
+      const reqQty = Number(it.quantity || 0);
+      if (!Number.isFinite(reqQty) || reqQty < 1) {
+        throw new Error('Invalid quantity');
+      }
+      if (reqQty > purchasedQty) {
+        throw new Error(`Requested quantity (${reqQty}) exceeds purchased (${purchasedQty})`);
+      }
 
-  const purchasedQty = Number((match as any).quantity || 1);
-  const reqQty = Number(it.quantity || 0);
-  if (!Number.isFinite(reqQty) || reqQty < 1) {
-    throw new Error('Invalid quantity');
-  }
-  if (reqQty > purchasedQty) {
-    throw new Error(`Requested quantity (${reqQty}) exceeds purchased (${purchasedQty})`);
-  }
+      const rawPid = idStr((match as any).productId);
+      const productIdObj = new Types.ObjectId(rawPid);
 
-  const rawPid = idStr((match as any).productId);
-  // enforce using the order’s productId (trusted source)
-  const productIdObj = new Types.ObjectId(rawPid);
+      const unitPrice = Number((match as any).price ?? (match as any).unitPrice ?? 0);
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new Error('Invalid price on order item');
+      }
 
-  const unitPrice = Number((match as any).price ?? (match as any).unitPrice ?? 0);
-  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-    throw new Error('Invalid price on order item');
-  }
-
-  return {
-    productId: productIdObj,
-    orderItemId: (match as any)._id ?? (match as any).id,
-    name: (match as any).name,
-    quantity: reqQty,
-    unitPrice,
-    reason: it.reason,
-  };
-});
-
+      return {
+        productId: productIdObj,
+        orderItemId: (match as any)._id ?? (match as any).id,
+        name: (match as any).name,
+        quantity: reqQty,
+        unitPrice,
+        reason: it.reason,
+      };
+    });
 
     const refundAmount = builtItems.reduce(
       (sum, it: any) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0),
       0
     );
 
-    // 5) Optional images (multer: req.files or req.files.images[])
+    // ---------- Optional images ----------
     const imageUrls: string[] = [];
     const files: Express.Multer.File[] = Array.isArray(req.files)
       ? (req.files as Express.Multer.File[])
@@ -183,7 +166,7 @@ const builtItems = itemsPayload.map((it) => {
       imageUrls.push(up.secure_url);
     }
 
-    // 6) Create ReturnRequest
+    // ---------- Create ReturnRequest ----------
     const rr = await ReturnRequest.create({
       user: authUserId,
       order: (order as any)._id,
@@ -198,7 +181,6 @@ const builtItems = itemsPayload.map((it) => {
       history: [{ at: new Date(), action: 'created', by: authUserId, note: reasonNote }],
     });
 
-    // 7) Optional socket notify
     req.io?.emit?.('returnCreated', { _id: rr._id, orderId: (order as any)._id });
 
     return res.json({ success: true, returnRequest: rr });
@@ -310,31 +292,21 @@ export const adminMarkReceived = async (req: any, res: Response) => {
 export const adminRefund = async (req: any, res: Response) => {
   try {
     const { id } = req.params;
-    const { method, reference } = req.body as { method: 'original'|'wallet'|'manual'; reference?: string };
+    const { method, reference } = req.body as { method: 'original' | 'wallet' | 'manual'; reference?: string };
 
     const r = await ReturnRequest.findById(id);
     if (!r) return res.status(404).json({ success: false, message: 'Not found' });
-    if (!['received','refund_initiated'].includes(r.status))
+    if (!['received', 'refund_initiated'].includes(r.status))
       return res.status(400).json({ success: false, message: 'Return not received yet' });
 
     const order = await Order.findById(r.order).lean();
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    let refundInfo: any = { method, reference };
+    // Neutral refund info (Razorpay removed)
+    const refundInfo: any = { method, reference, note: 'Refund recorded by admin' };
 
-    if (method === 'original') {
-      if (String(order.paymentMethod) !== 'razorpay' || !order.paymentId) {
-        return res.status(400).json({ success: false, message: 'Original refund not possible for this order' });
-      }
-      const amountPaise = Math.round((r.refundAmount || order.total || 0) * 100);
-      const refund = await razor.payments.refund(order.paymentId, {
-        amount: amountPaise,
-        speed: 'optimum',
-        notes: { returnId: String(r._id) },
-      });
-      refundInfo.razorpay = { id: refund.id, status: refund.status, amount: refund.amount, created_at: refund.created_at };
-    }
-
+    // If you later integrate PhonePe refunds or a wallet system, implement here.
+    // For now, we simply mark refund completed with the provided reference.
     r.status = 'refund_completed';
     r.refund = { ...refundInfo, at: new Date() };
     r.history.push({ at: new Date(), by: req.user._id, action: 'refund_completed', note: reference });
@@ -343,7 +315,6 @@ export const adminRefund = async (req: any, res: Response) => {
     req.io?.emit?.('returnUpdated', { _id: r._id, status: r.status });
     return res.json({ success: true, returnRequest: r });
   } catch (e: any) {
-    console.error('adminRefund error', e);
     return res.status(400).json({ success: false, message: e?.message || 'Refund failed' });
   }
 };
