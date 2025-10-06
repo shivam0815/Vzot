@@ -151,12 +151,34 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
         gst: order.gst,
       },
     });
-  } catch (error: any) {
-    console.error('❌ Payment order creation error:', error?.response?.data || error);
-    res.status(500).json({ success: false, message: error.message || 'Failed to create payment order' });
+} catch (error: any) {
+  console.error('❌ Payment order creation error:');
+  if (error.response) {
+    console.error('📡 PhonePe responded:', {
+      status: error.response.status,
+      data: error.response.data,
+      headers: error.response.headers,
+    });
+  } else if (error.request) {
+    console.error('🚫 No response from PhonePe:', error.request);
+  } else {
+    console.error('💥 Setup error:', error.message);
   }
-};
 
+  res.status(500).json({
+    success: false,
+    message: error.message || 'Failed to create payment order',
+    debug: {
+      env: process.env.PHONEPE_ENV,
+      base: BASE_URL,
+      redirect: REDIRECT_URL,
+      callback: CALLBACK_URL,
+      merchantId: MERCHANT_ID,
+    },
+  });
+}
+
+};
 /* ===========================================================================================
    VERIFY PAYMENT — PhonePe: check order status (X-VERIFY on path)
 =========================================================================================== */
