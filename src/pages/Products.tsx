@@ -9,11 +9,11 @@ import { productService } from '../services/productService';
 import type { Product } from '../types';
 import SEO from '../components/Layout/SEO';
 
-/* ---------- helpers ---------- */
+/* helpers */
 const getId = (p: any): string | undefined => p?._id || p?.id;
 
-/* ---------- category normalization ---------- */
-// slug/aliases -> exact display name (backend enum)
+/* category normalization */
+// slug/aliases -> exact display name
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   tws: 'TWS',
   neckband: 'Bluetooth Neckbands',
@@ -33,20 +33,18 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   banks: 'Power Banks',
   'power-bank': 'Power Banks',
   'power-banks': 'Power Banks',
-  'ICs': 'Integrated Circuits & Chips',
+  ICs: 'Integrated Circuits & Chips',
   'Mobile ICs': 'Mobile ICs',
   'mobile-repairing-tools': 'Mobile Repairing Tools',
-    'mobile ics': 'Mobile ICs',              // 🆕 space-separated
+  'mobile ics': 'Mobile ICs',
   'mobile-ics': 'Mobile ICs',
-  
   electronics: 'Electronics',
   accessories: 'Accessories',
   others: 'Others',
 };
-
-// exact display name -> preferred slug (for URL writing)
+// exact display name -> preferred slug
 const NAME_TO_SLUG: Record<string, string> = {
-  'TWS': 'tws',
+  TWS: 'tws',
   'Bluetooth Neckbands': 'bluetooth-neckbands',
   'Data Cables': 'data-cables',
   'Mobile Chargers': 'mobile-chargers',
@@ -55,39 +53,39 @@ const NAME_TO_SLUG: Record<string, string> = {
   'Power Banks': 'power-banks',
   'Integrated Circuits & Chips': 'ICs',
   'Mobile Repairing Tools': 'mobile-repairing-tools',
-  'Electronics': 'electronics',
-  'Accessories': 'accessories',
+  Electronics: 'electronics',
+  Accessories: 'accessories',
   'Mobile ICs': 'Mobile ICs',
   'Mobile Accessories': 'Mobile Accessories',
-   'mobile ics': 'Mobile ICs',              // 🆕 space-separated
+  'mobile ics': 'Mobile ICs',
   'mobile-ics': 'Mobile ICs',
-
-
-
-  'Others': 'others',
+  Others: 'others',
 };
 
 const Products: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlCategorySlug = (searchParams.get('category') || '').trim().toLowerCase();
-
-  // URL se normalized category (exact name)
   const normalizedFromUrl =
     (urlCategorySlug && CATEGORY_ALIAS_TO_NAME[urlCategorySlug]) || '';
 
-  // UI state
+  /* UI state */
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>(normalizedFromUrl);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 20000]);
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'rating'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // Data state
+  /* data state */
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Categories: try API, fall back to static
+  /* pagination */
+  const [page, setPage] = useState(1);
+  const [limit] = useState(24); // keep 24 per page
+  const [total, setTotal] = useState(0);
+
+  /* categories (best-effort) */
   const [categories, setCategories] = useState<string[]>([
     'TWS',
     'Bluetooth Neckbands',
@@ -106,21 +104,18 @@ const Products: React.FC = () => {
     'Mobile accessories',
   ]);
 
-  /* ---------- TWO-WAY SYNC: URL -> dropdown ---------- */
+  /* URL -> dropdown */
   useEffect(() => {
-    // agar URL me slug hai, dropdown ko exact name pe le aao
     if (normalizedFromUrl && normalizedFromUrl !== selectedCategory) {
       setSelectedCategory(normalizedFromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFromUrl]);
 
-  /* ---------- TWO-WAY SYNC: dropdown -> URL ---------- */
+  /* dropdown -> URL */
   useEffect(() => {
     const currentSlug = (searchParams.get('category') || '').trim().toLowerCase();
     const nextSlug = selectedCategory ? NAME_TO_SLUG[selectedCategory] : '';
-
-    // URL ko update sirf tab karo jab value truly change ho
     const next = new URLSearchParams(searchParams);
     if (nextSlug) {
       if (currentSlug !== nextSlug) {
@@ -134,10 +129,9 @@ const Products: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory]);
 
-  // Effective category to use everywhere (API + client filter)
   const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';
 
-  /* ---------- fetch categories (best-effort) ---------- */
+  /* fetch categories (once) */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -145,43 +139,75 @@ const Products: React.FC = () => {
         const r = await productService.getCategories();
         const arr = (Array.isArray((r as any)?.categories) && (r as any).categories) || [];
         if (!cancelled && arr.length) setCategories(arr.filter(Boolean));
-      } catch { /* ignore */ }
+      } catch {}
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  /* ---------- fetch products whenever category changes ---------- */
+  /* server fetch with pagination */
   const fetchProducts = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
 
-      const filters = normalizedCategoryForApi ? { category: normalizedCategoryForApi } : {};
-      const response = await productService.getProducts(filters, forceRefresh);
+      const filters: any = {};
+      if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
+      if (searchTerm) filters.q = searchTerm;
+      if (sortBy) filters.sort = sortBy;
 
-      if (Array.isArray(response?.products)) {
-        setProducts(response.products);
-        if (forceRefresh) {
-          sessionStorage.removeItem('force-refresh-products');
-          localStorage.removeItem('force-refresh-products');
-        }
-      } else {
-        setProducts([]);
-        setError('Failed to load products');
+      const params = {
+        page,
+        limit,
+        ...filters,
+        _t: forceRefresh ? Date.now() : undefined,
+      };
+
+      const r = await productService.getProducts(params, forceRefresh);
+
+      // ---- normalize list ----
+      const list =
+        (Array.isArray((r as any)?.items) && (r as any).items) ||
+        (Array.isArray((r as any)?.data?.items) && (r as any).data.items) ||
+        (Array.isArray((r as any)?.products) && (r as any).products) ||
+        (Array.isArray((r as any)?.data) && (r as any).data) ||
+        [];
+
+      // ---- normalize total ----
+      const t =
+        Number((r as any)?.total) ||
+        Number((r as any)?.data?.total) ||
+        Number((r as any)?.meta?.total) ||
+        Number((r as any)?.count) ||
+        Number((r as any)?.pagination?.total) ||
+        0;
+
+      setProducts(list as Product[]);
+      setTotal(t || list.length);
+
+      if (forceRefresh) {
+        sessionStorage.removeItem('force-refresh-products');
+        localStorage.removeItem('force-refresh-products');
       }
     } catch (err) {
       console.error('❌ Error fetching products via service:', err);
       setError('Failed to connect to server. Please try again later.');
-      // Fallback unfiltered – UI will still filter
+      // optional fallback to unpaged endpoint
       try {
-        const params = forceRefresh ? { _t: Date.now() } : {};
-        const fallback = await api.get('/products', { params });
+        const fallback = await api.get('/products', { params: { _t: Date.now() } });
         const arr =
+          (Array.isArray(fallback?.data?.items) && fallback.data.items) ||
           (Array.isArray(fallback?.data?.products) && fallback.data.products) ||
           (Array.isArray(fallback?.data?.data) && fallback.data.data) ||
           (Array.isArray(fallback?.data) && fallback.data) ||
           [];
         setProducts(arr as Product[]);
+        setTotal(
+          Number(fallback?.data?.total) ||
+            Number(fallback?.data?.meta?.total) ||
+            arr.length
+        );
         setError('');
       } catch (fallbackErr) {
         console.error('❌ Fallback also failed:', fallbackErr);
@@ -192,12 +218,18 @@ const Products: React.FC = () => {
     }
   };
 
+  /* reset to first page when filters change */
+  useEffect(() => {
+    setPage(1);
+  }, [normalizedCategoryForApi, sortBy, searchTerm]);
+
+  /* refetch when page or filters change */
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedCategoryForApi]);
+  }, [page, normalizedCategoryForApi, sortBy, searchTerm]);
 
-  /* ---------- client-side safety net filter/sort ---------- */
+  /* client safety net: search/price/isActive + local sort */
   const filteredProducts = useMemo(() => {
     const list = Array.isArray(products) ? products : [];
     const q = (searchTerm || '').toLowerCase();
@@ -208,9 +240,6 @@ const Products: React.FC = () => {
         const desc = (p?.description || '').toLowerCase();
         const matchesSearch = !q || name.includes(q) || desc.includes(q);
 
-        const matchesCategory =
-          !normalizedCategoryForApi || p?.category === normalizedCategoryForApi;
-
         const priceVal = typeof p?.price === 'number' ? p.price : Number.NaN;
         const priceOk =
           Number.isFinite(priceVal) &&
@@ -219,24 +248,28 @@ const Products: React.FC = () => {
 
         const isActive = p?.isActive !== false;
 
-        return matchesSearch && matchesCategory && priceOk && isActive;
+        return matchesSearch && priceOk && isActive;
       })
       .sort((a, b) => {
         switch (sortBy) {
-          case 'price-low':  return (a.price ?? 0) - (b.price ?? 0);
-          case 'price-high': return (b.price ?? 0) - (a.price ?? 0);
-          case 'rating':     return (b.rating ?? 0) - (a.rating ?? 0);
+          case 'price-low':
+            return (a.price ?? 0) - (b.price ?? 0);
+          case 'price-high':
+            return (b.price ?? 0) - (a.price ?? 0);
+          case 'rating':
+            return (b.rating ?? 0) - (a.rating ?? 0);
           case 'name':
-          default:           return (a.name || '').localeCompare(b.name || '');
+          default:
+            return (a.name || '').localeCompare(b.name || '');
         }
       });
 
     return filtered;
-  }, [products, searchTerm, normalizedCategoryForApi, priceRange, sortBy]);
+  }, [products, searchTerm, priceRange, sortBy]);
 
   const handleManualRefresh = () => fetchProducts(true);
 
-  /* ---------- UI ---------- */
+  /* loading */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -248,6 +281,7 @@ const Products: React.FC = () => {
     );
   }
 
+  /* error */
   if (error && products.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -263,6 +297,11 @@ const Products: React.FC = () => {
       </div>
     );
   }
+
+  /* derived pagination info */
+  const totalPages = Math.max(1, Math.ceil((total || 0) / limit));
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -378,7 +417,7 @@ const Products: React.FC = () => {
               <List className="h-5 w-5" />
             </button>
             <button
-              onClick={() => handleManualRefresh()}
+              onClick={handleManualRefresh}
               className="p-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
               title="Refresh Products"
             >
@@ -390,7 +429,7 @@ const Products: React.FC = () => {
         {/* Results meta */}
         <div className="mb-6">
           <p className="text-gray-600">
-            Showing {filteredProducts.length} of {products.length} products
+            Showing {filteredProducts.length} of {total || products.length} products
             {normalizedCategoryForApi && ` in ${normalizedCategoryForApi}`}
             {searchTerm && ` · matching "${searchTerm}"`}
           </p>
@@ -398,30 +437,84 @@ const Products: React.FC = () => {
 
         {/* Grid/List */}
         {filteredProducts.length > 0 ? (
-          <motion.div
-            className={
-              viewMode === 'grid'
-                ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
-                : 'space-y-4'
-            }
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-          >
-            {filteredProducts.map((product, i) => {
-              const key = getId(product) || `${product.name || 'item'}-${i}`;
-              return (
-                <motion.div
-                  key={key}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3 }}
+          <>
+            <motion.div
+              className={
+                viewMode === 'grid'
+                  ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
+                  : 'space-y-4'
+              }
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5 }}
+            >
+              {filteredProducts.map((product, i) => {
+                const key = getId(product) || `${product.name || 'item'}-${i}`;
+                return (
+                  <motion.div
+                    key={key}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <ProductCard product={product} viewMode={viewMode} />
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+
+            {/* Pager */}
+            {totalPages > 1 && (
+              <div className="mt-10 flex items-center justify-center gap-2">
+                <button
+                  disabled={!canPrev}
+                  onClick={() => {
+                    if (canPrev) setPage((p) => p - 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`px-3 py-2 rounded-md ${canPrev ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
                 >
-                  <ProductCard product={product} viewMode={viewMode} />
-                </motion.div>
-              );
-            })}
-          </motion.div>
+                  Prev
+                </button>
+
+                {Array.from({ length: totalPages })
+                  .map((_, i) => i + 1)
+                  .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+                  .reduce<number[]>((acc, n, i, arr) => {
+                    if (i && n - arr[i - 1] > 1) acc.push(-1);
+                    acc.push(n);
+                    return acc;
+                  }, [])
+                  .map((n, i) =>
+                    n === -1 ? (
+                      <span key={`gap-${i}`} className="px-2">…</span>
+                    ) : (
+                      <button
+                        key={n}
+                        onClick={() => {
+                          setPage(n);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className={`px-3 py-2 rounded-md ${n === page ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+                      >
+                        {n}
+                      </button>
+                    )
+                  )}
+
+                <button
+                  disabled={!canNext}
+                  onClick={() => {
+                    if (canNext) setPage((p) => p + 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`px-3 py-2 rounded-md ${canNext ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-16">
             <div className="text-gray-400 text-6xl mb-4">📦</div>
@@ -439,7 +532,7 @@ const Products: React.FC = () => {
                 Clear Filters
               </button>
               <button
-                onClick={() => handleManualRefresh()}
+                onClick={handleManualRefresh}
                 className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
               >
                 Refresh Products
