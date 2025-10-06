@@ -723,6 +723,15 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`📡 Server bind: 0.0.0.0:${PORT}`)
   console.log(`🌍 Environment: ${NODE_ENV}`);
   console.log(`⏰ Started at: ${new Date().toISOString()}`);
+  console.log('🔐 PHONEPE ENV CHECK', {
+  PHONEPE_ENV: process.env.PHONEPE_ENV,
+  PHONEPE_MERCHANT_ID: !!process.env.PHONEPE_MERCHANT_ID,
+  PHONEPE_SALT_KEY: !!process.env.PHONEPE_SALT_KEY,
+  PHONEPE_SALT_INDEX: process.env.PHONEPE_SALT_INDEX,
+  PHONEPE_BASE_URL_PROD: process.env.PHONEPE_BASE_URL_PROD,
+  PHONEPE_BASE_URL_SANDBOX: process.env.PHONEPE_BASE_URL_SANDBOX
+});
+  console.log(`🛠️  Using Redis for rate limiting: ${useRedis ? 'Yes' : 'No'}`);
 
   // ✅ Public URLs (no :5000 when behind Nginx)
   console.log(`🔗 Public Base: ${base}`);
