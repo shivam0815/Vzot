@@ -13,6 +13,7 @@ import SEO from '../components/Layout/SEO';
 const getId = (p: any): string | undefined => p?._id || p?.id;
 
 /* ---------- category normalization ---------- */
+// slug/aliases -> exact display name (backend enum)
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   tws: 'TWS',
   neckband: 'Bluetooth Neckbands',
@@ -32,18 +33,20 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   banks: 'Power Banks',
   'power-bank': 'Power Banks',
   'power-banks': 'Power Banks',
-  ICs: 'Integrated Circuits & Chips',
+  'ICs': 'Integrated Circuits & Chips',
   'Mobile ICs': 'Mobile ICs',
   'mobile-repairing-tools': 'Mobile Repairing Tools',
-  'mobile ics': 'Mobile ICs',
+    'mobile ics': 'Mobile ICs',              // 🆕 space-separated
   'mobile-ics': 'Mobile ICs',
+  
   electronics: 'Electronics',
   accessories: 'Accessories',
   others: 'Others',
 };
 
+// exact display name -> preferred slug (for URL writing)
 const NAME_TO_SLUG: Record<string, string> = {
-  TWS: 'tws',
+  'TWS': 'tws',
   'Bluetooth Neckbands': 'bluetooth-neckbands',
   'Data Cables': 'data-cables',
   'Mobile Chargers': 'mobile-chargers',
@@ -52,21 +55,23 @@ const NAME_TO_SLUG: Record<string, string> = {
   'Power Banks': 'power-banks',
   'Integrated Circuits & Chips': 'ICs',
   'Mobile Repairing Tools': 'mobile-repairing-tools',
-  Electronics: 'electronics',
-  Accessories: 'accessories',
+  'Electronics': 'electronics',
+  'Accessories': 'accessories',
   'Mobile ICs': 'Mobile ICs',
   'Mobile Accessories': 'Mobile Accessories',
-  'mobile ics': 'Mobile ICs',
+   'mobile ics': 'Mobile ICs',              // 🆕 space-separated
   'mobile-ics': 'Mobile ICs',
-  Others: 'others',
-};
 
-const DEFAULT_LIMIT = 200; // ask server for big pages
+
+
+  'Others': 'others',
+};
 
 const Products: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlCategorySlug = (searchParams.get('category') || '').trim().toLowerCase();
 
+  // URL se normalized category (exact name)
   const normalizedFromUrl =
     (urlCategorySlug && CATEGORY_ALIAS_TO_NAME[urlCategorySlug]) || '';
 
@@ -77,17 +82,12 @@ const Products: React.FC = () => {
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'rating'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // Data/pagination state
+  // Data state
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [page, setPage] = useState<number>(Number(searchParams.get('page') || 1));
-  const [limit, setLimit] = useState<number>(Number(searchParams.get('limit') || DEFAULT_LIMIT));
-  const [total, setTotal] = useState<number>(0);
-  const [pages, setPages] = useState<number>(1);
-  const [hasMore, setHasMore] = useState<boolean>(false);
 
-  // Categories (best-effort)
+  // Categories: try API, fall back to static
   const [categories, setCategories] = useState<string[]>([
     'TWS',
     'Bluetooth Neckbands',
@@ -106,28 +106,38 @@ const Products: React.FC = () => {
     'Mobile accessories',
   ]);
 
-  /* ---------- URL -> dropdown ---------- */
+  /* ---------- TWO-WAY SYNC: URL -> dropdown ---------- */
   useEffect(() => {
+    // agar URL me slug hai, dropdown ko exact name pe le aao
     if (normalizedFromUrl && normalizedFromUrl !== selectedCategory) {
       setSelectedCategory(normalizedFromUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFromUrl]);
 
-  /* ---------- dropdown/page/limit -> URL ---------- */
+  /* ---------- TWO-WAY SYNC: dropdown -> URL ---------- */
   useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    const slug = selectedCategory ? NAME_TO_SLUG[selectedCategory] : '';
-    if (slug) next.set('category', slug); else next.delete('category');
-    next.set('page', String(page));
-    next.set('limit', String(limit));
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, page, limit]);
+    const currentSlug = (searchParams.get('category') || '').trim().toLowerCase();
+    const nextSlug = selectedCategory ? NAME_TO_SLUG[selectedCategory] : '';
 
+    // URL ko update sirf tab karo jab value truly change ho
+    const next = new URLSearchParams(searchParams);
+    if (nextSlug) {
+      if (currentSlug !== nextSlug) {
+        next.set('category', nextSlug);
+        setSearchParams(next, { replace: true });
+      }
+    } else if (currentSlug) {
+      next.delete('category');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory]);
+
+  // Effective category to use everywhere (API + client filter)
   const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';
 
-  /* ---------- load categories ---------- */
+  /* ---------- fetch categories (best-effort) ---------- */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -135,30 +145,22 @@ const Products: React.FC = () => {
         const r = await productService.getCategories();
         const arr = (Array.isArray((r as any)?.categories) && (r as any).categories) || [];
         if (!cancelled && arr.length) setCategories(arr.filter(Boolean));
-      } catch {}
+      } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
   }, []);
 
-  /* ---------- fetch products (server pagination) ---------- */
+  /* ---------- fetch products whenever category changes ---------- */
   const fetchProducts = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
 
-      const filters: any = {
-        page,
-        limit,
-      };
-      if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
-
+      const filters = normalizedCategoryForApi ? { category: normalizedCategoryForApi } : {};
       const response = await productService.getProducts(filters, forceRefresh);
 
       if (Array.isArray(response?.products)) {
         setProducts(response.products);
-        setTotal(Number(response.total));
-        setPages(Number(response.totalPages || response.pagination?.pages || 1));
-        setHasMore(Boolean(response.pagination?.hasMore));
         if (forceRefresh) {
           sessionStorage.removeItem('force-refresh-products');
           localStorage.removeItem('force-refresh-products');
@@ -170,34 +172,32 @@ const Products: React.FC = () => {
     } catch (err) {
       console.error('❌ Error fetching products via service:', err);
       setError('Failed to connect to server. Please try again later.');
+      // Fallback unfiltered – UI will still filter
       try {
-        const fallback = await api.get('/products', { params: { page, limit, _t: Date.now() } });
+        const params = forceRefresh ? { _t: Date.now() } : {};
+        const fallback = await api.get('/products', { params });
         const arr =
           (Array.isArray(fallback?.data?.products) && fallback.data.products) ||
           (Array.isArray(fallback?.data?.data) && fallback.data.data) ||
           (Array.isArray(fallback?.data) && fallback.data) ||
           [];
         setProducts(arr as Product[]);
-        const p = fallback?.data?.pagination || {};
-        setTotal(Number(p.total || arr.length));
-        setPages(Number(p.pages || 1));
-        setHasMore(Boolean(p.hasMore));
         setError('');
       } catch (fallbackErr) {
         console.error('❌ Fallback also failed:', fallbackErr);
       }
     } finally {
+      localStorage.setItem('last-product-fetch', String(Date.now()));
       setLoading(false);
     }
   };
 
-  // refetch on category/page/limit
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedCategoryForApi, page, limit]);
+  }, [normalizedCategoryForApi]);
 
-  /* ---------- client-side safety filter/sort ---------- */
+  /* ---------- client-side safety net filter/sort ---------- */
   const filteredProducts = useMemo(() => {
     const list = Array.isArray(products) ? products : [];
     const q = (searchTerm || '').toLowerCase();
@@ -213,7 +213,9 @@ const Products: React.FC = () => {
 
         const priceVal = typeof p?.price === 'number' ? p.price : Number.NaN;
         const priceOk =
-          (Number.isNaN(priceVal) ? true : (priceVal >= priceRange[0] && priceVal <= priceRange[1]));
+          Number.isFinite(priceVal) &&
+          priceVal >= priceRange[0] &&
+          priceVal <= priceRange[1];
 
         const isActive = p?.isActive !== false;
 
@@ -311,7 +313,7 @@ const Products: React.FC = () => {
             <label className="text-sm font-medium text-gray-700">Category:</label>
             <select
               value={selectedCategory}
-              onChange={(e) => { setSelectedCategory(e.target.value); setPage(1); }}
+              onChange={(e) => setSelectedCategory(e.target.value)}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Categories</option>
@@ -359,16 +361,8 @@ const Products: React.FC = () => {
             </select>
           </div>
 
-          {/* View / Limit / Refresh */}
+          {/* View + Refresh */}
           <div className="flex items-center space-x-2">
-            <select
-              value={limit}
-              onChange={(e) => { setLimit(parseInt(e.target.value, 10) || DEFAULT_LIMIT); setPage(1); }}
-              className="border border-gray-300 rounded-md px-2 py-2 text-sm"
-              title="Items per page"
-            >
-              {[24, 48, 100, 200].map(n => <option key={n} value={n}>{n}/page</option>)}
-            </select>
             <button
               onClick={() => setViewMode('grid')}
               className={`p-2 rounded-md ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
@@ -396,7 +390,7 @@ const Products: React.FC = () => {
         {/* Results meta */}
         <div className="mb-6">
           <p className="text-gray-600">
-            Showing {filteredProducts.length} of {total || products.length} products
+            Showing {filteredProducts.length} of {products.length} products
             {normalizedCategoryForApi && ` in ${normalizedCategoryForApi}`}
             {searchTerm && ` · matching "${searchTerm}"`}
           </p>
@@ -439,7 +433,6 @@ const Products: React.FC = () => {
                   setSearchTerm('');
                   setSelectedCategory('');
                   setPriceRange([0, 20000]);
-                  setPage(1);
                 }}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
@@ -454,27 +447,6 @@ const Products: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Pagination */}
-        <div className="mt-10 flex items-center justify-between">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="px-4 py-2 rounded-md bg-gray-200 disabled:opacity-50"
-          >
-            ← Prev
-          </button>
-          <div className="text-gray-700 text-sm">
-            Page <strong>{page}</strong> of <strong>{pages}</strong>
-          </div>
-          <button
-            onClick={() => setPage((p) => (hasMore ? p + 1 : p))}
-            disabled={!hasMore}
-            className="px-4 py-2 rounded-md bg-gray-200 disabled:opacity-50"
-          >
-            Next →
-          </button>
-        </div>
       </div>
     </div>
   );
