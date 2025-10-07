@@ -13,8 +13,9 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 // import
 
-const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
-const ProductReview  = React.lazy(() => import('./components/Layout/ProductReview'));
+import AdminDashboard from "./pages/AdminDashboard";
+import ProductReview from "./components/Layout/ProductReview";
+
 // inside <Routes>
 <Route path="/order-success" element={<OrderSuccess />} />
 
