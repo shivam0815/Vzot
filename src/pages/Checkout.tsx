@@ -357,8 +357,16 @@ const CheckoutPage: React.FC = () => {
 
         {/* Site-wide note */}
         <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm">
-          <strong>Note:</strong> Today we only accept Cash on Delivery. Thanks for your support.
+          <strong>Note:</strong> "For Today only Place your order and pay by cash or online at the Nakoda Mobile counter.Thank you for your support."
         </div>
+        <div className="mb-6 p-4 rounded-xl border border-green-200 bg-green-50 text-green-900 text-sm">
+  <strong>Offer:</strong> "Buy ICs worth ₹1000 or more and get 10% off. Redeem your coupon at the Nakoda Mobile counter."
+</div>
+<div className="mb-6 p-4 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 text-sm">
+  <strong>Offer:</strong> "Get a free IC worth ₹100! Please redeem the coupon given to you at the Nakoda Mobile counter."
+</div>
+
+
 
         <form onSubmit={onSubmit} className="grid lg:grid-cols-5 gap-8">
           {/* Order Summary */}
