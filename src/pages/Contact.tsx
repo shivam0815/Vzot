@@ -239,7 +239,7 @@ const Contact: React.FC = () => {
       '@context': 'https://schema.org',
       '@type': 'LocalBusiness',
       name: 'Nakoda Mobile',
-      image: 'https://nakodamobile.in/favicon-512.png',
+      image: '/favicon-512.png',
       address: {
         '@type': 'PostalAddress',
         streetAddress:

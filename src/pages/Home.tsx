@@ -363,7 +363,7 @@ const loadMobileRepairTools = async () => {
           '@type': 'Organization',
           name: 'Nakoda Mobile',
           url: 'https://nakodamobile.com',
-          logo: 'https://nakodamobile.in/favicon-512.png'
+          logo: '/favicon-512.png'
         }}
       />
 
