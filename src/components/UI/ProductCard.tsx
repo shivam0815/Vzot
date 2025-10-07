@@ -1,66 +1,100 @@
-// src/components/UI/ProductCard.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+// src/components/ProductCard.tsx
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, ShoppingCart, Tag, CreditCard, Heart } from 'lucide-react';
 import type { Product } from '../../types';
 import { useCart } from '../../hooks/useCart';
 import { useWishlist } from '../../hooks/useWishlist';
-import { getFirstImageUrl } from '../../utils/imageUtils';
+import { resolveImageUrl, getFirstImageUrl, getOptimizedImageUrl } from '../../utils/imageUtils';
 import toast from 'react-hot-toast';
 
 export interface ProductCardProps {
   product: Product;
   viewMode?: 'grid' | 'list';
   className?: string;
+  /** If true, shows a small heart overlay on the image (hidden by default) */
   showWishlist?: boolean;
 }
 
 const isValidObjectId = (s?: string) => !!s && /^[a-f\d]{24}$/i.test(s);
-const fmtPrice = (p?: number, currency = 'INR') =>
-  typeof p === 'number' ? `${currency === 'INR' ? '₹' : ''}${p.toLocaleString('en-IN')}` : 'Contact for price';
 
+/** Format price for IN locale */
+const fmtPrice = (p?: number, currency = 'INR') => {
+  if (typeof p !== 'number') return 'Contact for price';
+  const symbol = currency === 'INR' ? '₹' : '';
+  return `${symbol}${p.toLocaleString('en-IN')}`;
+};
+
+/** Safe getters for new user-visible fields; never leaking admin-only */
 const getSku = (p: any): string | undefined => p?.sku || p?.productId || p?.pid;
 const getColor = (p: any): string | undefined => p?.color;
+
 const getPorts = (p: any): number | undefined => {
-  const n = Number(p?.ports);
-  return Number.isFinite(n) ? n : undefined;
+  const v = p?.ports;
+  if (typeof v === 'number') return v;
+  const parsed = parseInt(String(v ?? ''), 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
-const getWarranty = (p: any) => {
-  const n = Number(p?.warrantyPeriodMonths ?? p?.warrantyMonths ?? p?.warrantyPeriod);
-  return { months: Number.isFinite(n) ? n : undefined, type: p?.warrantyType as string | undefined };
+
+const getWarranty = (p: any): { months?: number; type?: string } => {
+  const monthsRaw = p?.warrantyPeriodMonths ?? p?.warrantyMonths ?? p?.warrantyPeriod;
+  const months =
+    typeof monthsRaw === 'number'
+      ? monthsRaw
+      : (() => {
+          const n = parseInt(String(monthsRaw ?? ''), 10);
+          return Number.isFinite(n) ? n : undefined;
+        })();
+
+  const type = p?.warrantyType as string | undefined;
+  return { months, type };
 };
+
+/** Compare/MRP helper (prefers compareAtPrice, falls back to originalPrice) */
 const getComparePrice = (p: any): number | undefined => {
-  const n = Number((p as any).compareAtPrice ?? (p as any).originalPrice);
+  const v = (p as any).compareAtPrice ?? (p as any).originalPrice;
+  const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
 };
+
+/** Robust in-stock calculation */
 const computeInStock = (p: any): boolean => {
   if (typeof p?.inStock === 'boolean') return p.inStock;
   if (typeof p?.stock === 'number') return p.stock > 0;
   if (typeof p?.stockQuantity === 'number') return p.stockQuantity > 0;
-  return true;
+  return true; // default optimistic
 };
+
+/** —— Rating + Reviews helpers —— */
 const coerceNumber = (x: any): number | undefined => {
-  const n = Number(x);
+  const n = typeof x === 'number' ? x : Number(x);
   return Number.isFinite(n) ? n : undefined;
 };
-const getInitialAverageRating = (p: any): number =>
-  coerceNumber(p?.averageRating) ??
-  coerceNumber(p?.avgRating) ??
-  coerceNumber(p?.ratingAverage) ??
-  coerceNumber(p?.rating) ??
-  0;
-const getInitialReviewCount = (p: any): number =>
-  coerceNumber(p?.ratingsCount) ??
-  coerceNumber(p?.reviewCount) ??
-  coerceNumber(p?.reviewsCount) ??
-  coerceNumber(p?.numReviews) ??
-  (Array.isArray(p?.reviews) ? p.reviews.length : undefined) ??
-  0;
 
-/* ---------- Network-throttle fix: cache + lazy fetch ---------- */
-const reviewSummaryCache = new Map<string, { avg: number; count: number }>();
+const getInitialAverageRating = (p: any): number => {
+  // Prefer explicit average fields; last resort is `rating`
+  return (
+    coerceNumber(p?.averageRating) ??
+    coerceNumber(p?.avgRating) ??
+    coerceNumber(p?.ratingAverage) ??
+    coerceNumber(p?.rating) ??
+    0
+  );
+};
 
+const getInitialReviewCount = (p: any): number => {
+  return (
+    coerceNumber(p?.ratingsCount) ??
+    coerceNumber(p?.reviewCount) ??
+    coerceNumber(p?.reviewsCount) ??
+    coerceNumber(p?.numReviews) ??
+    (Array.isArray(p?.reviews) ? p.reviews.length : undefined) ??
+    0
+  );
+};
+
+// ——— UI tokens for compact professional actions ———
 const btnBase =
   'inline-flex items-center justify-center rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 h-9 px-3 text-sm sm:h-10 sm:px-3';
 const btnPrimary = 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50';
@@ -68,8 +102,14 @@ const btnDark = 'bg-gray-900 text-white hover:bg-black focus:outline-none focus:
 const btnMinW = 'w-[112px] sm:w-[132px]';
 const btnGhost = 'border border-gray-300 text-gray-700 hover:text-red-600 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-300/40';
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', className = '', showWishlist = false }) => {
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  viewMode = 'grid',
+  className = '',
+  showWishlist = false,
+}) => {
   const isList = viewMode === 'list';
+
   const navigate = useNavigate();
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
@@ -77,96 +117,109 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
 
+  // Accept either _id or id from backend (sanitize to string)
   const rawId = (product as any)._id ?? (product as any).id;
   const productId = typeof rawId === 'string' ? rawId.trim() : rawId ? String(rawId) : '';
   const inStock = computeInStock(product);
   const inWishlist = productId ? isInWishlist(productId) : false;
 
   const imageUrl = getFirstImageUrl(product.images);
+
+  // New (safe) user-visible fields
   const sku = getSku(product);
   const color = getColor(product);
   const ports = getPorts(product);
   const { months: warrantyMonths, type: warrantyType } = getWarranty(product);
-  const comparePrice = getComparePrice(product);
-  const hasDiscount = typeof product.price === 'number' && typeof comparePrice === 'number' && comparePrice > product.price;
-  const discountPct = hasDiscount ? Math.round(((comparePrice! - product.price) / comparePrice!) * 100) : 0;
 
+  // Compare/MRP + discount
+  const comparePrice = getComparePrice(product);
+  const hasDiscount =
+    typeof product.price === 'number' &&
+    typeof comparePrice === 'number' &&
+    comparePrice > product.price;
+
+  const discountPct = hasDiscount
+    ? Math.round(((comparePrice! - product.price) / comparePrice!) * 100)
+    : 0;
+
+  // —— Ratings/Reviews state —— (start with whatever came in, then always refresh)
   const [avgRating, setAvgRating] = useState<number>(getInitialAverageRating(product));
   const [revCount, setRevCount] = useState<number>(getInitialReviewCount(product));
   const [revLoading, setRevLoading] = useState<boolean>(false);
+  const [refreshTick, setRefreshTick] = useState<number>(0); // bumps when reviews change
 
-  const cardRef = useRef<HTMLDivElement | null>(null);
-  const fetchedRef = useRef(false); // ensure single fetch per card instance
-
-  const fetchSummary = async (signal?: AbortSignal) => {
-    if (!isValidObjectId(productId) || reviewSummaryCache.has(productId) || fetchedRef.current) return;
-    fetchedRef.current = true;
-    setRevLoading(true);
-    try {
-      const res = await fetch(`/api/reviews/summary?productId=${productId}`, { signal });
-      if (!res.ok) throw new Error('bad');
-      const payload = await res.json();
-      const data = payload?.data || payload;
-      const avg = Number(data?.averageRating) || 0;
-      const cnt = Number(data?.reviewCount) || 0;
-      reviewSummaryCache.set(productId, { avg, count: cnt });
-      setAvgRating(avg);
-      setRevCount(cnt);
-    } catch {
-      /* ignore */
-    } finally {
-      setRevLoading(false);
-    }
-  };
-
-  // Fetch when card first becomes visible (prevents floods on re-renders)
-  useEffect(() => {
-    if (!cardRef.current || !isValidObjectId(productId) || reviewSummaryCache.has(productId)) return;
-    const ctrl = new AbortController();
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          fetchSummary(ctrl.signal);
-          io.disconnect();
-        }
-      },
-      { rootMargin: '200px' }
-    );
-    io.observe(cardRef.current);
-    return () => {
-      io.disconnect();
-      ctrl.abort();
-    };
-  }, [productId]);
-
-  // Also trigger on first hover (if not yet visible)
-  const onHover = () => {
-    if (!reviewSummaryCache.has(productId) && !fetchedRef.current) fetchSummary();
-  };
-
-  // Optional live refresh on cross-tab events
+  // Always fetch summary on mount + whenever refreshTick changes
   useEffect(() => {
     if (!isValidObjectId(productId)) return;
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === `reviews:changed:${productId}`) {
-        reviewSummaryCache.delete(productId);
-        fetchedRef.current = false;
-        fetchSummary();
+
+    let ignore = false;
+    const ac = new AbortController();
+
+    const load = async () => {
+      try {
+        setRevLoading(true);
+        // cache-bust with _ts so we never get a stale 200 from any proxy
+        const res = await fetch(`/api/reviews/summary?productId=${productId}&_ts=${Date.now()}`, { signal: ac.signal });
+        if (!res.ok) throw new Error('No review summary');
+        const payload = await res.json();
+        if (ignore) return;
+
+        const data = payload?.data || payload; // support both shapes
+        const a = coerceNumber(data?.averageRating) ?? 0;
+        const c = coerceNumber(data?.reviewCount) ?? 0;
+
+        setAvgRating(a);
+        setRevCount(c);
+      } catch {
+        // ignore; keep current
+      } finally {
+        if (!ignore) setRevLoading(false);
       }
     };
+
+    load();
+    return () => {
+      ignore = true;
+      ac.abort();
+    };
+  }, [productId, refreshTick]);
+
+  // Listen for global "reviews:changed" signals and localStorage pings
+  useEffect(() => {
+    if (!isValidObjectId(productId)) return;
+
+    const onEvt = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail as any;
+      if (!detail || !detail.productId) return;
+      if (String(detail.productId) === productId) setRefreshTick((t) => t + 1);
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      const prefix = `reviews:changed:${productId}`;
+      if (e.key === prefix) setRefreshTick((t) => t + 1);
+    };
+
+    window.addEventListener('reviews:changed', onEvt as EventListener);
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('reviews:changed', onEvt as EventListener);
+      window.removeEventListener('storage', onStorage);
+    };
   }, [productId]);
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     try {
-      if (!isValidObjectId(productId)) return toast.error('Product ID invalid');
+      if (!isValidObjectId(productId)) {
+        toast.error('Product ID not found or invalid link');
+        return;
+      }
       await addToCart(productId, 1);
       toast.success('Added to cart!');
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to add to cart');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to add to cart');
     }
   };
 
@@ -174,11 +227,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
     e.preventDefault();
     e.stopPropagation();
     try {
-      if (!isValidObjectId(productId)) return toast.error('Product ID invalid');
+      if (!isValidObjectId(productId)) {
+        toast.error('Product ID not found or invalid link');
+        return;
+      }
       await addToCart(productId, 1);
       navigate('/cart');
-    } catch (err: any) {
-      toast.error(err?.message || 'Could not proceed to checkout');
+    } catch (error: any) {
+      toast.error(error?.message || 'Could not proceed to checkout');
     }
   };
 
@@ -186,14 +242,21 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
     e.preventDefault();
     e.stopPropagation();
     try {
-      if (!isValidObjectId(productId)) return toast.error('Product ID invalid');
-      if (isInWishlist(productId)) await removeFromWishlist(productId);
-      else await addToWishlist(productId);
-    } catch (err: any) {
-      toast.error(err?.message || 'Wishlist operation failed');
+      if (!isValidObjectId(productId)) {
+        toast.error('Product ID not found or invalid link');
+        return;
+      }
+      if (isInWishlist(productId)) {
+        await removeFromWishlist(productId);
+      } else {
+        await addToWishlist(productId);
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Wishlist operation failed');
     }
   };
 
+  // Guard nav: never let it push /products/:id or /products/undefined
   const detailPath = isValidObjectId(productId) ? `/products/${productId}` : '/products';
   const handleGuardedNav = (e: React.MouseEvent) => {
     if (!isValidObjectId(productId)) {
@@ -203,13 +266,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
   };
 
   const currency = (product as any).currency || 'INR';
+
   const roundedAvg = useMemo(() => Math.max(0, Math.min(5, Math.round((avgRating ?? 0) * 10) / 10)), [avgRating]);
   const fullStars = Math.floor(roundedAvg);
 
   return (
-    <Link to={detailPath} onClick={handleGuardedNav} onMouseEnter={onHover} className="block group" data-product-id={productId || ''}>
+    <Link to={detailPath} onClick={handleGuardedNav} className="block group" data-product-id={productId || ''}>
       <motion.div
-        ref={cardRef}
         whileHover={{ y: -5 }}
         className={
           (isList
@@ -224,14 +287,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
             <>
               {imageLoading && (
                 <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center" aria-label="Loading image">
-                  <div className="text-gray-400">Loading…</div>
+                  <div className="text-gray-400">Loading...</div>
                 </div>
               )}
               <img
                 src={imageUrl}
                 alt={product.name}
                 className={
-                  (isList ? 'w-full h-full object-cover rounded-md' : 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300') +
+                  (isList
+                    ? 'w-full h-full object-cover rounded-md'
+                    : 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300') +
                   (imageLoading ? ' opacity-0' : ' opacity-100')
                 }
                 onLoad={() => setImageLoading(false)}
@@ -251,10 +316,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
             </div>
           )}
 
+          {/* Discount badge */}
           {hasDiscount && (
-            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-semibold z-10">{discountPct}% OFF</div>
+            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-semibold z-10">
+              {discountPct}% OFF
+            </div>
           )}
 
+          {/* Wishlist overlay (optional, hidden by default) */}
           {showWishlist && (
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -270,6 +339,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
             </motion.button>
           )}
 
+          {/* Stock overlay */}
           {inStock === false && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10" aria-label="Out of stock">
               <span className="text-white font-semibold text-sm">Out of Stock</span>
@@ -279,8 +349,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
 
         {/* Content */}
         <div className={isList ? 'flex-1 min-w-0' : 'p-4'}>
-          <h3 className={'text-lg font-semibold text-gray-900 mb-2 line-clamp-2 ' + (isList ? 'mt-0' : '')}>{product.name}</h3>
+          <h3 className={'text-lg font-semibold text-gray-900 mb-2 line-clamp-2 ' + (isList ? 'mt-0' : '')}>
+            {product.name}
+          </h3>
 
+          {/* Optional mini-meta row (SKU + Color) */}
           {(sku || color) && (
             <div className="flex items-center gap-2 mb-2 text-xs text-gray-600">
               {sku && (
@@ -297,25 +370,42 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
             </div>
           )}
 
+          {/* Rating */}
           <div className="flex items-center mb-2" aria-label={`Rating ${roundedAvg} out of 5`}>
             <div className="flex items-center">
               {[...Array(5)].map((_, i) => (
-                <Star key={i} className={'h-4 w-4 ' + (i < fullStars ? 'text-yellow-400 fill-current' : 'text-gray-300')} />
+                <Star
+                  key={i}
+                  className={'h-4 w-4 ' + (i < Math.floor(roundedAvg) ? 'text-yellow-400 fill-current' : 'text-gray-300')}
+                />
               ))}
             </div>
-            <span className="text-sm text-gray-600 ml-2">{revLoading ? '(loading…)' : `(${revCount} reviews)`}</span>
+            <span className="text-sm text-gray-600 ml-2">
+              {revLoading ? '(loading…)' : `(${revCount} reviews)`}
+            </span>
           </div>
 
+          {/* Price + stock pill */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-baseline space-x-2">
               <span className="text-xl font-bold text-gray-900">{fmtPrice(product.price, currency)}</span>
-              {hasDiscount && <span className="text-sm text-gray-500 line-through">{fmtPrice(comparePrice, currency)}</span>}
+              {hasDiscount && (
+                <span className="text-sm text-gray-500 line-through" aria-label="MRP">
+                  {fmtPrice(comparePrice, currency)}
+                </span>
+              )}
             </div>
-            <span className={'text-xs px-2 py-1 rounded ' + (inStock === false ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800')}>
+            <span
+              className={
+                'text-xs px-2 py-1 rounded ' +
+                (inStock === false ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800')
+              }
+            >
               {inStock === false ? 'Out of Stock' : 'In Stock'}
             </span>
           </div>
 
+          {/* User-visible tech facts (NEVER admin-only) */}
           {(ports !== undefined || warrantyMonths || warrantyType) && (
             <div className="text-xs text-gray-700 mb-3 space-x-2">
               {ports !== undefined && (
@@ -336,6 +426,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
             </div>
           )}
 
+          {/* Actions — strictly two buttons, horizontal */}
           <div className="mt-3 flex items-center gap-2">
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -370,8 +461,4 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, viewMode = 'grid', c
   );
 };
 
-export default React.memo(ProductCard, (prev, next) => {
-  const pidPrev = (prev.product as any)?._id ?? (prev.product as any)?.id;
-  const pidNext = (next.product as any)?._id ?? (next.product as any)?.id;
-  return prev.viewMode === next.viewMode && String(pidPrev) === String(pidNext);
-});
+export default ProductCard;
