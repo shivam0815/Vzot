@@ -226,7 +226,7 @@ const loadMobileRepairTools = async () => {
     return (under599.length ? under599 : merged).slice(0, 10);
   }, [hot, newArrivals]);
 
-  const { label: flashEndsIn } = useCountdown(6);
+ 
 
   // scroll helpers
   const useScroller = () => {
