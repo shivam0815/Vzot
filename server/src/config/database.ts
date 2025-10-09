@@ -1,31 +1,29 @@
 // src/config/database.ts
 import mongoose from 'mongoose';
-import Redis, { createClient } from 'redis';
+import { createClient, type RedisClientType } from 'redis';
 
-// MongoDB Configuration
-export const connectDatabase = async (): Promise<void> => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI!, {
-      maxPoolSize: 50,
-      minPoolSize: 5,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
-
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error('❌ Database connection failed:', error);
-    process.exit(1);
-  }
+export const connectDatabase = async () => {
+  await mongoose.connect(process.env.MONGODB_URI!, {
+    maxPoolSize: 50,
+    minPoolSize: 5,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  });
+  console.log('✅ MongoDB Connected');
 };
 
-// Redis Configuration - EXPORT redis properly
-export const redis = createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379'
+// ---- Redis
+export const redis: RedisClientType = createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
+  // username/password if needed:
+  // username: process.env.REDIS_USERNAME,
+  // password: process.env.REDIS_PASSWORD,
 });
-redis.on('error', (err: any) => console.error('❌ Redis Client Error:', err));
-redis.on('connect', () => console.log('✅ Redis Connected'));
 
-export const connectRedis = async (): Promise<void> => {
-  await redis.connect();
+redis.on('connect', () => console.log('✅ Redis Connected'));
+redis.on('error', (err) => console.error('❌ Redis Client Error:', err));
+
+export const connectRedis = async () => {
+  if (!redis.isOpen) await redis.connect();
+  await redis.ping(); // quick health check
 };

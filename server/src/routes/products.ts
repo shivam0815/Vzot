@@ -1,7 +1,7 @@
-// src/routes/products.routes.ts
 import express from 'express';
 import mongoose, { SortOrder } from 'mongoose';
 import Product from '../models/Product';
+import type { Redis } from 'ioredis';
 
 const router = express.Router();
 
@@ -170,7 +170,7 @@ router.get('/trending', async (req, res) => {
 });
 
 /**
- * GET /products/brand/:brand?limit=12&excludeId=...
+ * GET /products/brand/:brand
  */
 router.get('/brand/:brand', async (req, res) => {
   try {
@@ -223,7 +223,7 @@ router.get('/category/:category', async (req, res) => {
 });
 
 /**
- * GET /products/:id/related?limit=12
+ * GET /products/:id/related
  */
 router.get('/:id/related', async (req, res) => {
   try {
@@ -259,14 +259,21 @@ router.get('/:id/related', async (req, res) => {
 });
 
 /**
- * GET /products/:id  (single)
+ * GET /products/:id (single product) — with Redis cache
  */
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const redis = req.app.get('redis') as Redis | undefined;
+    const cacheKey = `product:${id}`;
 
     if (!mongoose.isValidObjectId(id)) {
       return res.status(400).json({ success: false, message: 'Invalid product id format' });
+    }
+
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) return res.json({ ...JSON.parse(cached), cached: true });
     }
 
     const product = await Product.findById(id).select('-__v').lean();
@@ -274,7 +281,10 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    res.json({ success: true, message: 'Product details fetched', product });
+    const response = { success: true, message: 'Product details fetched', product, cached: false };
+    if (redis) await redis.setex(cacheKey, 120, JSON.stringify(response));
+
+    res.json(response);
   } catch (error: any) {
     console.error('❌ /products/:id error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch product details', error: error.message });
@@ -282,11 +292,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
- * GET /products
- * Query:
- *  - category, brand, search, minPrice, maxPrice, excludeId
- *  - sortBy (createdAt|price|rating|trending), order (asc|desc)
- *  - page, limit
+ * GET /products (list) — with Redis cache
  */
 router.get('/', async (req, res) => {
   try {
@@ -329,68 +335,15 @@ router.get('/', async (req, res) => {
     }
 
     const effOrder = sortOrder ?? order;
-    if (sortBy === 'trending') {
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-      const [results, totalAgg] = await Promise.all([
-        Product.aggregate([
-          { $match: filter },
-          {
-            $addFields: {
-              _rating: { $ifNull: ['$rating', 0] },
-              _reviews: { $ifNull: ['$reviews', 0] },
-              _recent: { $cond: [{ $gte: ['$updatedAt', thirtyDaysAgo] }, 1, 0] },
-            },
-          },
-          {
-            $addFields: {
-              trendingScore: {
-                $add: [{ $multiply: ['$_rating', '$_reviews'] }, { $multiply: ['$_recent', 10] }],
-              },
-            },
-          },
-          { $sort: { trendingScore: -1, updatedAt: -1, createdAt: -1 } },
-          { $skip: (p - 1) * l },
-          { $limit: l },
-          {
-            $project: {
-              name: 1,
-              description: 1,
-              price: 1,
-              stockQuantity: 1,
-              category: 1,
-              brand: 1,
-              images: 1,
-              rating: 1,
-              reviews: 1,
-              inStock: 1,
-              isActive: 1,
-              specifications: 1,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          },
-        ]),
-        Product.countDocuments(filter),
-      ]);
-
-      return res.json({
-        success: true,
-        message: 'Products fetched successfully (trending)',
-        products: results,
-        pagination: {
-          page: p,
-          limit: l,
-          total: totalAgg,
-          pages: Math.ceil(totalAgg / l),
-          hasMore: p * l < totalAgg,
-        },
-        count: results.length,
-      });
-    }
-
     const sort = getSort(sortBy, effOrder);
+
+    const redis = req.app.get('redis') as Redis | undefined;
+    const cacheKey = `products:${JSON.stringify(req.query)}`;
+
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) return res.json({ ...JSON.parse(cached), cached: true });
+    }
 
     const [products, total] = await Promise.all([
       Product.find(filter)
@@ -404,7 +357,7 @@ router.get('/', async (req, res) => {
       Product.countDocuments(filter),
     ]);
 
-    res.json({
+    const responseData = {
       success: true,
       message: 'Products fetched successfully',
       products,
@@ -416,7 +369,12 @@ router.get('/', async (req, res) => {
         hasMore: p * l < total,
       },
       count: products.length,
-    });
+      cached: false,
+    };
+
+    if (redis) await redis.setex(cacheKey, 60, JSON.stringify(responseData));
+
+    res.json(responseData);
   } catch (error: any) {
     console.error('❌ GET /products error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch products', error: error.message });

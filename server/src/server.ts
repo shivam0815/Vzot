@@ -196,6 +196,14 @@ const isAllowlisted = (ip?: string) => {
 const redisUrl = process.env.REDIS_URL;
 const useRedis = !!redisUrl && process.env.NODE_ENV === 'production';
 const redis = useRedis ? new Redis(redisUrl!, { maxRetriesPerRequest: 2, enableOfflineQueue: false }) : null;
+// after: const redis = useRedis ? new Redis(...): null;
+if (redis) {
+  app.set('redis', redis);
+  app.set('products_cache_ttl', 60); // 60 seconds cache
+  app.set('products_cache_ns_key', 'products:ver');
+  console.log('✅ Redis initialized');
+}
+
 
 const points = Number(process.env.RATE_LIMIT_POINTS ?? 6000);        // total tokens per window
 const duration = Number(process.env.RATE_LIMIT_DURATION ?? 900);     // window seconds (15m)
@@ -468,7 +476,7 @@ app.get('/api/health', async (_req, res): Promise<void> => {
     dbStatus = 'Error';
   }
 
-  // Avoid Cloudinary ping in prod (can be rate-limited/slow)
+  // Cloudinary check (same as before)
   let cloudinaryStatus = isProd ? 'Skipped' : 'Unknown';
   if (!isProd) {
     try {
@@ -480,12 +488,16 @@ app.get('/api/health', async (_req, res): Promise<void> => {
     }
   }
 
+  // ✅ NEW — Redis check
+  const redisStatus = redis ? (redis.status === 'ready' ? 'Connected' : redis.status) : 'Disabled';
+
   const rateLimits = { max: isProd ? 1000 : 10000, window: '15 minutes' as const };
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     environment: NODE_ENV,
     database: dbStatus,
+    redis: redisStatus,        // ← added here
     cloudinary: cloudinaryStatus,
     socketIO: 'Enabled',
     rateLimits,
@@ -500,6 +512,7 @@ app.get('/api/health', async (_req, res): Promise<void> => {
     }
   });
 });
+;
 
 // DEV-ONLY TEST ENDPOINTS
 if (!isProd) {
@@ -712,6 +725,13 @@ process.on('SIGINT', () => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
 });
+const shutdown = async () => {
+  console.log('🛑 Shutting down...');
+  try { if (redis) await redis.quit(); } catch {}
+  io.close(() => process.exit(0));
+};
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 // Start
 server.listen(PORT, '0.0.0.0', () => {

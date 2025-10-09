@@ -1,6 +1,8 @@
-// src/controllers/productController.ts - COMPLETE VERSION (with tolerant category/brand + minimal metaTitle/metaDescription + CSV handler)
+// src/controllers/productController.ts - COMPLETE VERSION (with tolerant category/brand + minimal metaTitle/metaDescription + CSV handler + Redis caching)
 import { Request, Response } from 'express';
 import Papa from 'papaparse';
+import crypto from 'crypto';
+import type { Redis } from 'ioredis';
 import Product from '../models/Product';
 import type { AuthRequest } from '../types';
 
@@ -86,6 +88,10 @@ async function fetchByHomeSort(
   return cursor.limit(Number(limit)).lean();
 }
 
+/** Redis cache key builder (versioned namespace + hashed query) */
+const makeKey = (ver: string | number, query: any) =>
+  'products:' + ver + ':' + crypto.createHash('sha1').update(JSON.stringify(query)).digest('hex');
+
 /* ─────────────────────────── Controllers ─────────────────────────── */
 
 // ✅ Create Product (Admin)
@@ -151,6 +157,13 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
     const product = new Product(productData);
     const savedProduct = await product.save();
 
+    // 🔄 Bust product-list caches by bumping namespace version
+    try {
+      const redis = req.app.get('redis') as Redis | undefined;
+      const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
+      if (redis) await redis.incr(nsKey);
+    } catch {}
+
     res.status(201).json({
       success: true,
       message: 'Product created successfully',
@@ -165,7 +178,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// ✅ Get Products (Public - User Facing)
+// ✅ Get Products (Public - User Facing) — with Redis caching
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const {
@@ -183,6 +196,17 @@ export const getProducts = async (req: Request, res: Response) => {
       status = 'active',
     } = req.query as any;
 
+    // Wire redis + settings
+    const redis = req.app.get('redis') as Redis | undefined;
+    const ttl   = (req.app.get('products_cache_ttl') as number) ?? 60;
+    const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
+
+    // Namespace version (increments on writes)
+    let ver = '0';
+    if (redis) {
+      try { ver = (await redis.get(nsKey)) ?? '0'; } catch {}
+    }
+
     // Fast path for homepage sections (no extra filters, first page)
     const effectiveSearch = (q ?? search) || '';
     const isHomeSort = ['new', 'popular', 'trending'].includes(String(sort || ''));
@@ -194,9 +218,36 @@ export const getProducts = async (req: Request, res: Response) => {
       !maxPrice &&
       Number(page) === 1;
 
+    const cachePayloadForKey = {
+      page: Number(page),
+      limit: Number(limit),
+      category,
+      brand,
+      effectiveSearch,
+      sort,
+      sortBy,
+      sortOrder,
+      minPrice,
+      maxPrice,
+      status,
+    };
+
+    // Cache try (skip only the special fast-path IF you prefer live)
+    if (!(isHomeSort && noExtraFilters) && redis) {
+      const key = makeKey(ver, cachePayloadForKey);
+      try {
+        const hit = await redis.get(key);
+        if (hit) {
+          const parsed = JSON.parse(hit);
+          return res.json(parsed); // served from cache
+        }
+      } catch {}
+    }
+
+    // === Special homesort route ===
     if (isHomeSort && noExtraFilters) {
       const products = await fetchByHomeSort(sort as any, Number(limit), status as any);
-      return res.json({
+      const payload = {
         success: true,
         products: products || [],
         pagination: {
@@ -206,10 +257,16 @@ export const getProducts = async (req: Request, res: Response) => {
           hasMore: false,
           limit: Number(limit),
         },
-      });
+      };
+      // optionally cache homesort too
+      if (redis) {
+        const key = makeKey(ver, { ...cachePayloadForKey, __homesort: true });
+        try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {}
+      }
+      return res.json(payload);
     }
 
-    // Generic listing path (search/category/brand/price/pagination)
+    // === Generic listing path (search/category/brand/price/pagination) ===
     const query: any = { isActive: true, status };
 
     if (category && category !== 'all' && category !== '') {
@@ -252,7 +309,7 @@ export const getProducts = async (req: Request, res: Response) => {
     const totalProducts = await Product.countDocuments(query);
     const totalPages = Math.ceil(totalProducts / Number(limit));
 
-    res.json({
+    const payload = {
       success: true,
       products: products || [],
       pagination: {
@@ -262,7 +319,15 @@ export const getProducts = async (req: Request, res: Response) => {
         hasMore: Number(page) < totalPages,
         limit: Number(limit),
       },
-    });
+    };
+
+    // Store in cache
+    if (redis) {
+      const key = makeKey(ver, cachePayloadForKey);
+      try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {}
+    }
+
+    return res.json(payload);
   } catch (error: any) {
     console.error('❌ Get products error:', error);
     res.status(500).json({
@@ -341,7 +406,7 @@ export const getAllProducts = async (req: AuthRequest, res: Response) => {
 };
 
 // ✅ Debug endpoint
-export const debugProducts = async (req: Request, res: Response) => {
+export const debugProducts = async (_req: Request, res: Response) => {
   try {
     const recent = await Product.find({})
       .select('name isActive status inStock stockQuantity category brand createdAt')
@@ -466,6 +531,13 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
+    // 🔄 Bust product-list caches by bumping namespace version
+    try {
+      const redis = req.app.get('redis') as Redis | undefined;
+      const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
+      if (redis) await redis.incr(nsKey);
+    } catch {}
+
     res.json({ success: true, message: 'Product updated successfully', product });
   } catch (error: any) {
     console.error('❌ Update product error:', error);
@@ -486,6 +558,13 @@ export const deleteProduct = async (req: AuthRequest, res: Response) => {
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
+
+    // 🔄 Bust product-list caches by bumping namespace version
+    try {
+      const redis = req.app.get('redis') as Redis | undefined;
+      const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
+      if (redis) await redis.incr(nsKey);
+    } catch {}
 
     res.json({ success: true, message: 'Product deleted successfully' });
   } catch (error: any) {
@@ -573,6 +652,14 @@ export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
 
     // Keep your existing insert behavior
     const inserted = await Product.insertMany(toInsert, { ordered: false });
+
+    // 🔄 Bust cache after bulk insert
+    try {
+      const redis = req.app.get('redis') as Redis | undefined;
+      const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
+      if (redis) await redis.incr(nsKey);
+    } catch {}
+
     return res.json({ success: true, inserted: inserted.length });
   } catch (err: any) {
     if (err?.writeErrors?.length) {
