@@ -64,6 +64,9 @@ const safeImage = (src?: string | null, w = 400, h = 400) => {
   return `https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=${w}&h=${h}&fit=crop&crop=center&auto=format&q=60`;
 };
 
+
+
+
 /* ------------------------------ Component ------------------------------ */
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -162,20 +165,45 @@ const ProductDetail: React.FC = () => {
 
   const { addToWishlist: addWish, removeFromWishlist: remWish } = { addToWishlist, removeFromWishlist };
 
-  const handleAddToCart = async () => {
-    if (!product || !maxQty) return;
+const handleAddToCart = async () => {
+  const isUserLoggedIn = () => {
     try {
-      const productId: string = (product as any)._id || (product as any).id;
-      if (!productId) { toast.error('Product ID not found'); return; }
-      const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
-      await addToCart(productId, finalQty);
-      toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart!`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to add to cart');
+      const ls = localStorage;
+      const hasToken = ls.getItem('nakoda-token');
+      const hasUser = ls.getItem('nakoda-user');
+      return Boolean(hasToken && hasUser);
+    } catch {
+      return false;
     }
   };
 
+  // 🚫 Block unauthenticated users
+  if (!isUserLoggedIn()) {
+    toast.error('Please log in to add items to your cart');
+    navigate('/login', { state: { from: location } });
+    return;
+  }
+
+  if (!product || !maxQty) return;
+
+  try {
+    const productId: string = (product as any)._id || (product as any).id;
+    if (!productId) {
+      toast.error('Product ID not found');
+      return;
+    }
+    const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
+    await addToCart(productId, finalQty);
+    toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart!`);
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to add to cart');
+  }
+};
+
+
   const handleBuyNow = async () => {
+
+
     if (!product || !maxQty) return;
     try {
       const productId: string = (product as any)._id || (product as any).id;

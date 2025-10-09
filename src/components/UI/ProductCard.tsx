@@ -207,10 +207,23 @@ const ProductCard: React.FC<ProductCardProps> = ({
       window.removeEventListener('storage', onStorage);
     };
   }, [productId]);
-
+    const isUserLoggedIn = () => {
+  try {
+    const ls = localStorage;
+    const hasToken = ls.getItem("nakoda-token");
+    const hasUser = ls.getItem("nakoda-user");
+    return Boolean(hasToken && hasUser);
+  } catch { 
+    return false;
+  }
+};
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+     if (!isUserLoggedIn()) {
+    toast.error('Please login to buy this item');
+    return; // keep it simple: only toast (no redirect)
+  }
     try {
       if (!isValidObjectId(productId)) {
         toast.error('Product ID not found or invalid link');
@@ -226,6 +239,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const handleBuyNow = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+     if (!isUserLoggedIn()) {
+    toast.error('Please login to buy this item');
+    return; // keep it simple: only toast (no redirect)
+  }
     try {
       if (!isValidObjectId(productId)) {
         toast.error('Product ID not found or invalid link');
