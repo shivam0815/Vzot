@@ -199,7 +199,7 @@ const redis = useRedis ? new Redis(redisUrl!, { maxRetriesPerRequest: 2, enableO
 // after: const redis = useRedis ? new Redis(...): null;
 if (redis) {
   app.set('redis', redis);
-  app.set('products_cache_ttl', 60); // 60 seconds cache
+  app.set('products_cache_ttl', 300); // 60 seconds cache
   app.set('products_cache_ns_key', 'products:ver');
   console.log('✅ Redis initialized');
 }
