@@ -1,25 +1,32 @@
 // src/controllers/shipping.controller.ts
 import { Request, Response } from 'express';
+import Razorpay from '../config/razorpay';
 import Order, { IOrder } from '../models/Order';
 import email from '../config/emailService';
-import { phonepePay /*, phonepeStatus*/ } from '../lib/phonepe';
 
 const asNum = (v: any) => (v === '' || v == null ? undefined : Number(v));
-const genMtx = (order: IOrder, suffix = 'SHIP') =>
-  `${suffix}_${order.orderNumber}_${Date.now().toString().slice(-6)}`.toUpperCase();
+const isHttp = (s: any) => typeof s === 'string' && /^https?:\/\//i.test(s);
 
-function extractRedirectUrl(resp: any): string | undefined {
-  return (
-    resp?.data?.data?.instrumentResponse?.redirectInfo?.url ||
-    resp?.data?.instrumentResponse?.redirectInfo?.url ||
-    resp?.data?.redirectUrl ||
-    resp?.redirectUrl
-  );
+function customerFromOrder(order: IOrder) {
+  const ship = (order as any)?.shippingAddress || {};
+  const user  = (order as any)?.userId || {};
+  return {
+    name: ship.fullName || user.name || 'Customer',
+    email: ship.email || user.email || undefined,
+    contact: ship.phoneNumber || undefined,
+  };
 }
 
-/**
- * Admin sets package dims/weight/images and (optionally) creates a PhonePe Shipping Payment Link.
- */
+function ensureRazorpayEnv() {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) {
+    const msg = 'Razorpay keys missing on server';
+    return { ok: false as const, msg };
+  }
+  return { ok: true as const };
+}
+
 export async function setPackageAndMaybeLink(req: Request, res: Response) {
   try {
     const { id } = req.params;
@@ -31,114 +38,174 @@ export async function setPackageAndMaybeLink(req: Request, res: Response) {
     const order = (await Order.findById(id)) as IOrder | null;
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
+    // Save package (safe coercions)
     order.shippingPackage = {
       lengthCm: asNum(lengthCm),
       breadthCm: asNum(breadthCm),
       heightCm: asNum(heightCm),
       weightKg: asNum(weightKg),
       notes,
-      images: Array.isArray(images) ? images.slice(0, 5) : order.shippingPackage?.images || [],
+      images: Array.isArray(images) ? images.filter(isHttp).slice(0, 5) : (order.shippingPackage?.images || []),
       packedAt: new Date(),
     };
 
-    if (createPaymentLink && Number(amount) > 0) {
-      const mtx = genMtx(order); // merchantTransactionId
-
-      // ✅ use phonepePay with correct param names
-      const resp = await phonepePay({
-        merchantTxnId: mtx,
-        amountPaise: Math.round(Number(amount) * 100),
-        redirectUrl: process.env.PHONEPE_REDIRECT_URL!,
-        callbackUrl: process.env.PHONEPE_CALLBACK_URL!,
-        merchantUserId: String(order.userId),
-      });
-
-      const shortUrl = extractRedirectUrl(resp);
-      if (!shortUrl) throw new Error('PhonePe redirect URL missing from response');
-
-      order.shippingPayment = {
-        linkId: mtx,
-        shortUrl,
-        status: 'pending',
-        currency,
-        amount: Number(amount),
-        amountPaid: 0,
-        paymentIds: [],
-      };
-
-      await email.sendShippingPaymentLink(order, {
-        amount: Number(amount),
-        currency,
-        shortUrl,
-        linkId: mtx,
-        lengthCm: asNum(lengthCm),
-        breadthCm: asNum(breadthCm),
-        heightCm: asNum(heightCm),
-        weightKg: asNum(weightKg),
-        notes,
-        images: Array.isArray(images) ? images.slice(0, 5) : undefined,
-      });
+    // If no link requested, persist and return now
+    if (!createPaymentLink) {
+      await order.save();
+      return res.json({ success: true, order });
     }
 
-    await order.save();
-    res.json({ success: true, order });
-  } catch (e: any) {
-    res.status(500).json({ success: false, message: e.message });
-  }
-}
+    // Validate amount
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return res.status(400).json({ success: false, message: 'Amount must be > 0' });
+    }
 
-/** Create/refresh the shipping payment link explicitly (PhonePe) */
-export async function createShippingPaymentLink(req: Request, res: Response) {
-  try {
-    const { id } = req.params;
-    const { amount, currency = 'INR' } = req.body ?? {};
-    if (!(Number(amount) > 0)) return res.status(400).json({ message: 'amount required' });
+    // Validate env
+    const env = ensureRazorpayEnv();
+    if (!env.ok) {
+      // do not throw — return clear error
+      await order.save();
+      return res.status(500).json({ success: false, message: env.msg });
+    }
 
-    const order = (await Order.findById(id)) as IOrder | null;
-    if (!order) return res.status(404).json({ message: 'Order not found' });
+    // Create payment link
+    const customer = customerFromOrder(order);
+    // Optional callback — only if configured & looks like a URL
+    const base = process.env.APP_BASE_URL;
+    const callback_url = base && /^https?:\/\//i.test(base) ? `${base.replace(/\/+$/,'')}/orders/${String(order._id)}` : undefined;
 
-    const mtx = genMtx(order);
-
-    // ✅ FIX import + arg names
-    const resp = await phonepePay({
-      merchantTxnId: mtx,
-      amountPaise: Math.round(Number(amount) * 100),
-      redirectUrl: process.env.PHONEPE_REDIRECT_URL!,
-      callbackUrl: process.env.PHONEPE_CALLBACK_URL!,
-      merchantUserId: String(order.userId),
-    });
-
-    const shortUrl = extractRedirectUrl(resp);
-    if (!shortUrl) throw new Error('PhonePe redirect URL missing from response');
+    let link;
+    try {
+      link = await Razorpay.paymentLink.create({
+        amount: Math.round(amt * 100),
+        currency,
+        accept_partial: false,
+        description: `Shipping charges for order ${order.orderNumber || String(order._id)}`,
+        customer,
+        notify: { sms: true, email: true },
+        notes: { orderId: String(order._id), purpose: 'shipping_payment' },
+        reminder_enable: true,
+        ...(callback_url ? { callback_url, callback_method: 'get' } : {}),
+      });
+    } catch (e: any) {
+      // Surface Razorpay error clearly
+      await order.save();
+      return res.status(502).json({ success: false, message: 'Razorpay error', detail: e?.message || String(e) });
+    }
 
     order.shippingPayment = {
-      linkId: mtx,
-      shortUrl,
+      linkId: link.id,
+      shortUrl: link.short_url,
       status: 'pending',
       currency,
-      amount: Number(amount),
+      amount: amt,
       amountPaid: 0,
       paymentIds: [],
     };
 
     await order.save();
 
-    const pkg = order.shippingPackage || {};
-    await email.sendShippingPaymentLink(order, {
-      amount: Number(amount),
-      currency,
-      shortUrl,
-      linkId: mtx,
-      lengthCm: pkg.lengthCm,
-      breadthCm: pkg.breadthCm,
-      heightCm: pkg.heightCm,
-      weightKg: pkg.weightKg,
-      notes: pkg.notes,
-      images: (pkg.images || []).slice(0, 5),
-    });
+    // Send email/SMS — do NOT fail the API if mailer throws
+    try {
+  // ✅ ALWAYS use what we just saved on the order
+  const photos = (order.shippingPackage?.images || [])
+    .filter(isHttp)
+    .slice(0, 5);
 
-    res.json({ success: true, link: { id: mtx, shortUrl }, orderId: String(order._id) });
+  await email.sendShippingPaymentLink(order, {
+    amount: amt,
+    currency,
+    shortUrl: link.short_url,
+    linkId: link.id,
+    lengthCm: asNum(lengthCm),
+    breadthCm: asNum(breadthCm),
+    heightCm: asNum(heightCm),
+    weightKg: asNum(weightKg),
+    notes,
+    images: photos,          // ⬅️ key change
+  });
+} catch (mailErr: any) {
+  console.warn('[shipping] email.sendShippingPaymentLink failed:', mailErr?.message || mailErr);
+}
+
+    return res.json({ success: true, order });
   } catch (e: any) {
-    res.status(500).json({ success: false, message: e.message });
+    console.error('[shipping] setPackageAndMaybeLink error:', e);
+    return res.status(500).json({ success: false, message: e?.message || 'Internal error' });
+  }
+}
+
+export async function createShippingPaymentLink(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const amt = Number(req.body?.amount);
+    const currency = (req.body?.currency || 'INR') as string;
+
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return res.status(400).json({ success: false, message: 'Amount must be > 0' });
+    }
+
+    const order = (await Order.findById(id)) as IOrder | null;
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    const env = ensureRazorpayEnv();
+    if (!env.ok) return res.status(500).json({ success: false, message: env.msg });
+
+    const customer = customerFromOrder(order);
+    const base = process.env.APP_BASE_URL;
+    const callback_url = base && /^https?:\/\//i.test(base) ? `${base.replace(/\/+$/,'')}/orders/${String(order._id)}` : undefined;
+
+    let link;
+    try {
+      link = await Razorpay.paymentLink.create({
+        amount: Math.round(amt * 100),
+        currency,
+        accept_partial: false,
+        description: `Shipping charges for order ${order.orderNumber || String(order._id)}`,
+        customer,
+        notify: { sms: true, email: true },
+        notes: { orderId: String(order._id), purpose: 'shipping_payment' },
+        reminder_enable: true,
+        ...(callback_url ? { callback_url, callback_method: 'get' } : {}),
+      });
+    } catch (e: any) {
+      return res.status(502).json({ success: false, message: 'Razorpay error', detail: e?.message || String(e) });
+    }
+
+    order.shippingPayment = {
+      linkId: link.id,
+      shortUrl: link.short_url,
+      status: 'pending',
+      currency,
+      amount: amt,
+      amountPaid: 0,
+      paymentIds: [],
+    };
+    await order.save();
+
+    // Non-blocking email
+    try {
+      const pkg = order.shippingPackage || {};
+      await email.sendShippingPaymentLink(order, {
+        amount: amt,
+        currency,
+        shortUrl: link.short_url,
+        linkId: link.id,
+        lengthCm: pkg.lengthCm,
+        breadthCm: pkg.breadthCm,
+        heightCm: pkg.heightCm,
+        weightKg: pkg.weightKg,
+        notes: pkg.notes,
+        images: (pkg.images || []).filter(isHttp).slice(0, 5),
+      });
+    } catch (mailErr: any) {
+      console.warn('[shipping] email.sendShippingPaymentLink failed:', mailErr?.message || mailErr);
+    }
+
+    return res.json({ success: true, link: { id: link.id, shortUrl: link.short_url }, orderId: String(order._id) });
+  } catch (e: any) {
+    console.error('[shipping] createShippingPaymentLink error:', e);
+    return res.status(500).json({ success: false, message: e?.message || 'Internal error' });
   }
 }

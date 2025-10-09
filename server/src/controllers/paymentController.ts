@@ -1,14 +1,13 @@
-// src/controllers/paymentController.ts — PhonePe + COD (GST persisted, with deep debug)
+// src/controllers/paymentController.ts - COMPLETE FIXED VERSION (GST persisted)
 import { Request, Response } from 'express';
+import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
-import axios from 'axios';
 import Order from '../models/Order';
 import Cart from '../models/Cart';
 import Payment from '../models/Payment';
 import { startOfDay, endOfDay } from 'date-fns';
 
-/* -------------------------------- Types -------------------------------- */
 interface AuthenticatedUser {
   id: string;
   role: string;
@@ -18,48 +17,12 @@ interface AuthenticatedUser {
   twoFactorEnabled?: boolean;
 }
 
-/* ------------------------------ Env & Config --------------------------- */
-const ENV = (process.env.PHONEPE_ENV || 'sandbox').toLowerCase();
-const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || '';
-const SALT_KEY = process.env.PHONEPE_SALT_KEY || '';
-const SALT_INDEX = process.env.PHONEPE_SALT_INDEX || '1';
-const BASE_URL =
-  ENV === 'production'
-    ? (process.env.PHONEPE_BASE_URL_PROD || 'https://api.phonepe.com/apis/hermes')
-    : (process.env.PHONEPE_BASE_URL_SANDBOX || 'https://api-preprod.phonepe.com/apis/pg-sandbox');
-
-const REDIRECT_URL = process.env.PHONEPE_REDIRECT_URL || '';
-const CALLBACK_URL = process.env.PHONEPE_CALLBACK_URL || '';
-
-const REQUIRED_FOR_PHONEPE = ['PHONEPE_MERCHANT_ID', 'PHONEPE_SALT_KEY', 'PHONEPE_SALT_INDEX', ENV === 'production' ? 'PHONEPE_BASE_URL_PROD' : 'PHONEPE_BASE_URL_SANDBOX'];
-
-/* ------------------------------ Debug Utils ---------------------------- */
-const sha256Hex = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
-
-// Redact helpers for logs
-const redact = (v?: string) => (v ? v.replace(/.(?=.{4})/g, '•') : v);
-const safeEnvSnapshot = () => ({
-  ENV,
-  BASE_URL,
-  MERCHANT_ID: redact(MERCHANT_ID),
-  SALT_INDEX,
-  REDIRECT_URL,
-  CALLBACK_URL,
-  hasSALT_KEY: !!SALT_KEY,
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID!,
+  key_secret: process.env.RAZORPAY_KEY_SECRET!,
 });
-const logDivider = () => console.log('='.repeat(80));
 
-const xHeaders = (body: object | '', path: string) => {
-  const b64 = body === '' ? '' : Buffer.from(JSON.stringify(body)).toString('base64');
-  const xVerifyRaw = sha256Hex(b64 + path + SALT_KEY);
-  const xVerify = `${xVerifyRaw}###${SALT_INDEX}`;
-  return {
-    'Content-Type': 'application/json',
-    'X-VERIFY': xVerify,
-    'X-MERCHANT-ID': MERCHANT_ID,
-  };
-};
-
+/* ----------------------- GST helpers (same logic as orderController) ----------------------- */
 const cleanGstin = (s?: any) =>
   (s ?? '').toString().toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15);
 
@@ -69,6 +32,7 @@ function buildGstBlock(
   computed: { subtotal: number; tax: number }
 ) {
   const ex = payload?.orderData?.extras ?? payload?.extras ?? {};
+
   const rawGstin =
     ex.gstin ??
     ex.gstNumber ??
@@ -79,6 +43,7 @@ function buildGstBlock(
     payload?.gstin;
 
   const gstin = cleanGstin(rawGstin);
+
   const wantInvoice =
     Boolean(
       ex.wantGSTInvoice ??
@@ -90,14 +55,8 @@ function buildGstBlock(
     ) || !!gstin;
 
   const taxPercent =
-    Number(
-      payload?.pricing?.gstPercent ??
-        payload?.orderData?.pricing?.gstPercent ??
-        payload?.pricing?.taxRate
-    ) ||
-    (computed.subtotal > 0
-      ? Math.round((computed.tax / computed.subtotal) * 100)
-      : 0);
+    Number(payload?.pricing?.gstPercent ?? payload?.orderData?.pricing?.gstPercent ?? payload?.pricing?.taxRate) ||
+    (computed.subtotal > 0 ? Math.round((computed.tax / computed.subtotal) * 100) : 0);
 
   const clientRequestedAt =
     ex.gst?.requestedAt ??
@@ -129,114 +88,75 @@ function buildGstBlock(
     taxAmount: computed.tax || 0,
     requestedAt,
     email:
-      (ex.gst?.email ?? payload?.gst?.email ?? shippingAddress?.email)?.toString().trim() ||
-      undefined,
+      (ex.gst?.email ??
+        payload?.gst?.email ??
+        shippingAddress?.email)?.toString().trim() || undefined,
   };
 }
 
+/* ----------------------- utils ----------------------- */
 const generateOrderNumber = (): string => {
   const ts = Date.now();
   const rnd = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
   return `ORD${ts}${rnd}`;
 };
 
-/* ============================ CREATE ORDER ============================ */
-export const createPaymentOrder = async (
-  req: Request,
-  res: Response
-): Promise<Response | void> => {
-  const { amount, currency = 'INR', paymentMethod, orderData } = req.body;
-  const user = req.user as AuthenticatedUser;
-
-  // ✅ PhonePe env sanity check (place it here)
-  const missing: string[] = [];
-  if (paymentMethod === 'phonepe') {
-    if (!MERCHANT_ID) missing.push('PHONEPE_MERCHANT_ID');
-    if (!SALT_KEY) missing.push('PHONEPE_SALT_KEY');
-    if (!SALT_INDEX) missing.push('PHONEPE_SALT_INDEX');
-    if (!BASE_URL) missing.push(ENV === 'production' ? 'PHONEPE_BASE_URL_PROD' : 'PHONEPE_BASE_URL_SANDBOX');
-    if (!REDIRECT_URL) missing.push('PHONEPE_REDIRECT_URL');
-    if (!CALLBACK_URL) missing.push('PHONEPE_CALLBACK_URL');
-  }
-  if (missing.length) {
-    console.error('❌ Missing PhonePe env:', missing);
-    return res.status(500).json({ success: false, message: 'PhonePe not configured', missing });
-  }
-
+/* ===========================================================================================
+   CREATE PAYMENT ORDER  —  this is where GST must be persisted
+=========================================================================================== */
+export const createPaymentOrder = async (req: Request, res: Response): Promise<void> => {
   try {
     const { amount, currency = 'INR', paymentMethod, orderData } = req.body;
     const user = req.user as AuthenticatedUser;
 
-    if (!user) return void res.status(401).json({ success: false, message: 'User not authenticated' });
-    if (!(Number(amount) > 0)) return void res.status(400).json({ success: false, message: 'Invalid amount' });
-    if (!orderData?.items?.length) return void res.status(400).json({ success: false, message: 'Items required' });
-    if (!orderData.shippingAddress) return void res.status(400).json({ success: false, message: 'Shipping address required' });
-
-    let paymentOrderId = '';
-    let phonepeRedirect: string | undefined;
-
-    if (paymentMethod === 'phonepe') {
-      const orderId = `ORD-${Date.now()}`; // merchantTransactionId
-      const body = {
-        merchantId: MERCHANT_ID,
-        merchantTransactionId: orderId,
-        merchantUserId: String(user.id),
-        amount: Math.round(Number(amount) * 100), // paise
-        redirectUrl: REDIRECT_URL,
-        callbackUrl: CALLBACK_URL,
-        instrumentType: 'PAY_PAGE',
-      };
-      const path = '/checkout/v2/pay';
-      const url = `${BASE_URL}${path}`;
-      const headers = xHeaders(body, path);
-
-      console.log('➡️  PhonePe PAY request:', {
-        url, path, method: 'POST',
-        headers: { ...headers, 'X-VERIFY': redact(headers['X-VERIFY'] as string) },
-        body,
-      });
-
-      const respp = await axios.post(url, body, {
-        headers,
-        timeout: 15000,
-        validateStatus: () => true, // let us inspect non-2xx
-      });
-
-      const { status, statusText, data } = respp;
-      console.log('⬅️  PhonePe PAY response meta:', { status, statusText });
-      console.log('⬅️  PhonePe PAY response body:', JSON.stringify(data, null, 2));
-
-      // Accept success signals
-      const ok =
-        (data && (data.success === true || data.code === 'PAYMENT_INITIATED' || data.code === 'SUCCESS')) ||
-        status === 200;
-
-      if (!ok) {
-        return void res.status(400).json({
-          success: false,
-          source: 'phonepe',
-          phase: 'init',
-          code: data?.code || 'UNKNOWN',
-          message: data?.message || 'PhonePe init failed',
-          data,
-        });
-      }
-
-      paymentOrderId = orderId;
-      phonepeRedirect =
-        data?.data?.instrumentResponse?.redirectInfo?.url ||
-        data?.data?.instrumentResponse?.intentUrl;
-
-      if (!phonepeRedirect) {
-        console.warn('⚠️  PhonePe success but no redirect URL in response. Data:', data);
-      }
-    } else if (paymentMethod === 'cod') {
-      paymentOrderId = `cod_${Date.now().toString().slice(-8)}_${String(user.id).slice(-8)}`;
-    } else {
-      return void res.status(400).json({ success: false, message: 'Invalid payment method. Use phonepe or cod.' });
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      res.status(500).json({ success: false, message: 'Payment gateway configuration error' });
+      return;
+    }
+    if (!user) {
+      res.status(401).json({ success: false, message: 'User not authenticated' });
+      return;
+    }
+    if (!amount || amount <= 0) {
+      res.status(400).json({ success: false, message: 'Invalid amount' });
+      return;
+    }
+    if (!orderData || !orderData.items?.length) {
+      res.status(400).json({ success: false, message: 'Invalid order data - items are required' });
+      return;
+    }
+    if (!orderData.shippingAddress) {
+      res.status(400).json({ success: false, message: 'Shipping address is required' });
+      return;
     }
 
-    // Pricing
+    let paymentOrderId = '';
+
+    if (paymentMethod === 'razorpay') {
+      const shortReceipt = `ord_${Date.now().toString().slice(-8)}_${user.id.slice(-8)}`;
+      if (shortReceipt.length > 40) throw new Error(`Receipt too long (${shortReceipt.length})`);
+
+      const razorpayOrder = await razorpay.orders.create({
+        amount: Math.round(amount * 100),
+        currency,
+        receipt: shortReceipt,
+        notes: {
+          userId: user.id,
+          orderType: 'product_purchase',
+          itemCount: orderData.items.length,
+          customerEmail: user.email || 'unknown',
+          fullTimestamp: Date.now().toString(),
+        },
+      });
+      paymentOrderId = razorpayOrder.id;
+    } else if (paymentMethod === 'cod') {
+      paymentOrderId = `cod_${Date.now().toString().slice(-8)}_${user.id.slice(-8)}`;
+    } else {
+      res.status(400).json({ success: false, message: 'Invalid payment method. Supported: razorpay, cod' });
+      return;
+    }
+
+    // Compute/fallback pricing if frontend didn’t send them
     const fallbackSubtotal =
       typeof orderData.subtotal === 'number'
         ? orderData.subtotal
@@ -246,11 +166,11 @@ export const createPaymentOrder = async (
           );
 
     const subtotal = Math.max(0, Number(fallbackSubtotal));
-    const tax =
-      typeof orderData.tax === 'number' ? Number(orderData.tax) : Math.round(subtotal * 0.18);
+    const tax = typeof orderData.tax === 'number' ? Number(orderData.tax) : Math.round(subtotal * 0.18);
     const shipping = typeof orderData.shipping === 'number' ? Number(orderData.shipping) : 0;
-    const total = typeof orderData.total === 'number' ? Number(orderData.total) : Number(amount);
+    const total = typeof orderData.total === 'number' ? Number(orderData.total) : amount;
 
+    // Build GST from payload
     const gstBlock = buildGstBlock(req.body, orderData.shippingAddress, { subtotal, tax });
 
     const order = new Order({
@@ -261,17 +181,21 @@ export const createPaymentOrder = async (
       billingAddress: orderData.billingAddress || orderData.shippingAddress,
       paymentMethod,
       paymentOrderId,
-      subtotal, tax, shipping, total,
+      subtotal,
+      tax,
+      shipping,
+      total,
       status: 'pending',
       orderStatus: 'pending',
       paymentStatus: paymentMethod === 'cod' ? 'cod_pending' : 'awaiting_payment',
-      gst: gstBlock,
-      customerNotes: (orderData?.extras?.orderNotes || '').toString().trim() || undefined,
-      createdAt: new Date(), updatedAt: new Date(),
+      gst: gstBlock, // ⬅️ PERSIST GST
+      customerNotes:
+        (orderData?.extras?.orderNotes || '').toString().trim() || undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
 
     await order.save();
-    console.log('💾 Order saved:', { _id: order._id, orderNumber: order.orderNumber, paymentOrderId });
 
     res.json({
       success: true,
@@ -281,7 +205,7 @@ export const createPaymentOrder = async (
       amount: total,
       currency,
       paymentMethod,
-      phonepeRedirect,
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
       order: {
         _id: order._id,
         orderNumber: order.orderNumber,
@@ -289,115 +213,89 @@ export const createPaymentOrder = async (
         orderStatus: order.orderStatus,
         paymentStatus: order.paymentStatus,
         items: order.items,
-        gst: order.gst,
+        gst: order.gst, // ⬅️ return for quick verification
       },
     });
   } catch (error: any) {
-    console.error('❌ createPaymentOrder error caught');
-    if (error?.response) {
-      console.error('📡 PhonePe error response:', {
-        status: error.response.status,
-        headers: error.response.headers,
-        data: error.response.data,
-      });
-      return void res.status(400).json({
-        success: false,
-        source: 'phonepe',
-        message: error.response.data?.message || 'PhonePe error',
-        code: error.response.data?.code,
-        data: error.response.data,
-        debug: safeEnvSnapshot(),
-      });
-    }
-    if (error?.request) {
-      console.error('🚫 PhonePe no-response (network/timeout):', { code: error.code, errno: error.errno });
-      return void res.status(502).json({
-        success: false,
-        source: 'network',
-        message: 'Gateway timeout contacting PhonePe',
-        debug: safeEnvSnapshot(),
-      });
-    }
-    console.error('💥 Setup/logic error:', error?.message);
+    console.error('❌ Payment order creation error:', error);
     res.status(500).json({
       success: false,
-      message: error?.message || 'Failed to create payment order',
-      debug: safeEnvSnapshot(),
+      message: error.message || 'Failed to create payment order',
     });
-  } finally {
-    logDivider();
   }
 };
 
-/* ============================ VERIFY PAYMENT =========================== */
-export const verifyPayment = async (req: Request, res: Response) => {
-  logDivider();
-  console.log('▶️  verifyPayment body:', req.body);
-  console.log('🧪 PhonePe env snapshot:', safeEnvSnapshot());
-
+/* ===========================================================================================
+   VERIFY PAYMENT — unchanged logic, kept for completeness
+=========================================================================================== */
+export const verifyPayment = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = req.user as AuthenticatedUser;
-    const { orderId, paymentMethod } = req.body || {};
+    const body = req.body || {};
+    const paymentId = body.paymentId ?? body.razorpay_payment_id;
+    const orderId   = body.orderId   ?? body.razorpay_order_id;
+    const signature = body.signature ?? body.razorpay_signature;
+    const paymentMethod = body.paymentMethod;
 
-    if (!user) return void res.status(401).json({ success: false, message: 'User not authenticated' });
-    if (!orderId || !paymentMethod) return void res.status(400).json({ success: false, message: 'Missing verification data' });
+    if (!user) {
+      res.status(401).json({ success: false, message: 'User not authenticated' });
+      return;
+    }
+    if (!paymentId || !orderId || !paymentMethod) {
+      res.status(400).json({ success: false, message: 'Missing required payment verification data' });
+      return;
+    }
 
     let paymentVerified = false;
-
-    if (paymentMethod === 'phonepe') {
-      const path = `/checkout/v2/order/${orderId}/status`;
-      const url = `${BASE_URL}${path}`;
-      const headers = xHeaders('', path);
-
-      console.log('➡️  PhonePe STATUS request:', {
-        url, path, method: 'GET',
-        headers: { ...headers, 'X-VERIFY': redact(headers['X-VERIFY'] as string) },
-      });
-
-      const respp = await axios.get(url, {
-        headers,
-        timeout: 12000,
-        validateStatus: () => true,
-      });
-
-      const { status, statusText, data } = respp;
-      console.log('⬅️  PhonePe STATUS response meta:', { status, statusText });
-      console.log('⬅️  PhonePe STATUS response body:', JSON.stringify(data, null, 2));
-
-      const st = data?.data?.status;
-      paymentVerified = st === 'SUCCESS';
-
-      if (!paymentVerified) {
-        if (st === 'PENDING') {
-          return void res.json({ success: false, message: 'Payment pending', data });
-        }
-        return void res.status(400).json({ success: false, message: 'Payment not successful', data });
+    if (paymentMethod === 'razorpay') {
+      if (!signature) {
+        res.status(400).json({ success: false, message: 'Payment signature is required for Razorpay' });
+        return;
       }
+      if (!process.env.RAZORPAY_KEY_SECRET) {
+        res.status(500).json({ success: false, message: 'Payment gateway misconfiguration' });
+        return;
+      }
+      const expected = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+      paymentVerified = expected === signature;
     } else if (paymentMethod === 'cod') {
       paymentVerified = true;
     } else {
-      return void res.status(400).json({ success: false, message: 'Invalid payment method for verification' });
+      res.status(400).json({ success: false, message: 'Invalid payment method for verification' });
+      return;
+    }
+
+    if (!paymentVerified) {
+      res.status(400).json({ success: false, message: 'Payment verification failed. Please try again or contact support.' });
+      return;
     }
 
     const order = await Order.findOne({ paymentOrderId: orderId });
-    if (!order) return void res.status(404).json({ success: false, message: 'Order not found' });
+    if (!order) {
+      res.status(404).json({ success: false, message: 'Order not found' });
+      return;
+    }
 
     const same = (v: any) => (v && v.toString ? v.toString() : String(v));
     if (same(order.userId) !== same(user.id)) {
-      return void res.status(403).json({ success: false, message: 'Unauthorized access to order' });
+      res.status(403).json({ success: false, message: 'Unauthorized access to order' });
+      return;
     }
 
-    order.paymentStatus = paymentMethod === 'cod' ? 'cod_pending' : 'paid';
-    order.orderStatus = 'confirmed';
-    order.status = 'confirmed';
-    order.paymentId = order.paymentOrderId;
-    order.paidAt = new Date();
-    order.updatedAt = new Date();
+    order.paymentStatus   = paymentMethod === 'cod' ? 'cod_pending' : 'paid';
+    order.orderStatus     = 'confirmed';
+    order.status          = 'confirmed';
+    order.paymentId       = paymentId;
+    order.paymentSignature= signature;
+    order.paidAt          = new Date();
+    order.updatedAt       = new Date();
     await order.save();
-    console.log('💾 Order marked paid/confirmed:', { _id: order._id, paymentOrderId: order.paymentOrderId });
 
     await Payment.findOneAndUpdate(
-      { transactionId: order.paymentOrderId },
+      { transactionId: paymentId },
       {
         userId: user.id,
         userName: user.name || '',
@@ -405,18 +303,14 @@ export const verifyPayment = async (req: Request, res: Response) => {
         amount: order.total,
         paymentMethod,
         status: 'completed',
-        transactionId: order.paymentOrderId,
+        transactionId: paymentId,
         orderId: order.id.toString(),
         paymentDate: new Date(),
       },
       { upsert: true, new: true }
     );
 
-    try {
-      await Cart.findOneAndDelete({ userId: user.id });
-    } catch (e) {
-      console.warn('🧹 Failed to clear cart (non-fatal):', (e as Error).message);
-    }
+    try { await Cart.findOneAndDelete({ userId: user.id }); } catch {}
 
     const populatedOrder = await Order.findById(order._id).populate('items.productId');
     res.json({
@@ -424,42 +318,34 @@ export const verifyPayment = async (req: Request, res: Response) => {
       message: 'Payment verified and order confirmed! 🎉',
       order: populatedOrder,
       paymentDetails: {
-        paymentId: order.paymentOrderId,
+        paymentId,
         paymentMethod,
         amount: order.total,
         paidAt: order.paidAt,
       },
     });
   } catch (error: any) {
-    if (error?.response) {
-      console.error('📡 verifyPayment PhonePe error:', error.response.data);
-      return void res.status(400).json({
-        success: false,
-        source: 'phonepe',
-        message: error.response.data?.message || 'PhonePe error',
-        code: error.response.data?.code,
-        data: error.response.data,
-      });
-    }
-    console.error('❌ verifyPayment error:', error?.message);
     res.status(500).json({ success: false, error: error?.message || 'Payment verification failed' });
-  } finally {
-    logDivider();
   }
 };
 
-/* ============================ Status / listings ======================== */
+/* ===========================================================================================
+   Status / listings – unchanged
+=========================================================================================== */
 export const getPaymentStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const { orderId } = req.params;
     const user = req.user as AuthenticatedUser;
 
-    if (!user) return void res.status(401).json({ success: false, message: 'User not authenticated' });
-    if (!orderId) return void res.status(400).json({ success: false, message: 'Order ID is required' });
+    if (!user) { res.status(401).json({ success: false, message: 'User not authenticated' }); return; }
+    if (!orderId) { res.status(400).json({ success: false, message: 'Order ID is required' }); return; }
 
     const order = await Order.findById(orderId).populate('items.productId');
-    if (!order) return void res.status(404).json({ success: false, message: 'Order not found' });
-    if (!order.userId.equals(user.id)) return void res.status(403).json({ success: false, message: 'Unauthorized access to order' });
+    if (!order) { res.status(404).json({ success: false, message: 'Order not found' }); return; }
+    if (!order.userId.equals(user.id)) {
+      res.status(403).json({ success: false, message: 'Unauthorized access to order' });
+      return;
+    }
 
     res.json({
       success: true,
@@ -470,7 +356,7 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
         total: order.total,
         paymentMethod: order.paymentMethod,
         createdAt: order.createdAt,
-        paidAt: (order as any).paidAt,
+        paidAt: order.paidAt,
       },
     });
   } catch (error: any) {
@@ -479,37 +365,40 @@ export const getPaymentStatus = async (req: Request, res: Response): Promise<voi
 };
 
 export const generateShortReceipt = (prefix: string, userId: string): string => {
-  const ts = Date.now().toString().slice(-8);
-  const uid = userId.slice(-8);
-  const receipt = `${prefix}_${ts}_${uid}`;
+  const timestamp = Date.now().toString().slice(-8);
+  const userIdShort = userId.slice(-8);
+  const receipt = `${prefix}_${timestamp}_${userIdShort}`;
   if (receipt.length > 40) throw new Error(`Receipt too long: ${receipt.length} chars (max 40)`);
   return receipt;
 };
 
-export const getTodayPaymentsSummary = async (_req: Request, res: Response) => {
+export const getTodayPaymentsSummary = async (req: Request, res: Response) => {
   try {
     const start = startOfDay(new Date());
     const end = endOfDay(new Date());
-    const agg = await Payment.aggregate([
+
+    const payments = await Payment.aggregate([
       { $match: { status: 'completed', paymentDate: { $gte: start, $lte: end } } },
       { $group: { _id: null, totalAmount: { $sum: '$amount' }, count: { $sum: 1 } } },
     ]);
-    const list = await Payment.find({
+
+    const todayList = await Payment.find({
       status: 'completed',
       paymentDate: { $gte: start, $lte: end },
     }).sort({ paymentDate: -1 });
+
     res.json({
       success: true,
-      totalAmount: agg[0]?.totalAmount || 0,
-      count: agg[0]?.count || 0,
-      transactions: list,
+      totalAmount: payments[0]?.totalAmount || 0,
+      count: payments[0]?.count || 0,
+      transactions: todayList,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-export const getAllPayments = async (_req: Request, res: Response) => {
+export const getAllPayments = async (req: Request, res: Response) => {
   try {
     const payments = await Payment.find().sort({ paymentDate: -1 });
     res.json({ success: true, data: payments });

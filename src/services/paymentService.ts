@@ -1,10 +1,10 @@
-// src/services/paymentService.ts - COMPLETE FIXED VERSION (PhonePe + COD)
+// src/services/paymentService.ts - COMPLETE FIXED VERSION
 import api from '../config/api';
 
 export interface PaymentOrderData {
   items: any[];
   shippingAddress: any;
-  billingAddress?: any;
+  billingAddress?: any; // ✅ FIXED: Optional with ?
   subtotal: number;
   tax: number;
   shipping: number;
@@ -15,73 +15,82 @@ export interface PaymentResponse {
   success: boolean;
   orderId: string;
   paymentOrderId: string;
+  clientSecret?: string;
   amount: number;
   currency: string;
-  paymentMethod: 'phonepe' | 'cod';
+  paymentMethod: string;
   order: any;
-
-  // For PhonePe hosted redirect (backend may return any of these keys)
-  phonepeRedirect?: string;
-  redirectUrl?: string;
-  data?: {
-    instrumentResponse?: {
-      redirectInfo?: { url?: string };
-    };
-  };
+  razorpayKeyId?: string; // ✅ ADDED: For Razorpay key from backend
 }
 
 export interface PaymentVerificationData {
   paymentId: string;
   orderId: string;
-  paymentMethod: 'phonepe' | 'cod';
-  signature?: string; // optional for PhonePe/COD
+  signature: string;
+  paymentMethod: string;
 }
 
 export const paymentService = {
+  // ✅ FIXED: Create payment order
   async createPaymentOrder(
     amount: number,
-    paymentMethod: 'phonepe' | 'cod',
+    paymentMethod: 'razorpay' | 'cod', // ✅ REMOVED: stripe (not used)
     orderData: PaymentOrderData
   ): Promise<PaymentResponse> {
-    console.log('📤 Creating payment order:', { amount, paymentMethod, hasOrderData: !!orderData });
+    console.log('📤 Creating payment order:', {
+      amount,
+      paymentMethod,
+      hasOrderData: !!orderData
+    });
 
-    // NOTE: keep your base path as currently wired in your backend.
-    const { data } = await api.post('/payment/create-order', {
+    const response = await api.post('/payment/create-order', {
       amount,
       paymentMethod,
       orderData,
-      currency: 'INR',
+      currency: 'INR'
     });
 
-    return data as PaymentResponse;
+    return response.data;
   },
 
+  // ✅ FIXED: Verify payment - now accepts object parameter
   async verifyPayment(data: PaymentVerificationData) {
     console.log('🔍 Verifying payment:', {
       paymentId: data.paymentId,
       orderId: data.orderId,
       paymentMethod: data.paymentMethod,
-      hasSignature: !!data.signature,
+      hasSignature: !!data.signature
     });
 
-    const resp = await api.post('/payment/verify', data);
-    return resp.data;
+    const response = await api.post('/payment/verify', {
+      paymentId: data.paymentId,
+      orderId: data.orderId,
+      signature: data.signature,
+      paymentMethod: data.paymentMethod
+    });
+
+    return response.data;
   },
 
+  // ✅ FIXED: Get payment status
   async getPaymentStatus(orderId: string) {
     console.log('📊 Getting payment status for order:', orderId);
-    if (!orderId) throw new Error('Order ID is required');
 
-    const resp = await api.get(`/payment/status/${orderId}`);
-    return resp.data;
+    if (!orderId) {
+      throw new Error('Order ID is required');
+    }
+
+    const response = await api.get(`/payment/status/${orderId}`);
+    return response.data;
   },
 
+  // ✅ BONUS: Check order exists
   async checkOrderExists(orderId: string): Promise<boolean> {
     try {
-      const resp = await this.getPaymentStatus(orderId);
-      return resp.success && !!resp.order;
-    } catch {
+      const response = await this.getPaymentStatus(orderId);
+      return response.success && !!response.order;
+    } catch (error) {
       return false;
     }
-  },
+  }
 };
