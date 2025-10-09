@@ -232,17 +232,18 @@ export const getProducts = async (req: Request, res: Response) => {
       status,
     };
 
-    // Cache try (skip only the special fast-path IF you prefer live)
-    if (!(isHomeSort && noExtraFilters) && redis) {
-      const key = makeKey(ver, cachePayloadForKey);
-      try {
-        const hit = await redis.get(key);
-        if (hit) {
-          const parsed = JSON.parse(hit);
-          return res.json(parsed); // served from cache
-        }
-      } catch {}
+if (!(isHomeSort && noExtraFilters) && redis) {
+  const key = makeKey(ver, cachePayloadForKey);
+  try {
+    const hit = await redis.get(key);
+    if (hit) {
+      const parsed = JSON.parse(hit);
+      res.setHeader('X-Cache', 'HIT');
+      return res.json(parsed); // served from cache
     }
+  } catch {}
+}
+
 
     // === Special homesort route ===
     if (isHomeSort && noExtraFilters) {
@@ -259,11 +260,17 @@ export const getProducts = async (req: Request, res: Response) => {
         },
       };
       // optionally cache homesort too
-      if (redis) {
-        const key = makeKey(ver, { ...cachePayloadForKey, __homesort: true });
-        try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {}
-      }
-      return res.json(payload);
+      // Store in cache (MISS path)
+if (redis) {
+  const key = makeKey(ver, cachePayloadForKey);
+  try {
+    await redis.setex(key, ttl, JSON.stringify(payload));
+  } catch {}
+}
+
+res.setHeader('X-Cache', 'MISS');
+return res.json(payload);
+
     }
 
     // === Generic listing path (search/category/brand/price/pagination) ===
