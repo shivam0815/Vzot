@@ -1,4 +1,4 @@
-// src/controllers/productController.ts - COMPLETE VERSION (with tolerant category/brand + minimal metaTitle/metaDescription + CSV handler + Redis caching)
+// src/controllers/productController.ts - COMPLETE VERSION (with fixed caching for home sorts)
 import { Request, Response } from 'express';
 import Papa from 'papaparse';
 import crypto from 'crypto';
@@ -178,7 +178,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// ✅ Get Products (Public - User Facing) — with Redis caching
+// ✅ Get Products (Public - User Facing) — with Redis caching (FIXED for home sorts)
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const {
@@ -232,18 +232,20 @@ export const getProducts = async (req: Request, res: Response) => {
       status,
     };
 
-if (!(isHomeSort && noExtraFilters) && redis) {
-  const key = makeKey(ver, cachePayloadForKey);
-  try {
-    const hit = await redis.get(key);
-    if (hit) {
-      const parsed = JSON.parse(hit);
-      res.setHeader('X-Cache', 'HIT');
-      return res.json(parsed); // served from cache
-    }
-  } catch {}
-}
+    // Build cache key for ALL requests (including home sorts)
+    const key = makeKey(ver, cachePayloadForKey);
 
+    // Check cache FIRST for all requests
+    if (redis) {
+      try {
+        const hit = await redis.get(key);
+        if (hit) {
+          const parsed = JSON.parse(hit);
+          res.setHeader('X-Cache', 'HIT');
+          return res.json(parsed);
+        }
+      } catch {}
+    }
 
     // === Special homesort route ===
     if (isHomeSort && noExtraFilters) {
@@ -259,18 +261,16 @@ if (!(isHomeSort && noExtraFilters) && redis) {
           limit: Number(limit),
         },
       };
-      // optionally cache homesort too
-      // Store in cache (MISS path)
-if (redis) {
-  const key = makeKey(ver, cachePayloadForKey);
-  try {
-    await redis.setex(key, ttl, JSON.stringify(payload));
-  } catch {}
-}
+      
+      // Store in cache
+      if (redis) {
+        try {
+          await redis.setex(key, ttl, JSON.stringify(payload));
+        } catch {}
+      }
 
-res.setHeader('X-Cache', 'MISS');
-return res.json(payload);
-
+      res.setHeader('X-Cache', 'MISS');
+      return res.json(payload);
     }
 
     // === Generic listing path (search/category/brand/price/pagination) ===
@@ -330,10 +330,10 @@ return res.json(payload);
 
     // Store in cache
     if (redis) {
-      const key = makeKey(ver, cachePayloadForKey);
       try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {}
     }
 
+    res.setHeader('X-Cache', 'MISS');
     return res.json(payload);
   } catch (error: any) {
     console.error('❌ Get products error:', error);
