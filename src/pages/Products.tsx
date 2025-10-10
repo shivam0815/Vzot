@@ -1,5 +1,5 @@
 // src/pages/Products.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Grid, List, Search } from 'lucide-react';
@@ -11,6 +11,16 @@ import SEO from '../components/Layout/SEO';
 
 /* helpers */
 const getId = (p: any): string | undefined => p?._id || p?.id;
+
+/* debounce */
+function useDebounce<T>(value: T, delay = 350) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return v;
+}
 
 /* category normalization */
 // slug/aliases -> exact display name
@@ -69,7 +79,8 @@ const Products: React.FC = () => {
     (urlCategorySlug && CATEGORY_ALIAS_TO_NAME[urlCategorySlug]) || '';
 
   /* UI state */
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // raw keystrokes
+  const debouncedSearch = useDebounce(searchInput, 350); // used for fetch+UI
   const [selectedCategory, setSelectedCategory] = useState<string>(normalizedFromUrl);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 20000]);
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'rating'>('name');
@@ -103,6 +114,10 @@ const Products: React.FC = () => {
     'Mobile ICs',
     'Mobile accessories',
   ]);
+
+  /* request control */
+  const reqIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   /* URL -> dropdown */
   useEffect(() => {
@@ -146,15 +161,21 @@ const Products: React.FC = () => {
     };
   }, []);
 
-  /* server fetch with pagination */
+  /* server fetch with pagination + debounce + cancel */
   const fetchProducts = async (forceRefresh = false) => {
+    const myReqId = ++reqIdRef.current;
+
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       setLoading(true);
       setError('');
 
       const filters: any = {};
       if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
-      if (searchTerm) filters.q = searchTerm;
+      if (debouncedSearch) filters.q = debouncedSearch;
       if (sortBy) filters.sort = sortBy;
 
       const params = {
@@ -164,9 +185,12 @@ const Products: React.FC = () => {
         _t: forceRefresh ? Date.now() : undefined,
       };
 
-      const r = await productService.getProducts(params, forceRefresh);
+      const r = await productService.getProducts(params, forceRefresh, {
+        signal: controller.signal,
+      });
 
-      // ---- normalize list ----
+      if (myReqId !== reqIdRef.current) return; // stale
+
       const list =
         (Array.isArray((r as any)?.items) && (r as any).items) ||
         (Array.isArray((r as any)?.data?.items) && (r as any).data.items) ||
@@ -174,7 +198,6 @@ const Products: React.FC = () => {
         (Array.isArray((r as any)?.data) && (r as any).data) ||
         [];
 
-      // ---- normalize total ----
       const t =
         Number((r as any)?.total) ||
         Number((r as any)?.data?.total) ||
@@ -190,12 +213,18 @@ const Products: React.FC = () => {
         sessionStorage.removeItem('force-refresh-products');
         localStorage.removeItem('force-refresh-products');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
       console.error('❌ Error fetching products via service:', err);
       setError('Failed to connect to server. Please try again later.');
-      // optional fallback to unpaged endpoint
       try {
-        const fallback = await api.get('/products', { params: { _t: Date.now() } });
+        const fallback = await api.get('/products', {
+          params: { _t: Date.now() },
+          signal: controller.signal,
+        });
+
+        if (myReqId !== reqIdRef.current) return;
+
         const arr =
           (Array.isArray(fallback?.data?.items) && fallback.data.items) ||
           (Array.isArray(fallback?.data?.products) && fallback.data.products) ||
@@ -209,8 +238,10 @@ const Products: React.FC = () => {
             arr.length
         );
         setError('');
-      } catch (fallbackErr) {
-        console.error('❌ Fallback also failed:', fallbackErr);
+      } catch (fallbackErr: any) {
+        if (fallbackErr?.name !== 'AbortError') {
+          console.error('❌ Fallback also failed:', fallbackErr);
+        }
       }
     } finally {
       localStorage.setItem('last-product-fetch', String(Date.now()));
@@ -221,18 +252,18 @@ const Products: React.FC = () => {
   /* reset to first page when filters change */
   useEffect(() => {
     setPage(1);
-  }, [normalizedCategoryForApi, sortBy, searchTerm]);
+  }, [normalizedCategoryForApi, sortBy, debouncedSearch]);
 
   /* refetch when page or filters change */
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, normalizedCategoryForApi, sortBy, searchTerm]);
+  }, [page, normalizedCategoryForApi, sortBy, debouncedSearch]);
 
   /* client safety net: search/price/isActive + local sort */
   const filteredProducts = useMemo(() => {
     const list = Array.isArray(products) ? products : [];
-    const q = (searchTerm || '').toLowerCase();
+    const q = (debouncedSearch || '').toLowerCase();
 
     const filtered = list
       .filter((p) => {
@@ -265,7 +296,7 @@ const Products: React.FC = () => {
       });
 
     return filtered;
-  }, [products, searchTerm, priceRange, sortBy]);
+  }, [products, debouncedSearch, priceRange, sortBy]);
 
   const handleManualRefresh = () => fetchProducts(true);
 
@@ -334,8 +365,8 @@ const Products: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search products..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -431,7 +462,7 @@ const Products: React.FC = () => {
           <p className="text-gray-600">
             Showing {filteredProducts.length} of {total || products.length} products
             {normalizedCategoryForApi && ` in ${normalizedCategoryForApi}`}
-            {searchTerm && ` · matching "${searchTerm}"`}
+            {debouncedSearch && ` · matching "${debouncedSearch}"`}
           </p>
         </div>
 
@@ -523,7 +554,7 @@ const Products: React.FC = () => {
             <div className="space-x-4">
               <button
                 onClick={() => {
-                  setSearchTerm('');
+                  setSearchInput('');
                   setSelectedCategory('');
                   setPriceRange([0, 20000]);
                 }}
