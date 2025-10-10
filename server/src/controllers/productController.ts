@@ -209,14 +209,12 @@ export const getProducts = async (req: Request, res: Response) => {
 
     // Fast path for homepage sections (no extra filters, first page)
     const effectiveSearch = (q ?? search) || '';
-    const isHomeSort = ['new', 'popular', 'trending'].includes(String(sort || ''));
-    const noExtraFilters =
-      !effectiveSearch &&
-      (!category || category === 'all' || category === '') &&
-      !brand &&
-      !minPrice &&
-      !maxPrice &&
-      Number(page) === 1;
+   const isHomeSort = ['new','popular','trending'].includes(String(sort || '').toLowerCase());
+const noExtraFilters =
+  !effectiveSearch &&
+  (!category || category === 'all' || category === '') &&
+  !brand && !minPrice && !maxPrice;
+
 
     const cachePayloadForKey = {
       page: Number(page),
@@ -248,30 +246,44 @@ export const getProducts = async (req: Request, res: Response) => {
     }
 
     // === Special homesort route ===
-    if (isHomeSort && noExtraFilters) {
-      const products = await fetchByHomeSort(sort as any, Number(limit), status as any);
-      const payload = {
-        success: true,
-        products: products || [],
-        pagination: {
-          currentPage: 1,
-          totalPages: 1,
-          totalProducts: products?.length ?? 0,
-          hasMore: false,
-          limit: Number(limit),
-        },
-      };
-      
-      // Store in cache
-      if (redis) {
-        try {
-          await redis.setex(key, ttl, JSON.stringify(payload));
-        } catch {}
-      }
+  if (isHomeSort && noExtraFilters) {
+  const q: any = { isActive: true, status };
+  const sortObj: any =
+    String(sort).toLowerCase() === 'new'
+      ? { createdAt: -1 }
+      : String(sort).toLowerCase() === 'popular'
+      ? { isPopular: -1 as any, salesCount7d: -1 as any, rating: -1, createdAt: -1 }
+      : { isTrending: -1 as any, salesCount7d: -1 as any, views7d: -1 as any, rating: -1, createdAt: -1 };
 
-      res.setHeader('X-Cache', 'MISS');
-      return res.json(payload);
-    }
+  const [products, totalProducts] = await Promise.all([
+    Product.find(q)
+      .sort(sortObj)
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean(),
+    Product.countDocuments(q),
+  ]);
+  const totalPages = Math.ceil(totalProducts / Number(limit));
+
+  const payload = {
+    success: true,
+    products: products || [],
+    total: totalProducts,                   // ✅ FE reads this
+    pagination: {
+      currentPage: Number(page),
+      totalPages,
+      totalProducts,
+      total: totalProducts,                 // ✅ FE also checks this
+      hasMore: Number(page) < totalPages,
+      limit: Number(limit),
+    },
+  };
+
+  if (redis) { try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {} }
+  res.setHeader('X-Cache', 'MISS');
+  return res.json(payload);
+}
+
 
     // === Generic listing path (search/category/brand/price/pagination) ===
     const query: any = { isActive: true, status };
@@ -303,8 +315,16 @@ export const getProducts = async (req: Request, res: Response) => {
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
-    const sortOptions: any = {};
-    sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    function mapFrontendSort(token?: string): Record<string, 1 | -1> {
+  switch (String(token || '').toLowerCase()) {
+    case 'name':       return { name: 1 };
+    case 'price-low':  return { price: 1 };
+    case 'price-high': return { price: -1 };
+    case 'rating':     return { rating: -1, reviews: -1, createdAt: -1 };
+    default:           return { createdAt: -1 };
+  }
+}
+const sortOptions = mapFrontendSort(sort);
 
     const products = await Product.find(query)
       .sort(sortOptions)
