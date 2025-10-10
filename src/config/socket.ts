@@ -8,7 +8,8 @@ let socket: Socket | null = null;
 let joined = { admin: false, userId: null as string | null };
 
 // Always same-origin (.com in prod)
-const SOCKET_URL = window.location.origin;
+const SOCKET_URL = window.location.origin; // only this
+
 
 const getToken = () =>
   localStorage.getItem('adminToken') ||

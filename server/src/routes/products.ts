@@ -1,12 +1,14 @@
+// src/routes/products.ts - Refactored to use controller for main listing
 import express from 'express';
 import mongoose, { SortOrder } from 'mongoose';
 import Product from '../models/Product';
 import type { Redis } from 'ioredis';
+import * as productController from '../controllers/productController';
 
 const router = express.Router();
 
 /* ------------------------------------------------------------------ */
-/* Utilities                                                          */
+/* Utilities (kept for specialized routes)                           */
 /* ------------------------------------------------------------------ */
 const toNumber = (v: any, d: number) => (v == null || v === '' ? d : Number(v));
 const isNonEmpty = (v: any) => typeof v === 'string' && v.trim() !== '';
@@ -273,7 +275,10 @@ router.get('/:id', async (req, res) => {
 
     if (redis) {
       const cached = await redis.get(cacheKey);
-      if (cached) return res.json({ ...JSON.parse(cached), cached: true });
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        return res.json({ ...JSON.parse(cached), cached: true });
+      }
     }
 
     const product = await Product.findById(id).select('-__v').lean();
@@ -284,6 +289,7 @@ router.get('/:id', async (req, res) => {
     const response = { success: true, message: 'Product details fetched', product, cached: false };
     if (redis) await redis.setex(cacheKey, 120, JSON.stringify(response));
 
+    res.setHeader('X-Cache', 'MISS');
     res.json(response);
   } catch (error: any) {
     console.error('❌ /products/:id error:', error);
@@ -292,93 +298,9 @@ router.get('/:id', async (req, res) => {
 });
 
 /**
- * GET /products (list) — with Redis cache
+ * GET /products (main listing) — NOW USES CONTROLLER WITH VERSIONED CACHE
+ * Handles: category, brand, search, price filters, pagination, home sorts (new/popular/trending)
  */
-router.get('/', async (req, res) => {
-  try {
-    const {
-      category,
-      brand,
-      search,
-      sortBy = 'createdAt',
-      order = 'desc',
-      page = '1',
-      limit,
-      minPrice,
-      maxPrice,
-      excludeId,
-      sortOrder,
-    } = req.query as Record<string, string>;
-
-    const p = Math.max(1, toNumber(page, 1));
-    const MAX_LIMIT = 100;
-    const DEFAULT_LIMIT = 24;
-    const l = Math.min(MAX_LIMIT, Math.max(1, toNumber(limit, DEFAULT_LIMIT)));
-
-    const filter: any = { isActive: true };
-
-    if (isNonEmpty(category) && category !== 'all') filter.category = category;
-    if (isNonEmpty(brand) && brand !== 'all') filter.brand = brand;
-    if (excludeId) filter._id = { $ne: excludeId };
-
-    if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = Number(minPrice);
-      if (maxPrice) filter.price.$lte = Number(maxPrice);
-    }
-
-    if (isNonEmpty(search)) {
-      filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-      ];
-    }
-
-    const effOrder = sortOrder ?? order;
-    const sort = getSort(sortBy, effOrder);
-
-    const redis = req.app.get('redis') as Redis | undefined;
-    const cacheKey = `products:${JSON.stringify(req.query)}`;
-
-    if (redis) {
-      const cached = await redis.get(cacheKey);
-      if (cached) return res.json({ ...JSON.parse(cached), cached: true });
-    }
-
-    const [products, total] = await Promise.all([
-      Product.find(filter)
-        .sort(sort)
-        .skip((p - 1) * l)
-        .limit(l)
-        .select(
-          'name description price stockQuantity category brand images rating reviews inStock isActive specifications createdAt updatedAt'
-        )
-        .lean(),
-      Product.countDocuments(filter),
-    ]);
-
-    const responseData = {
-      success: true,
-      message: 'Products fetched successfully',
-      products,
-      pagination: {
-        page: p,
-        limit: l,
-        total,
-        pages: Math.ceil(total / l),
-        hasMore: p * l < total,
-      },
-      count: products.length,
-      cached: false,
-    };
-
-    if (redis) await redis.setex(cacheKey, 60, JSON.stringify(responseData));
-
-    res.json(responseData);
-  } catch (error: any) {
-    console.error('❌ GET /products error:', error);
-    res.status(500).json({ success: false, message: 'Failed to fetch products', error: error.message });
-  }
-});
+router.get('/', productController.getProducts);
 
 export default router;
