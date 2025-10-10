@@ -129,7 +129,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const sku = getSku(product);
   const color = getColor(product);
   const ports = getPorts(product);
-  const { months: warrantyMonths, type: warrantyType } = getWarranty(product);
+  // const { months: warrantyMonths, type: warrantyType } = getWarranty(product);
 
   // Compare/MRP + discount
   const comparePrice = getComparePrice(product);
@@ -423,7 +423,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </div>
 
           {/* User-visible tech facts (NEVER admin-only) */}
-          {(ports !== undefined || warrantyMonths || warrantyType) && (
+          {/* {(ports !== undefined || warrantyMonths || warrantyType) && (
             <div className="text-xs text-gray-700 mb-3 space-x-2">
               {ports !== undefined && (
                 <span>
@@ -441,7 +441,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 </span>
               )}
             </div>
-          )}
+          )} */}
 
           {/* Actions — strictly two buttons, horizontal */}
           <div className="mt-3 flex items-center gap-2">

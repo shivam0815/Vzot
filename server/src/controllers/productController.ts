@@ -45,14 +45,7 @@ const normSpecs = (value: any): Record<string, any> => {
 // escape for regex
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/**
- * Make a tolerant regex for names:
- * - splits on space / hyphen / underscore
- * - matches those separators interchangeably
- * - case-insensitive
- * - optional trailing 's' to be lenient with plurals
- *   e.g. "Car-Charger" ⇄ "Car Charger(s)" ⇄ "car_charger"
- */
+
 const makeLooseNameRx = (raw: string) => {
   const parts = raw.trim().split(/[\s\-_]+/).filter(Boolean).map(esc);
   if (!parts.length) return undefined;
@@ -60,10 +53,7 @@ const makeLooseNameRx = (raw: string) => {
   return new RegExp(`^${core}s?$`, 'i');
 };
 
-/** Safe home-sort fetcher:
- * - Uses Product.getSortedFor if your model implements it.
- * - Otherwise falls back to reasonable sorts.
- */
+
 async function fetchByHomeSort(
   sort: 'new' | 'popular' | 'trending',
   limit: number,
@@ -620,6 +610,7 @@ type CsvRow = {
   ImageURL?: string;
   Images?: string;        // comma-separated
   StockQuantity?: string;
+  Specifications?: string; // JSON
 
   // NEW (exactly these two)
   MetaTitle?: string;       // <= 60 chars
