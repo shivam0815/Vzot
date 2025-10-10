@@ -1,8 +1,8 @@
+// src/controllers/wishlistController.ts
 import { Request, Response } from 'express';
-import Wishlist from '../models/Wishlist';
+import type { Redis } from 'ioredis';
 import Product from '../models/Product';
 
-// Define the interface locally
 interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
@@ -14,150 +14,107 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+const wishKey = (userId: string) => `wishlist:user:${userId}`;
+
+/* GET /api/wishlist */
 export const getWishlist = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = (req as AuthenticatedRequest).user?.id;
-    if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
-      return;
-    }
+    if (!userId) { res.status(401).json({ message: 'Unauthorized' }); return; }
 
-    const wishlist = await Wishlist.findOne({ userId })
-      .populate('items.productId')
-      .lean();
+    const redis = req.app.get('redis') as Redis | undefined;
+    if (!redis) { res.status(500).json({ message: 'Redis not available' }); return; }
 
-    if (!wishlist) {
-      res.json({ success: true, wishlist: { items: [] } });
-      return;
-    }
+    const ids = await redis.smembers(wishKey(userId)); // string[]
+    if (!ids.length) { res.json({ success: true, wishlist: { items: [] } }); return; }
 
-    // Transform the data structure to match frontend expectations
-    const formattedItems = wishlist.items
-      .filter(item => item.productId)
-      .map(item => ({
-        productId: item.productId._id || item.productId.id,
-        product: item.productId,
-        addedAt: item.addedAt
-      }))
-      .filter(item => item.product && (item.product as any).isActive);
+    const products = await Product.find({ _id: { $in: ids } }).lean();
+    const formattedItems = products
+      .filter((p: any) => p?.isActive)
+      .map((p: any) => ({
+        productId: String(p._id || p.id),
+        product: p,
+        // Redis set has no per-item timestamp; optional: store a parallel hash if needed
+        addedAt: undefined,
+      }));
 
-    res.json({
-      success: true,
-      wishlist: { items: formattedItems }
-    });
+    res.json({ success: true, wishlist: { items: formattedItems } });
   } catch (error) {
     console.error('Get wishlist error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
+/* POST /api/wishlist  { productId } */
 export const addToWishlist = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { productId } = req.body;
     const userId = (req as AuthenticatedRequest).user?.id;
+    const { productId } = req.body || {};
+    if (!userId || !productId) { res.status(400).json({ message: 'User ID and Product ID required' }); return; }
 
-    if (!userId || !productId) {
-      res.status(400).json({ message: 'User ID and Product ID required' });
-      return;
-    }
+    const redis = req.app.get('redis') as Redis | undefined;
+    if (!redis) { res.status(500).json({ message: 'Redis not available' }); return; }
 
     const product = await Product.findById(productId);
-    if (!product || !product.isActive) {
-      res.status(404).json({ message: 'Product not found' });
-      return;
-    }
+    if (!product || !product.isActive) { res.status(404).json({ message: 'Product not found' }); return; }
 
-    let wishlist = await Wishlist.findOne({ userId });
-    if (!wishlist) {
-      wishlist = new Wishlist({ userId, items: [] });
-    }
+    const key = wishKey(userId);
+    const already = await redis.sismember(key, String(productId));
+    if (already) { res.status(409).json({ message: 'Item already in wishlist' }); return; }
 
-    const existingItem = wishlist.items.find(
-      item => item.productId.toString() === productId
-    );
+    await redis.sadd(key, String(productId));
 
-    if (existingItem) {
-      res.status(409).json({ message: 'Item already in wishlist' });
-      return;
-    }
+    // return updated list (optional)
+    const ids = await redis.smembers(key);
+    const products = await Product.find({ _id: { $in: ids } }).lean();
+    const formattedItems = products
+      .filter((p: any) => p?.isActive)
+      .map((p: any) => ({ productId: String(p._id || p.id), product: p, addedAt: undefined }));
 
-    wishlist.items.push({ productId, addedAt: new Date() });
-    await wishlist.save();
-
-    await wishlist.populate('items.productId');
-    
-    const formattedItems = wishlist.items
-      .filter(item => item.productId)
-      .map(item => ({
-        productId: item.productId._id || item.productId.id,
-        product: item.productId,
-        addedAt: item.addedAt
-      }));
-
-    res.status(201).json({
-      success: true,
-      message: 'Added to wishlist',
-      wishlist: { items: formattedItems }
-    });
+    res.status(201).json({ success: true, message: 'Added to wishlist', wishlist: { items: formattedItems } });
   } catch (error) {
     console.error('Add to wishlist error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
+/* DELETE /api/wishlist/:productId */
 export const removeFromWishlist = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { productId } = req.params;
     const userId = (req as AuthenticatedRequest).user?.id;
+    const { productId } = req.params;
+    if (!userId) { res.status(401).json({ message: 'Unauthorized' }); return; }
 
-    const wishlist = await Wishlist.findOne({ userId });
-    if (!wishlist) {
-      res.status(404).json({ message: 'Wishlist not found' });
-      return;
-    }
+    const redis = req.app.get('redis') as Redis | undefined;
+    if (!redis) { res.status(500).json({ message: 'Redis not available' }); return; }
 
-    wishlist.items = wishlist.items.filter(
-      item => item.productId.toString() !== productId
-    );
+    await redis.srem(wishKey(userId), String(productId));
 
-    await wishlist.save();
-    await wishlist.populate('items.productId');
+    // return updated list (optional)
+    const ids = await redis.smembers(wishKey(userId));
+    const products = await Product.find({ _id: { $in: ids } }).lean();
+    const formattedItems = products
+      .filter((p: any) => p?.isActive)
+      .map((p: any) => ({ productId: String(p._id || p.id), product: p, addedAt: undefined }));
 
-    const formattedItems = wishlist.items
-      .filter(item => item.productId)
-      .map(item => ({
-        productId: item.productId._id || item.productId.id,
-        product: item.productId,
-        addedAt: item.addedAt
-      }));
-
-    res.json({
-      success: true,
-      message: 'Removed from wishlist',
-      wishlist: { items: formattedItems }
-    });
+    res.json({ success: true, message: 'Removed from wishlist', wishlist: { items: formattedItems } });
   } catch (error) {
     console.error('Remove from wishlist error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// ✅ ENSURE THIS FUNCTION EXISTS AND IS EXPORTED
+/* DELETE /api/wishlist */
 export const clearWishlist = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = (req as AuthenticatedRequest).user?.id;
-    
-    if (!userId) {
-      res.status(401).json({ message: 'Unauthorized' });
-      return;
-    }
+    if (!userId) { res.status(401).json({ message: 'Unauthorized' }); return; }
 
-    await Wishlist.findOneAndDelete({ userId });
-    
-    res.json({
-      success: true,
-      message: 'Wishlist cleared'
-    });
+    const redis = req.app.get('redis') as Redis | undefined;
+    if (!redis) { res.status(500).json({ message: 'Redis not available' }); return; }
+
+    await redis.del(wishKey(userId));
+    res.json({ success: true, message: 'Wishlist cleared' });
   } catch (error) {
     console.error('Clear wishlist error:', error);
     res.status(500).json({ message: 'Server error' });

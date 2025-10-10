@@ -1,249 +1,143 @@
-// src/controllers/cartController.ts
 import { Request, Response } from "express";
-import mongoose from "mongoose";
-import NodeCache from "node-cache";
-import Cart from "../models/Cart";
+import type { Redis } from "ioredis";
 import Product from "../models/Product";
+import { cartKey } from "../config/redisKeys";
 
-/* ────────────────────────────────────────────────────────────── */
-/* CACHE                                                          */
-/* ────────────────────────────────────────────────────────────── */
-const cartCache = new NodeCache({ stdTTL: 10, checkperiod: 20 }); // cache per user 10s
+interface AuthenticatedUser { id: string; role: string; email?: string; name?: string; }
 
-interface AuthenticatedUser {
-  id: string;
-  role: string;
-  email?: string;
-  name?: string;
-}
-
-/* ────────────────────────────────────────────────────────────── */
-/* GET CART                                                       */
-/* ────────────────────────────────────────────────────────────── */
-export const getCart = async (req: Request, res: Response): Promise<void> => {
+// GET /api/cart
+export const getCart = async (req: Request, res: Response) => {
   try {
     const user = req.user as AuthenticatedUser;
-    if (!user?.id) {
-      res.status(401).json({ message: "Unauthorized: No user id" });
-      return;
-    }
+    if (!user?.id) return res.status(401).json({ message: "Unauthorized: No user id" });
 
-    const cacheKey = `cart:${user.id}`;
-    const cached = cartCache.get(cacheKey);
-    if (cached) {
-      res.json({ cart: cached, cached: true });
-      return;
-    }
+    const redis = req.app.get("redis") as Redis | undefined;
+    if (!redis) return res.status(500).json({ message: "Redis not available" });
 
-    const cart = await Cart.findOne({ userId: user.id }).populate("items.productId");
-    const cartData = cart || { items: [], totalAmount: 0 };
+    const key = cartKey(user.id);
+    const entries = await redis.hgetall(key); // { [productId]: "qty" }
+    const productIds = Object.keys(entries);
+    if (!productIds.length) return res.json({ cart: { items: [], totalAmount: 0 }, cached: false });
 
-    cartCache.set(cacheKey, cartData);
-    res.json({ cart: cartData, cached: false });
-  } catch (error) {
-    console.error("Get cart error:", error);
+    const docs = await Product.find({ _id: { $in: productIds } })
+      .select("name price images stockQuantity isActive inStock")
+      .lean();
+
+    const items = docs.map((p: any) => ({
+      productId: String(p._id),
+      product: p,                           // you were populating earlier
+      quantity: Number(entries[String(p._id)]) || 0,
+      price: p.price,
+    }));
+
+    const totalAmount = items.reduce((s, it) => s + (it.price ?? 0) * it.quantity, 0);
+    res.json({ cart: { items, totalAmount }, cached: false });
+  } catch (e: any) {
+    console.error("Get cart error:", e);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-/* ────────────────────────────────────────────────────────────── */
-/* ADD TO CART (no MOQ / no max per line, only stock cap)        */
-/* ────────────────────────────────────────────────────────────── */
-export const addToCart = async (req: Request, res: Response): Promise<void> => {
+// POST /api/cart  { productId, quantity=1 }  (stock-capped)
+export const addToCart = async (req: Request, res: Response) => {
   try {
-    const { productId, quantity = 1 } = req.body;
+    const { productId, quantity = 1 } = req.body || {};
     const user = req.user as AuthenticatedUser;
+    if (!productId || !user?.id) return res.status(400).json({ message: "Product ID and user required" });
 
-    if (!productId || !user?.id) {
-      res.status(400).json({ message: "Product ID and user authentication required" });
-      return;
-    }
-
-    // Find product
-    let product: any;
-    if (mongoose.Types.ObjectId.isValid(productId)) {
-      product = await Product.findById(productId);
-    } else {
-      const allProducts = await Product.find({ isActive: true }).sort({ createdAt: 1 });
-      const productIndex = parseInt(productId, 10) - 1;
-      if (productIndex >= 0 && productIndex < allProducts.length) {
-        product = allProducts[productIndex];
-      }
-    }
-
-    if (!product || !product.isActive || !product.inStock) {
-      res.status(404).json({ message: "Product not found or unavailable" });
-      return;
-    }
-
-    const stock = Math.max(0, Number(product.stockQuantity ?? 0));
-    if (stock < 1) {
-      res.status(400).json({
-        message: "Insufficient stock",
-        available: stock,
-        requested: Number(quantity) || 1,
-      });
-      return;
-    }
-
-    let cart = await Cart.findOne({ userId: user.id });
-
-    if (!cart) {
-      const desired = Math.max(1, Number(quantity) || 1);
-      const allowed = Math.min(desired, stock);
-      if (allowed < 1) {
-        res.status(400).json({
-          message: "Insufficient stock",
-          available: stock,
-          requested: desired,
-        });
-        return;
-      }
-      cart = new Cart({
-        userId: user.id,
-        items: [{ productId: product._id, quantity: allowed, price: product.price }],
-      });
-    } else {
-      const existingItemIndex = cart.items.findIndex(
-        (item) => item.productId.toString() === product._id.toString()
-      );
-
-      if (existingItemIndex > -1) {
-        const currentQty = Number(cart.items[existingItemIndex].quantity || 0);
-        const desired = currentQty + Math.max(1, Number(quantity) || 1);
-        const allowed = Math.min(desired, stock);
-
-        if (allowed === currentQty) {
-          res.status(400).json({
-            message: "Cannot add more items - insufficient stock",
-            available: stock,
-            currentInCart: currentQty,
-          });
-          return;
-        }
-        cart.items[existingItemIndex].quantity = allowed;
-        cart.items[existingItemIndex].price = product.price;
-      } else {
-        const desired = Math.max(1, Number(quantity) || 1);
-        const allowed = Math.min(desired, stock);
-        if (allowed < 1) {
-          res.status(400).json({
-            message: "Insufficient stock",
-            available: stock,
-            requested: desired,
-          });
-          return;
-        }
-        cart.items.push({ productId: product._id, quantity: allowed, price: product.price });
-      }
-    }
-
-    await cart.save();
-    await cart.populate("items.productId");
-
-    cartCache.del(`cart:${user.id}`); // invalidate cache
-
-    res.status(200).json({ success: true, message: "Item added to cart successfully", cart });
-  } catch (error: any) {
-    console.error("❌ Add to cart error:", error);
-    res.status(500).json({ success: false, message: error.message || "Internal server error" });
-  }
-};
-
-/* ────────────────────────────────────────────────────────────── */
-/* UPDATE CART ITEM (no MOQ / no max, only stock cap)            */
-/* ────────────────────────────────────────────────────────────── */
-export const updateCartItem = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { productId, quantity } = req.body;
-    const user = req.user as AuthenticatedUser;
-
-    const desired = Math.max(1, Number(quantity) || 1);
-
-    const cart = await Cart.findOne({ userId: user?.id });
-    if (!cart) {
-      res.status(404).json({ message: "Cart not found" });
-      return;
-    }
-
-    const itemIndex = cart.items.findIndex(
-      (item) => item.productId.toString() === String(productId)
-    );
-    if (itemIndex === -1) {
-      res.status(404).json({ message: "Item not found in cart" });
-      return;
-    }
+    const redis = req.app.get("redis") as Redis | undefined;
+    if (!redis) return res.status(500).json({ message: "Redis not available" });
 
     const product = await Product.findById(productId);
     if (!product || !product.isActive || !product.inStock) {
-      res.status(404).json({ message: "Product not found or unavailable" });
-      return;
+      return res.status(404).json({ message: "Product not found or unavailable" });
     }
-
     const stock = Math.max(0, Number(product.stockQuantity ?? 0));
-    if (stock < 1) {
-      res.status(400).json({ message: "Insufficient stock" });
-      return;
-    }
+    if (stock < 1) return res.status(400).json({ message: "Insufficient stock", available: 0 });
 
+    const key = cartKey(user.id);
+
+    // current qty in cart
+    const current = Number((await redis.hget(key, String(productId))) || 0);
+    const desired = current + Math.max(1, Number(quantity) || 1);
     const allowed = Math.min(desired, stock);
 
-    cart.items[itemIndex].quantity = allowed;
-    cart.items[itemIndex].price = product.price;
+    if (allowed === current) {
+      return res.status(400).json({
+        message: "Cannot add more items - insufficient stock",
+        available: stock,
+        currentInCart: current,
+      });
+    }
 
-    await cart.save();
-    await cart.populate("items.productId");
-
-    cartCache.del(`cart:${user.id}`); // invalidate cache
-
-    res.json({ message: "Cart updated", cart });
-  } catch (error: any) {
-    console.error("Update cart error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    await redis.hset(key, String(productId), String(allowed));
+    return res.status(200).json({ success: true, message: "Item added to cart successfully" });
+  } catch (e: any) {
+    console.error("❌ Add to cart error:", e);
+    res.status(500).json({ success: false, message: e.message || "Internal server error" });
   }
 };
 
-/* ────────────────────────────────────────────────────────────── */
-/* REMOVE FROM CART                                               */
-/* ────────────────────────────────────────────────────────────── */
-export const removeFromCart = async (req: Request, res: Response): Promise<void> => {
+// PATCH /api/cart  { productId, quantity } (stock-capped)
+export const updateCartItem = async (req: Request, res: Response) => {
+  try {
+    const { productId, quantity } = req.body || {};
+    const user = req.user as AuthenticatedUser;
+    if (!productId || quantity == null) return res.status(400).json({ message: "productId & quantity required" });
+
+    const redis = req.app.get("redis") as Redis | undefined;
+    if (!redis) return res.status(500).json({ message: "Redis not available" });
+
+    const product = await Product.findById(productId);
+    if (!product || !product.isActive || !product.inStock) {
+      return res.status(404).json({ message: "Product not found or unavailable" });
+    }
+
+    const stock = Math.max(0, Number(product.stockQuantity ?? 0));
+    const desired = Math.max(1, Number(quantity) || 1);
+    const allowed = Math.min(desired, stock);
+
+    const key = cartKey(user.id);
+    if (allowed <= 0) await redis.hdel(key, String(productId));
+    else await redis.hset(key, String(productId), String(allowed));
+
+    res.json({ message: "Cart updated" });
+  } catch (e: any) {
+    console.error("Update cart error:", e);
+    res.status(500).json({ message: e.message || "Server error" });
+  }
+};
+
+// DELETE /api/cart/:productId
+export const removeFromCart = async (req: Request, res: Response) => {
   try {
     const { productId } = req.params;
     const user = req.user as AuthenticatedUser;
 
-    const cart = await Cart.findOne({ userId: user?.id });
-    if (!cart) {
-      res.status(404).json({ message: "Cart not found" });
-      return;
-    }
+    const redis = req.app.get("redis") as Redis | undefined;
+    if (!redis) return res.status(500).json({ message: "Redis not available" });
 
-    cart.items = cart.items.filter((item) => item.productId.toString() !== String(productId));
-
-    await cart.save();
-    await cart.populate("items.productId");
-
-    cartCache.del(`cart:${user.id}`); // invalidate cache
-
-    res.json({ message: "Item removed from cart", cart });
-  } catch (error: any) {
-    console.error("Remove from cart error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+    const key = cartKey(user.id);
+    await redis.hdel(key, String(productId));
+    res.json({ message: "Item removed from cart" });
+  } catch (e: any) {
+    console.error("Remove from cart error:", e);
+    res.status(500).json({ message: e.message || "Server error" });
   }
 };
 
-/* ────────────────────────────────────────────────────────────── */
-/* CLEAR CART                                                     */
-/* ────────────────────────────────────────────────────────────── */
-export const clearCart = async (req: Request, res: Response): Promise<void> => {
+// DELETE /api/cart
+export const clearCart = async (req: Request, res: Response) => {
   try {
     const user = req.user as AuthenticatedUser;
-    await Cart.findOneAndDelete({ userId: user?.id });
 
-    cartCache.del(`cart:${user.id}`); // invalidate cache
+    const redis = req.app.get("redis") as Redis | undefined;
+    if (!redis) return res.status(500).json({ message: "Redis not available" });
 
+    await redis.del(cartKey(user.id));
     res.json({ message: "Cart cleared" });
-  } catch (error: any) {
-    console.error("Clear cart error:", error);
-    res.status(500).json({ message: error.message || "Server error" });
+  } catch (e: any) {
+    console.error("Clear cart error:", e);
+    res.status(500).json({ message: e.message || "Server error" });
   }
 };
