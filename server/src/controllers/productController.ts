@@ -211,12 +211,12 @@ export const getProducts = async (req: Request, res: Response) => {
     const effectiveSearch = (q ?? search) || '';
     const isHomeSort = ['new', 'popular', 'trending'].includes(String(sort || ''));
     const noExtraFilters =
-      !effectiveSearch &&
-      (!category || category === 'all' || category === '') &&
-      !brand &&
-      !minPrice &&
-      !maxPrice &&
-      Number(page) === 1;
+  !effectiveSearch &&
+  (!category || category === 'all' || category === '') &&
+  !brand &&
+  !minPrice &&
+  !maxPrice;
+  
 
     const cachePayloadForKey = {
       page: Number(page),
@@ -248,30 +248,48 @@ export const getProducts = async (req: Request, res: Response) => {
     }
 
     // === Special homesort route ===
-    if (isHomeSort && noExtraFilters) {
-      const products = await fetchByHomeSort(sort as any, Number(limit), status as any);
-      const payload = {
-        success: true,
-        products: products || [],
-        pagination: {
-          currentPage: 1,
-          totalPages: 1,
-          totalProducts: products?.length ?? 0,
-          hasMore: false,
-          limit: Number(limit),
-        },
-      };
-      
-      // Store in cache
-      if (redis) {
-        try {
-          await redis.setex(key, ttl, JSON.stringify(payload));
-        } catch {}
-      }
+  // === Special homesort route (paginated) ===
+if (isHomeSort && noExtraFilters) {
+  const q: any = { isActive: true, status };
+  const sortObj: any =
+    sort === 'new'
+      ? { createdAt: -1 }
+      : sort === 'popular'
+      ? { isPopular: -1 as any, salesCount7d: -1 as any, rating: -1, createdAt: -1 }
+      : { isTrending: -1 as any, salesCount7d: -1 as any, views7d: -1 as any, rating: -1, createdAt: -1 };
 
-      res.setHeader('X-Cache', 'MISS');
-      return res.json(payload);
-    }
+  const [products, totalProducts] = await Promise.all([
+    Product.find(q)
+      .sort(sortObj)
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean(),
+    Product.countDocuments(q),
+  ]);
+
+  const totalPages = Math.ceil(totalProducts / Number(limit));
+
+  const payload = {
+    success: true,
+    products: products || [],
+    pagination: {
+      currentPage: Number(page),
+      totalPages,
+      totalProducts,
+      hasMore: Number(page) < totalPages,
+      limit: Number(limit),
+    },
+  };
+
+  if (redis) {
+    const key = makeKey(ver, cachePayloadForKey);
+    try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {}
+  }
+
+  res.setHeader('X-Cache', 'MISS');
+  return res.json(payload);
+}
+
 
     // === Generic listing path (search/category/brand/price/pagination) ===
     const query: any = { isActive: true, status };
