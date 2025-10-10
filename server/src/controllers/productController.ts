@@ -336,17 +336,21 @@ const sortOptions = mapFrontendSort(sort);
     const totalProducts = await Product.countDocuments(query);
     const totalPages = Math.ceil(totalProducts / Number(limit));
 
-    const payload = {
-      success: true,
-      products: products || [],
-      pagination: {
-        currentPage: Number(page),
-        totalPages,
-        totalProducts,
-        hasMore: Number(page) < totalPages,
-        limit: Number(limit),
-      },
-    };
+   // after computing totalProducts & totalPages
+const payload = {
+  success: true,
+  products: products || [],
+  total: totalProducts,              // <-- add
+  pagination: {
+    currentPage: Number(page),
+    totalPages,
+    totalProducts,
+    total: totalProducts,            // <-- add
+    hasMore: Number(page) < totalPages,
+    limit: Number(limit),
+  },
+};
+
 
     // Store in cache
     if (redis) {
