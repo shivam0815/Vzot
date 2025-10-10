@@ -7,13 +7,8 @@ let socket: Socket | null = null;
 // track what we've joined in THIS app session
 let joined = { admin: false, userId: null as string | null };
 
-const rawUrl =
-  import.meta.env.VITE_SOCKET_URL ||
-  import.meta.env.VITE_API_URL ||
-  window.location.origin;
-
-// Ensure origin (strip trailing /api if VITE_API_URL points at REST base)
-const SOCKET_URL = rawUrl.replace(/\/api\/?$/, '');
+// Always same-origin (.com in prod)
+const SOCKET_URL = window.location.origin;
 
 const getToken = () =>
   localStorage.getItem('adminToken') ||
@@ -26,14 +21,18 @@ export function getSocket(): Socket {
   socket = io(SOCKET_URL, {
     path: '/socket.io',
     withCredentials: true,
-    transports: ['websocket', 'polling'], // keep polling fallback
+    transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 8000,
     timeout: 15000,
-    // refresh auth on every (re)connect
-    auth: cb => cb({ token: getToken() }),
+    auth: { token: getToken() },
+  });
+
+  // refresh token before each reconnect attempt
+  socket.on('reconnect_attempt', () => {
+    (socket as any).auth = { token: getToken() };
   });
 
   if (import.meta.env.DEV) {
@@ -65,14 +64,12 @@ function joinOnConnect(payload: JoinPayload) {
     // ADMIN
     if (payload.role === 'admin' && !joined.admin) {
       s.emit('join', { role: 'admin' } as JoinPayload);
-      // DO NOT call legacy 'join-admin' too — it duplicates the server-side join
       joined.admin = true;
       if (import.meta.env.DEV) console.log('👑 [socket] joined admin room once');
     }
 
     // USER
     if (payload.userId && joined.userId !== payload.userId) {
-      // switching rooms if different user
       s.emit('join', { userId: payload.userId } as JoinPayload);
       joined.userId = payload.userId;
       if (import.meta.env.DEV) console.log('👤 [socket] joined user room:', payload.userId);
@@ -82,7 +79,6 @@ function joinOnConnect(payload: JoinPayload) {
   if (s.connected) {
     doJoin();
   } else {
-    // fire once when connection happens
     const handler = () => {
       s.off('connect', handler);
       doJoin();
@@ -106,5 +102,5 @@ export function closeSocket(): void {
     socket.disconnect();
     socket = null;
   }
-  joined = { admin: false, userId: null }; // reset session flags
+  joined = { admin: false, userId: null };
 }
