@@ -31,7 +31,6 @@ import wishlistRoutes from './routes/wishlistRoutes';
 import newsletterRoutes from './routes/newsletter.routes';
 import contactRoutes from './routes/contact.routes';
 import blogRoutes from './routes/blog.routes';
-// import reviewsRouter from './routes/review';
 import helpRoutes from './routes/helpRoutes';
 import supportRouter from './routes/support.routes';
 import notificationRoutes from './routes/notification.routes';

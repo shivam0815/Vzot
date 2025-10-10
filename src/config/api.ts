@@ -15,7 +15,7 @@ const API_BASE_URL = norm(import.meta.env.VITE_API_URL) || "/api";
 const api = axios.create({
   baseURL: API_BASE_URL, // e.g. "https://nakodamobile.com/api" or "/api"
   withCredentials: true,
-  timeout: 20000,
+  timeout: 30000,
 });
 
 // Small helper in case you ever want to set token after login without reload
