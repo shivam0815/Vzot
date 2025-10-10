@@ -31,12 +31,10 @@ export interface ProductFilters {
   excludeId?: string;
 }
 
-type RequestOpts = { signal?: AbortSignal };
-
 /* ─────────────────────────── Constants ─────────────────────────── */
-const DEFAULT_LIMIT = 24;
-const MAX_LIMIT = 100;
-const MC_TTL = 15_000;
+const DEFAULT_LIMIT = 24;   // pagination default
+const MAX_LIMIT = 100;      // safety cap
+const MC_TTL = 15_000;      // in-memory TTL
 
 /* ─────────────────────────── Utilities ─────────────────────────── */
 const coerceNumber = (v: any): number | undefined => {
@@ -53,9 +51,9 @@ const extractUrlLike = (x: any): string => {
       x.secure_url ||
       x.url ||
       x.path ||
-      x.location ||
-      x.Location ||
-      x.key ||
+      x.location || // some S3 libs
+      x.Location || // AWS SDK v2 putObject response
+      x.key ||      // if a raw key leaks through
       ''
     );
   }
@@ -150,6 +148,7 @@ function normalizeProduct(p: any): Product {
 }
 
 function normalizeProductsResponse(data: any): ProductsResponse {
+  // Accept common shapes
   const rawArray =
     (Array.isArray(data?.products) && data.products) ||
     (Array.isArray(data?.data) && data.data) ||
@@ -225,6 +224,7 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
 const normalizeFiltersForApi = (f: ProductFilters = {}): ProductFilters => {
   const out: ProductFilters = { ...f };
 
+  // allow q alias
   const anyF = f as any;
   if (anyF.q && !out.search) out.search = anyF.q;
   delete (out as any).q;
@@ -256,11 +256,7 @@ const keyOf = (path: string, params?: Record<string, any>) =>
 /* ─────────────────────────── Service ─────────────────────────── */
 export const productService = {
   /* Core paginated getter */
-  async getProducts(
-    filters: ProductFilters = {},
-    forceRefresh = false,
-    opts?: RequestOpts
-  ): Promise<ProductsResponse> {
+  async getProducts(filters: ProductFilters = {}, forceRefresh = false): Promise<ProductsResponse> {
     try {
       const nf = normalizeFiltersForApi(filters);
 
@@ -268,8 +264,6 @@ export const productService = {
       const params: Record<string, any> = {
         page: nf.page ?? 1,
         ...nf,
-        // include BOTH "search" and "q" to satisfy any backend
-        ...(nf.search ? { q: nf.search, search: nf.search } : {}),
         limit: Math.min(MAX_LIMIT, Number(nf.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT),
         ...(forceRefresh ? { _t: Date.now() } : {}),
       };
@@ -282,19 +276,14 @@ export const productService = {
         if (hit && Date.now() - hit.ts < MC_TTL) return hit.data;
       }
 
-      const response = await api.get('/products', { params, signal: opts?.signal });
+      const response = await api.get('/products', { params });
       const normalized = normalizeProductsResponse(response.data);
 
       memCache.set(urlKey, { data: normalized, ts: Date.now() });
-      localStorage.setItem(
-        'products-cache',
-        JSON.stringify({ data: normalized, timestamp: Date.now() })
-      );
+      localStorage.setItem('products-cache', JSON.stringify({ data: normalized, timestamp: Date.now() }));
 
       return normalized;
     } catch (error) {
-      // bubble AbortError to caller to ignore gracefully
-      if ((error as any)?.name === 'AbortError') throw error;
       console.error('❌ Failed to fetch products:', error);
       const cached = this.getCachedProducts();
       if (cached) return cached;
@@ -303,8 +292,8 @@ export const productService = {
   },
 
   /* Convenience list returning only array */
-  async list(filters: ProductFilters = {}, limit = filters.limit ?? DEFAULT_LIMIT, opts?: RequestOpts): Promise<Product[]> {
-    const res = await this.getProducts({ ...filters, limit }, false, opts);
+  async list(filters: ProductFilters = {}, limit = filters.limit ?? DEFAULT_LIMIT): Promise<Product[]> {
+    const res = await this.getProducts({ ...filters, limit });
     const items = res.products.filter((p) => {
       const pid = (p as any)._id || (p as any).id;
       return !filters.excludeId || pid !== filters.excludeId;
@@ -314,10 +303,13 @@ export const productService = {
 
   async getRelatedProducts(id: string, limit = 12): Promise<Product[]> {
     try {
+      // Primary endpoint
       const r1 = await api.get(`/products/${id}/related`, { params: { limit } });
       const list1 = (Array.isArray(r1?.data?.products) ? r1.data.products : r1?.data) || [];
       if (list1.length) return list1.map(normalizeProduct);
     } catch {}
+
+    // Fallback: by category
     try {
       const { product } = await this.getProduct(id);
       const byCat = await this.list(
@@ -326,6 +318,8 @@ export const productService = {
       );
       if (byCat.length) return byCat.slice(0, limit);
     } catch {}
+
+    // Last resort: trending
     return this.getTrending(limit);
   },
 
@@ -335,6 +329,7 @@ export const productService = {
       const arr = (Array.isArray(r?.data?.products) ? r.data.products : r?.data) || [];
       if (arr.length) return arr.map(normalizeProduct);
     } catch {}
+    // Fallback via generic list with sortBy=trending
     const list = await this.list({ sortBy: 'trending', sortOrder: 'desc' }, limit);
     return list.slice(0, limit);
   },
@@ -344,8 +339,8 @@ export const productService = {
     return items.slice(0, limit);
   },
 
-  async search(query: string, filters: Omit<ProductFilters, 'search'> = {}, limit = 20, opts?: RequestOpts): Promise<Product[]> {
-    const items = await this.list({ ...filters, search: query }, limit, opts);
+  async search(query: string, filters: Omit<ProductFilters, 'search'> = {}, limit = 20): Promise<Product[]> {
+    const items = await this.list({ ...filters, search: query }, limit);
     return items.slice(0, limit);
   },
 
