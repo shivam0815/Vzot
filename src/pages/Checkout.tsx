@@ -73,7 +73,7 @@ const BASE_SHIPPING_FEE = 150;
 const COD_FEE = 25;
 const GIFT_WRAP_FEE = 0;
 
-const FIRST_ORDER_CAP = 300;
+
 
 const ONLINE_FEE_RATE = 0.02;
 const ONLINE_FEE_GST_RATE = 0.18;
@@ -123,54 +123,16 @@ const CheckoutPage: React.FC = () => {
 
   const firstOrderDiscount = useMemo(() => {
     if (!isFirstOrderCandidate || rawSubtotal <= 0) return 0;
-    const natural = Math.min(Math.round(rawSubtotal * 0.18), FIRST_ORDER_CAP);
+    const natural = Math.min(Math.round(rawSubtotal * 0.18),);
     if (appliedCoupon && appliedCoupon.amount > 0) {
       return appliedCoupon.amount >= natural ? 0 : natural;
     }
     return natural;
   }, [isFirstOrderCandidate, rawSubtotal, appliedCoupon]);
 
-  const evalCoupon = (code: string, subtotal: number): CouponResult | null => {
-    const c = code.trim().toUpperCase();
-    if (!c) return null;
+  
 
-    switch (c) {
-      case 'WELCOME10': {
-        if (!isFirstOrderCandidate) throw new Error('WELCOME10 is only valid on your first order');
-        const amt = Math.min(Math.round(subtotal * 0.1), 300);
-        return { code: c, amount: amt, message: '10% off (up to ₹300) for your first order' };
-      }
-      case 'SAVE50': {
-        if (subtotal < 499) throw new Error('SAVE50 requires minimum order of ₹499');
-        return { code: c, amount: 50, message: '₹50 off' };
-      }
-      case 'FREESHIP': {
-        return { code: c, amount: 0, freeShipping: true, message: 'Free shipping applied' };
-      }
-      case 'NKD150': {
-        if (subtotal < 1499) throw new Error('NKD150 requires minimum order of ₹1,499');
-        return { code: c, amount: 150, message: '₹150 off' };
-      }
-      default:
-        throw new Error('Invalid or unsupported coupon code');
-    }
-  };
-
-  const onApplyCoupon = () => {
-    try {
-      const res = evalCoupon(couponInput, rawSubtotal);
-      if (!res) {
-        setAppliedCoupon(null);
-        toast('Coupon cleared');
-        return;
-      }
-      setAppliedCoupon(res);
-      toast.success(res.message);
-    } catch (e: any) {
-      setAppliedCoupon(null);
-      toast.error(e.message || 'Coupon not applicable');
-    }
-  };
+  
 
   const couponDiscount = appliedCoupon?.amount || 0;
   const monetaryDiscount = Math.max(couponDiscount, firstOrderDiscount);
