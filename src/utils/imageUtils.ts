@@ -1,11 +1,10 @@
-// src/utils/imageUtils.ts — Cloudinary + S3 aware (handles spaces/+ in keys)
+// src/utils/imageUtils.ts — Cloudinary + S3 aware
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 const S3_PUBLIC_BASE = (import.meta.env.VITE_S3_PUBLIC_BASE || '').replace(/\/+$/, '');
 const VARIANT_STYLE = (import.meta.env.VITE_IMG_VARIANT_STYLE || 'resized_dir') as 'resized_dir' | 'none';
 
 const isHttp = (s: string) => /^https?:\/\//i.test(s);
-
 export const isCloudinaryUrl = (url: string): boolean =>
   !!url && (/cloudinary\.com/.test(url) || /res\.cloudinary\.com/.test(url));
 
@@ -14,9 +13,6 @@ export const isS3Url = (url: string): boolean => {
   if (S3_PUBLIC_BASE && url.startsWith(S3_PUBLIC_BASE + '/')) return true;
   return /\.s3\.[^/]+\.amazonaws\.com\//.test(url);
 };
-
-// encode each path segment so spaces and '+' work
-const encodePath = (p: string) => p.split('/').map(encodeURIComponent).join('/');
 
 // Convert absolute public URL → object key (best-effort)
 const toKey = (src: string): string => {
@@ -30,10 +26,9 @@ const toKey = (src: string): string => {
 const toPublicUrl = (keyOrUrl: string): string => {
   if (!keyOrUrl) return '';
   if (isHttp(keyOrUrl)) return keyOrUrl;
-  const key = keyOrUrl.replace(/^\/+/, '');
-  const encoded = encodePath(key);
-  const base = S3_PUBLIC_BASE || `${API_BASE_URL}/uploads`;
-  return `${base}/${encoded}`;
+  if (S3_PUBLIC_BASE) return `${S3_PUBLIC_BASE}/${keyOrUrl.replace(/^\/+/, '')}`;
+  // Fallback to API for local uploads if S3 base absent
+  return `${API_BASE_URL}/uploads/${keyOrUrl.replace(/^\/+/, '')}`;
 };
 
 /**
@@ -45,38 +40,34 @@ const toPublicUrl = (keyOrUrl: string): string => {
 export const resolveImageUrl = (imagePath: string | undefined | null): string | undefined => {
   if (!imagePath || typeof imagePath !== 'string' || imagePath.trim() === '') return undefined;
 
-  if (isHttp(imagePath)) {
-    try {
-      const u = new URL(imagePath);
-      u.pathname = encodePath(u.pathname);
-      return u.toString();
-    } catch {
-      // fallback simple replace if URL() fails
-      return imagePath.replace(/ /g, '%20').replace(/\+/g, '%2B');
-    }
-  }
+  if (isHttp(imagePath)) return imagePath;
 
-  if (imagePath.startsWith('/uploads/')) return `${API_BASE_URL}${encodePath(imagePath)}`;
-  if (imagePath.startsWith('/')) return `${API_BASE_URL}${encodePath(imagePath)}`;
+  if (imagePath.startsWith('/uploads/')) return `${API_BASE_URL}${imagePath}`;
+
+  if (imagePath.startsWith('/')) return `${API_BASE_URL}${imagePath}`;
 
   // treat as S3 key or local filename
   return toPublicUrl(imagePath);
 };
 
-/** Return first valid image URL from list or CSV string */
+/** Return first valid image URL from list */
 export const getFirstImageUrl = (images: any): string | undefined => {
   if (!images) return;
 
+  // string[] case
   if (Array.isArray(images)) {
+    // try first non-empty string
     const s = images.find((x) => typeof x === 'string' && x);
     if (s) return resolveImageUrl(s)!;
 
+    // try object items {url|secure_url|path}
     const o = images.find((x) => x && (x.url || x.secure_url || x.path));
     if (o) return resolveImageUrl(o.url || o.secure_url || o.path)!;
 
     return;
   }
 
+  // CSV string case
   if (typeof images === 'string') {
     const tok = images.split(/[,|\s]+/).find(Boolean);
     if (tok) return resolveImageUrl(tok)!;
@@ -85,10 +76,12 @@ export const getFirstImageUrl = (images: any): string | undefined => {
   return;
 };
 
+
 /** Basic Cloudinary transform injector */
 const cloudinaryTransform = (url: string, width: number, height: number) => {
   const trans = `w_${Math.max(1, Math.floor(width))},h_${Math.max(1, Math.floor(height))},c_fill`;
   if (url.includes('/image/upload/')) {
+    // already has transform?
     return url.replace(/(\/image\/upload\/)([^/]+\/)?/, `$1${trans}/`);
   }
   return url;
@@ -116,9 +109,12 @@ const s3VariantUrl = (src: string, width: number) => {
 export const getOptimizedImageUrl = (urlOrKey: string, width: number, height: number): string => {
   if (!urlOrKey) return '';
 
+  // Cloudinary path
   if (isCloudinaryUrl(urlOrKey)) return cloudinaryTransform(urlOrKey, width, height);
 
+  // S3/CDN path
   if (VARIANT_STYLE === 'resized_dir') return s3VariantUrl(urlOrKey, width);
 
+  // No variants: return original resolved
   return resolveImageUrl(urlOrKey) || '';
 };
