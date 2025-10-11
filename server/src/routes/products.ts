@@ -17,7 +17,13 @@ const isNonEmpty = (v: any) => typeof v === 'string' && v.trim() !== '';
 const sortMap: Record<string, Record<string, SortOrder>> = {
   createdAt: { createdAt: -1 },
   price: { price: 1 },
-  rating: { rating: -1, reviews: -1 },
+  rating: {
+    averageRating: -1,
+    rating: -1,
+    reviewsCount: -1,
+    reviewCount: -1,
+    reviews: -1,
+  },
   trending: { trendingScore: -1, updatedAt: -1, createdAt: -1 },
 };
 
@@ -36,6 +42,12 @@ function getSort(
   }
   return { createdAt: -1 };
 }
+
+/* Common projection inc. rating aliases */
+const LIST_FIELDS =
+  'name description price stockQuantity category brand images ' +
+  'rating averageRating reviews reviewsCount ratingsCount reviewCount ' +
+  'inStock isActive specifications createdAt updatedAt';
 
 /* ------------------------------------------------------------------ */
 /* Routes                                                             */
@@ -64,12 +76,7 @@ router.get('/search', async (req, res) => {
     if (minPrice) filter.price = { ...(filter.price || {}), $gte: Number(minPrice) };
     if (maxPrice) filter.price = { ...(filter.price || {}), $lte: Number(maxPrice) };
 
-    const products = await Product.find(filter)
-      .sort({ createdAt: -1 })
-      .select(
-        'name description price stockQuantity category brand images rating reviews inStock isActive specifications createdAt updatedAt'
-      )
-      .lean();
+    const products = await Product.find(filter).sort({ createdAt: -1 }).select(LIST_FIELDS).lean();
 
     res.json({
       success: true,
@@ -129,8 +136,8 @@ router.get('/trending', async (req, res) => {
       { $match: { isActive: true } },
       {
         $addFields: {
-          _rating: { $ifNull: ['$rating', 0] },
-          _reviews: { $ifNull: ['$reviews', 0] },
+          _rating: { $ifNull: ['$averageRating', { $ifNull: ['$rating', 0] }] },
+          _reviews: { $ifNull: ['$reviewsCount', { $ifNull: ['$reviews', 0] }] },
           _recent: { $cond: [{ $gte: ['$updatedAt', thirtyDaysAgo] }, 1, 0] },
         },
       },
@@ -153,7 +160,10 @@ router.get('/trending', async (req, res) => {
           brand: 1,
           images: 1,
           rating: 1,
+          averageRating: 1,
           reviews: 1,
+          reviewsCount: 1,
+          reviewCount: 1,
           inStock: 1,
           isActive: 1,
           specifications: 1,
@@ -180,14 +190,14 @@ router.get('/brand/:brand', async (req, res) => {
     const { limit = '12', excludeId } = req.query as Record<string, string>;
 
     const filter: any = { brand, isActive: true };
-    if (excludeId) filter._id = { $ne: excludeId };
+    if (excludeId && mongoose.isValidObjectId(excludeId)) {
+      filter._id = { $ne: new mongoose.Types.ObjectId(excludeId) };
+    }
 
     const products = await Product.find(filter)
       .sort({ createdAt: -1 })
       .limit(Math.min(1000, Math.max(1, Number(limit) || 12)))
-      .select(
-        'name description price stockQuantity category brand images rating reviews inStock isActive specifications createdAt updatedAt'
-      )
+      .select(LIST_FIELDS)
       .lean();
 
     res.json({ success: true, message: `Products in brand ${brand}`, products, count: products.length });
@@ -206,9 +216,7 @@ router.get('/category/:category', async (req, res) => {
 
     const products = await Product.find({ category, isActive: true })
       .sort({ createdAt: -1 })
-      .select(
-        'name description price stockQuantity category brand images rating reviews inStock isActive specifications createdAt updatedAt'
-      )
+      .select(LIST_FIELDS)
       .lean();
 
     res.json({
@@ -240,7 +248,7 @@ router.get('/:id/related', async (req, res) => {
     if (!base) return res.status(404).json({ success: false, message: 'Base product not found' });
 
     const filter: any = {
-      _id: { $ne: id },
+      _id: { $ne: new mongoose.Types.ObjectId(id) },
       isActive: true,
       $or: [{ category: base.category }, { brand: base.brand }],
     };
@@ -248,9 +256,7 @@ router.get('/:id/related', async (req, res) => {
     const products = await Product.find(filter)
       .sort({ updatedAt: -1 })
       .limit(Math.min(1000, Math.max(1, Number(limit) || 12)))
-      .select(
-        'name description price stockQuantity category brand images rating reviews inStock isActive specifications createdAt updatedAt'
-      )
+      .select(LIST_FIELDS)
       .lean();
 
     res.json({ success: true, message: 'Related products', products, count: products.length });

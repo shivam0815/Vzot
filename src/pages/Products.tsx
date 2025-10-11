@@ -8,12 +8,12 @@ import api from '../config/api';
 import { productService } from '../services/productService';
 import type { Product } from '../types';
 import SEO from '../components/Layout/SEO';
+import { useBulkReviews } from '../hooks/useBulkReviews';
 
 /* helpers */
 const getId = (p: any): string | undefined => p?._id || p?.id;
 
 /* category normalization */
-// slug/aliases -> exact display name
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   tws: 'TWS',
   neckband: 'Bluetooth Neckbands',
@@ -42,7 +42,6 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   accessories: 'Accessories',
   others: 'Others',
 };
-// exact display name -> preferred slug
 const NAME_TO_SLUG: Record<string, string> = {
   TWS: 'tws',
   'Bluetooth Neckbands': 'bluetooth-neckbands',
@@ -82,7 +81,7 @@ const Products: React.FC = () => {
 
   /* pagination */
   const [page, setPage] = useState(1);
-  const [limit] = useState(24); // keep 24 per page
+  const [limit] = useState(24);
   const [total, setTotal] = useState(0);
 
   /* categories (best-effort) */
@@ -166,7 +165,6 @@ const Products: React.FC = () => {
 
       const r = await productService.getProducts(params, forceRefresh);
 
-      // ---- normalize list ----
       const list =
         (Array.isArray((r as any)?.items) && (r as any).items) ||
         (Array.isArray((r as any)?.data?.items) && (r as any).data.items) ||
@@ -174,7 +172,6 @@ const Products: React.FC = () => {
         (Array.isArray((r as any)?.data) && (r as any).data) ||
         [];
 
-      // ---- normalize total ----
       const t =
         Number((r as any)?.total) ||
         Number((r as any)?.data?.total) ||
@@ -193,7 +190,6 @@ const Products: React.FC = () => {
     } catch (err) {
       console.error('❌ Error fetching products via service:', err);
       setError('Failed to connect to server. Please try again later.');
-      // optional fallback to unpaged endpoint
       try {
         const fallback = await api.get('/products', { params: { _t: Date.now() } });
         const arr =
@@ -266,6 +262,13 @@ const Products: React.FC = () => {
 
     return filtered;
   }, [products, searchTerm, priceRange, sortBy]);
+
+  // ---- Bulk review summaries (one call) ----
+  const productIds = useMemo(
+    () => filteredProducts.map((p) => getId(p)).filter(Boolean) as string[],
+    [filteredProducts]
+  );
+  const { data: reviewsMap = {} } = useBulkReviews(productIds);
 
   const handleManualRefresh = () => fetchProducts(true);
 
@@ -450,6 +453,9 @@ const Products: React.FC = () => {
             >
               {filteredProducts.map((product, i) => {
                 const key = getId(product) || `${product.name || 'item'}-${i}`;
+                const pid = getId(product);
+                const summary = pid ? reviewsMap[pid] : undefined;
+
                 return (
                   <motion.div
                     key={key}
@@ -457,7 +463,24 @@ const Products: React.FC = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <ProductCard product={product} viewMode={viewMode} />
+                    <ProductCard
+                      product={product}
+                      viewMode={viewMode}
+                      reviewSummary={
+                        summary
+                          ? {
+                              averageRating:
+                                (summary as any).averageRating ??
+                                (summary as any).avg ??
+                                0,
+                              reviewCount:
+                                (summary as any).reviewCount ??
+                                (summary as any).total ??
+                                0,
+                            }
+                          : undefined
+                      }
+                    />
                   </motion.div>
                 );
               })}

@@ -1,32 +1,31 @@
 // src/components/ProductCard.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, ShoppingCart, Tag, CreditCard, Heart } from 'lucide-react';
 import type { Product } from '../../types';
 import { useCart } from '../../hooks/useCart';
 import { useWishlist } from '../../hooks/useWishlist';
-import { resolveImageUrl, getFirstImageUrl, getOptimizedImageUrl } from '../../utils/imageUtils';
+import { getFirstImageUrl } from '../../utils/imageUtils';
 import toast from 'react-hot-toast';
 
 export interface ProductCardProps {
   product: Product;
   viewMode?: 'grid' | 'list';
   className?: string;
-  /** If true, shows a small heart overlay on the image (hidden by default) */
   showWishlist?: boolean;
+  // NEW: injected by parent (bulk fetched)
+  reviewSummary?: { averageRating: number; reviewCount: number };
 }
 
 const isValidObjectId = (s?: string) => !!s && /^[a-f\d]{24}$/i.test(s);
 
-/** Format price for IN locale */
 const fmtPrice = (p?: number, currency = 'INR') => {
   if (typeof p !== 'number') return 'Contact for price';
   const symbol = currency === 'INR' ? '₹' : '';
   return `${symbol}${p.toLocaleString('en-IN')}`;
 };
 
-/** Safe getters for new user-visible fields; never leaking admin-only */
 const getSku = (p: any): string | undefined => p?.sku || p?.productId || p?.pid;
 const getColor = (p: any): string | undefined => p?.color;
 
@@ -37,64 +36,39 @@ const getPorts = (p: any): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-const getWarranty = (p: any): { months?: number; type?: string } => {
-  const monthsRaw = p?.warrantyPeriodMonths ?? p?.warrantyMonths ?? p?.warrantyPeriod;
-  const months =
-    typeof monthsRaw === 'number'
-      ? monthsRaw
-      : (() => {
-          const n = parseInt(String(monthsRaw ?? ''), 10);
-          return Number.isFinite(n) ? n : undefined;
-        })();
-
-  const type = p?.warrantyType as string | undefined;
-  return { months, type };
-};
-
-/** Compare/MRP helper (prefers compareAtPrice, falls back to originalPrice) */
 const getComparePrice = (p: any): number | undefined => {
   const v = (p as any).compareAtPrice ?? (p as any).originalPrice;
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
 };
 
-/** Robust in-stock calculation */
 const computeInStock = (p: any): boolean => {
   if (typeof p?.inStock === 'boolean') return p.inStock;
   if (typeof p?.stock === 'number') return p.stock > 0;
   if (typeof p?.stockQuantity === 'number') return p.stockQuantity > 0;
-  return true; // default optimistic
+  return true;
 };
 
-/** —— Rating + Reviews helpers —— */
 const coerceNumber = (x: any): number | undefined => {
   const n = typeof x === 'number' ? x : Number(x);
   return Number.isFinite(n) ? n : undefined;
 };
 
-const getInitialAverageRating = (p: any): number => {
-  // Prefer explicit average fields; last resort is `rating`
-  return (
-    coerceNumber(p?.averageRating) ??
-    coerceNumber(p?.avgRating) ??
-    coerceNumber(p?.ratingAverage) ??
-    coerceNumber(p?.rating) ??
-    0
-  );
-};
+const getInitialAverageRating = (p: any): number =>
+  coerceNumber(p?.averageRating) ??
+  coerceNumber(p?.avgRating) ??
+  coerceNumber(p?.ratingAverage) ??
+  coerceNumber(p?.rating) ??
+  0;
 
-const getInitialReviewCount = (p: any): number => {
-  return (
-    coerceNumber(p?.ratingsCount) ??
-    coerceNumber(p?.reviewCount) ??
-    coerceNumber(p?.reviewsCount) ??
-    coerceNumber(p?.numReviews) ??
-    (Array.isArray(p?.reviews) ? p.reviews.length : undefined) ??
-    0
-  );
-};
+const getInitialReviewCount = (p: any): number =>
+  coerceNumber(p?.ratingsCount) ??
+  coerceNumber(p?.reviewCount) ??
+  coerceNumber(p?.reviewsCount) ??
+  coerceNumber(p?.numReviews) ??
+  (Array.isArray(p?.reviews) ? p.reviews.length : undefined) ??
+  0;
 
-// ——— UI tokens for compact professional actions ———
 const btnBase =
   'inline-flex items-center justify-center rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 h-9 px-3 text-sm sm:h-10 sm:px-3';
 const btnPrimary = 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50';
@@ -107,6 +81,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   viewMode = 'grid',
   className = '',
   showWishlist = false,
+  reviewSummary, // NEW
 }) => {
   const isList = viewMode === 'list';
 
@@ -117,7 +92,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
 
-  // Accept either _id or id from backend (sanitize to string)
   const rawId = (product as any)._id ?? (product as any).id;
   const productId = typeof rawId === 'string' ? rawId.trim() : rawId ? String(rawId) : '';
   const inStock = computeInStock(product);
@@ -125,13 +99,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
   const imageUrl = getFirstImageUrl(product.images);
 
-  // New (safe) user-visible fields
   const sku = getSku(product);
   const color = getColor(product);
   const ports = getPorts(product);
-  // const { months: warrantyMonths, type: warrantyType } = getWarranty(product);
 
-  // Compare/MRP + discount
   const comparePrice = getComparePrice(product);
   const hasDiscount =
     typeof product.price === 'number' &&
@@ -142,88 +113,28 @@ const ProductCard: React.FC<ProductCardProps> = ({
     ? Math.round(((comparePrice! - product.price) / comparePrice!) * 100)
     : 0;
 
-  // —— Ratings/Reviews state —— (start with whatever came in, then always refresh)
-  const [avgRating, setAvgRating] = useState<number>(getInitialAverageRating(product));
-  const [revCount, setRevCount] = useState<number>(getInitialReviewCount(product));
-  const [revLoading, setRevLoading] = useState<boolean>(false);
-  const [refreshTick, setRefreshTick] = useState<number>(0); // bumps when reviews change
+  // NEW: derive rating from bulk summary or fallback to product fields. No fetch here.
+  const avgRating = reviewSummary?.averageRating ?? getInitialAverageRating(product);
+  const revCount = reviewSummary?.reviewCount ?? getInitialReviewCount(product);
 
-  // Always fetch summary on mount + whenever refreshTick changes
-  useEffect(() => {
-    if (!isValidObjectId(productId)) return;
+  const isUserLoggedIn = () => {
+    try {
+      const ls = localStorage;
+      const hasToken = ls.getItem('nakoda-token');
+      const hasUser = ls.getItem('nakoda-user');
+      return Boolean(hasToken && hasUser);
+    } catch {
+      return false;
+    }
+  };
 
-    let ignore = false;
-    const ac = new AbortController();
-
-    const load = async () => {
-      try {
-        setRevLoading(true);
-        // cache-bust with _ts so we never get a stale 200 from any proxy
-        const res = await fetch(`/api/reviews/summary?productId=${productId}&_ts=${Date.now()}`, { signal: ac.signal });
-        if (!res.ok) throw new Error('No review summary');
-        const payload = await res.json();
-        if (ignore) return;
-
-        const data = payload?.data || payload; // support both shapes
-        const a = coerceNumber(data?.averageRating) ?? 0;
-        const c = coerceNumber(data?.reviewCount) ?? 0;
-
-        setAvgRating(a);
-        setRevCount(c);
-      } catch {
-        // ignore; keep current
-      } finally {
-        if (!ignore) setRevLoading(false);
-      }
-    };
-
-    load();
-    return () => {
-      ignore = true;
-      ac.abort();
-    };
-  }, [productId, refreshTick]);
-
-  // Listen for global "reviews:changed" signals and localStorage pings
-  useEffect(() => {
-    if (!isValidObjectId(productId)) return;
-
-    const onEvt = (e: Event) => {
-      const detail = (e as CustomEvent)?.detail as any;
-      if (!detail || !detail.productId) return;
-      if (String(detail.productId) === productId) setRefreshTick((t) => t + 1);
-    };
-
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      const prefix = `reviews:changed:${productId}`;
-      if (e.key === prefix) setRefreshTick((t) => t + 1);
-    };
-
-    window.addEventListener('reviews:changed', onEvt as EventListener);
-    window.addEventListener('storage', onStorage);
-    return () => {
-      window.removeEventListener('reviews:changed', onEvt as EventListener);
-      window.removeEventListener('storage', onStorage);
-    };
-  }, [productId]);
-    const isUserLoggedIn = () => {
-  try {
-    const ls = localStorage;
-    const hasToken = ls.getItem("nakoda-token");
-    const hasUser = ls.getItem("nakoda-user");
-    return Boolean(hasToken && hasUser);
-  } catch { 
-    return false;
-  }
-};
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-     if (!isUserLoggedIn()) {
-    toast.error('Please login to buy this item');
-    return; // keep it simple: only toast (no redirect)
-  }
+    if (!isUserLoggedIn()) {
+      toast.error('Please login to buy this item');
+      return;
+    }
     try {
       if (!isValidObjectId(productId)) {
         toast.error('Product ID not found or invalid link');
@@ -239,10 +150,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const handleBuyNow = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-     if (!isUserLoggedIn()) {
-    toast.error('Please login to buy this item');
-    return; // keep it simple: only toast (no redirect)
-  }
+    if (!isUserLoggedIn()) {
+      toast.error('Please login to buy this item');
+      return;
+    }
     try {
       if (!isValidObjectId(productId)) {
         toast.error('Product ID not found or invalid link');
@@ -273,7 +184,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
     }
   };
 
-  // Guard nav: never let it push /products/:id or /products/undefined
   const detailPath = isValidObjectId(productId) ? `/products/${productId}` : '/products';
   const handleGuardedNav = (e: React.MouseEvent) => {
     if (!isValidObjectId(productId)) {
@@ -283,9 +193,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
   };
 
   const currency = (product as any).currency || 'INR';
-
-  const roundedAvg = useMemo(() => Math.max(0, Math.min(5, Math.round((avgRating ?? 0) * 10) / 10)), [avgRating]);
-  const fullStars = Math.floor(roundedAvg);
+  const roundedAvg = useMemo(
+    () => Math.max(0, Math.min(5, Math.round((avgRating ?? 0) * 10) / 10)),
+    [avgRating]
+  );
 
   return (
     <Link to={detailPath} onClick={handleGuardedNav} className="block group" data-product-id={productId || ''}>
@@ -340,7 +251,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
 
-          {/* Wishlist overlay (optional, hidden by default) */}
+          {/* Wishlist overlay */}
           {showWishlist && (
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -370,7 +281,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {product.name}
           </h3>
 
-          {/* Optional mini-meta row (SKU + Color) */}
           {(sku || color) && (
             <div className="flex items-center gap-2 mb-2 text-xs text-gray-600">
               {sku && (
@@ -397,9 +307,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 />
               ))}
             </div>
-            <span className="text-sm text-gray-600 ml-2">
-              {revLoading ? '(loading…)' : `(${revCount} reviews)`}
-            </span>
+            <span className="text-sm text-gray-600 ml-2">({revCount} reviews)</span>
           </div>
 
           {/* Price + stock pill */}
@@ -422,28 +330,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </span>
           </div>
 
-          {/* User-visible tech facts (NEVER admin-only) */}
-          {/* {(ports !== undefined || warrantyMonths || warrantyType) && (
-            <div className="text-xs text-gray-700 mb-3 space-x-2">
-              {ports !== undefined && (
-                <span>
-                  Ports: <strong>{ports}</strong>
-                </span>
-              )}
-              {warrantyMonths && (
-                <span>
-                  Warranty: <strong>{warrantyMonths}m</strong>
-                </span>
-              )}
-              {warrantyType && (
-                <span>
-                  Type: <strong>{warrantyType}</strong>
-                </span>
-              )}
+          {/* Optional tech facts */}
+          {/* {ports !== undefined && (
+            <div className="text-xs text-gray-700 mb-3">
+              Ports: <strong>{ports}</strong>
             </div>
           )} */}
 
-          {/* Actions — strictly two buttons, horizontal */}
+          {/* Actions */}
           <div className="mt-3 flex items-center gap-2">
             <motion.button
               whileHover={{ scale: 1.02 }}

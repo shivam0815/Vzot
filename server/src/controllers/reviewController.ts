@@ -142,16 +142,21 @@ export const getBulkReviewSummaries = async (req: Request, res: Response) => {
       { $group: { _id: "$productId", count: { $sum: 1 }, avg: { $avg: "$rating" } } },
     ]);
 
-    const summaries: Record<string, { avg: number; total: number }> = {};
-    for (const a of agg) {
-      summaries[String(a._id)] = {
-        avg: a.avg ? Math.round(a.avg * 10) / 10 : 0,
-        total: a.count,
-      };
-    }
+   // in getBulkReviewSummaries
+const summaries: Record<string, { avg: number; total: number; averageRating: number; reviewCount: number }> = {};
+for (const a of agg) {
+  const avg = a.avg ? Math.round(a.avg * 10) / 10 : 0;
+  const total = a.count || 0;
+  summaries[String(a._id)] = {
+    avg,
+    total,
+    averageRating: avg,
+    reviewCount: total,
+  };
+}
+setCacheHeaders(res);
+return res.json({ success: true, data: summaries });
 
-    setCacheHeaders(res);
-    return res.json({ success: true, data: summaries });
   } catch (e: any) {
     console.error("❌ getBulkReviewSummaries error:", e);
     res.status(500).json({ success: false, message: "Server error" });
