@@ -36,6 +36,8 @@ type Product = {
   stock?: number;
   tags?: string[];
 };
+const IC_CATEGORY = 'ICs';
+
 
 const priceOffPct = (price?: number, original?: number) => {
   if (!price || !original || original <= price) return 0;
@@ -102,6 +104,7 @@ const categories = [
   { id: 'Car Chargers', name: 'Car Charger', icon: '🚗', gradient: 'from-gray-600 to-gray-800', description: 'On-the-go charging solutions', color: 'bg-gray-600' },
   { id: 'Mobile ICs', name: 'Mobile IC', icon: '🔧', gradient: 'from-red-500 to-rose-500', description: 'Integrated circuits & semiconductors', color: 'bg-red-500' },
   { id: 'Mobile Repairing Tools', name: 'Mobile Repairing Tools', icon: '🛠️', gradient: 'from-indigo-500 to-blue-500', description: 'Professional repair toolkit', color: 'bg-indigo-500' },
+{ id: IC_CATEGORY, name: 'Mobile IC', icon: '🔧', gradient: 'from-red-500 to-rose-500', description: 'Integrated circuits & semiconductors', color: 'bg-red-500' },
 ];
 
 
@@ -175,12 +178,18 @@ const loadMobileAccessories = async () => {
 const loadMobileIC = async () => {
   try {
     setLoadingMobileIC(true);
-    const res = await fetch(`${API_BASE}/products?category=${encodeURIComponent('Mobile ICs')}&limit=20&status=active`, { credentials: 'include' });
+    const res = await fetch(
+      `${API_BASE}/products?category=${encodeURIComponent(IC_CATEGORY)}&limit=20&status=active`,
+      { credentials: 'include' }
+    );
     const data = await res.json();
     if (!res.ok) throw new Error(data?.message || 'Failed to load mobile IC products');
     setMobileIC(data.products || data.items || []);
-  } finally { setLoadingMobileIC(false); }
+  } finally {
+    setLoadingMobileIC(false);
+  }
 };
+
 
 // Load Mobile Repairing Tools (exact database name)
 const loadMobileRepairTools = async () => {
