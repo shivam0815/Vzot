@@ -180,6 +180,18 @@ router.get('/trending', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch trending products', error: error.message });
   }
 });
+// GET /products/slug/:slug  -> find by slug
+router.get('/slug/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const product = await Product.findOne({ slug }).lean();
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
+    return res.json({ success: true, message: 'Product details fetched', product, cached: false });
+  } catch (error: any) {
+    console.error('❌ /products/slug/:slug error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch product details', error: error.message });
+  }
+});
 
 /**
  * GET /products/brand/:brand
@@ -276,45 +288,41 @@ router.get('/:id', async (req, res) => {
     const redis = req.app.get('redis') as Redis | undefined;
     const cacheKey = `product:${id}`;
 
-    const findByAlt = async () =>
-      Product.findOne({ $or: [{ slug: id }, { sku: id }, { productId: id }] })
+    const findDoc = async () => {
+      if (mongoose.isValidObjectId(id)) {
+        const byId = await Product.findById(id).select('-__v').lean();
+        if (byId) return byId;
+      }
+      // fallback by slug/sku/productId
+      return Product.findOne({
+        $or: [{ slug: id }, { sku: id }, { productId: id }],
+      })
         .select('-__v')
         .lean();
-
-    const fetchDoc = async () => {
-      if (mongoose.isValidObjectId(id)) {
-        const doc = await Product.findById(id).select('-__v').lean();
-        if (doc) return doc;
-      }
-      return await findByAlt();
     };
 
     if (redis) {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
+      const hit = await redis.get(cacheKey);
+      if (hit) {
         res.setHeader('X-Cache', 'HIT');
-        return res.json({ ...JSON.parse(cached), cached: true });
+        return res.json({ ...JSON.parse(hit), cached: true });
       }
     }
 
-    const product = await fetchDoc();
-    if (!product) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid product ID format or not found',
-      });
-    }
+    const product = await findDoc();
+    if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
 
-    const response = { success: true, message: 'Product details fetched', product, cached: false };
-    if (redis) await redis.setex(cacheKey, 120, JSON.stringify(response));
+    const payload = { success: true, message: 'Product details fetched', product, cached: false };
+    if (redis) await redis.setex(cacheKey, 120, JSON.stringify(payload));
 
     res.setHeader('X-Cache', 'MISS');
-    res.json(response);
+    res.json(payload);
   } catch (error: any) {
     console.error('❌ /products/:id error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch product details', error: error.message });
   }
 });
+
 
 /**
  * GET /products (main listing) — NOW USES CONTROLLER WITH VERSIONED CACHE

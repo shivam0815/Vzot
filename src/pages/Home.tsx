@@ -270,7 +270,7 @@ const loadMobileRepairTools = async () => {
     return (
       <article className={`group rounded-2xl border border-gray-200 bg-white p-4 hover:shadow-md transition ${compact ? 'w-[220px] shrink-0' : ''}`}>
         <button
-          onClick={() => navigate(`/product/${p.slug || p._id}`)}
+          onClick={() => navigate(`/products/${p.slug || p._id}`)}
           className="relative block w-full overflow-hidden rounded-xl bg-gray-50"
           aria-label={p.name}
         >
@@ -308,13 +308,13 @@ const loadMobileRepairTools = async () => {
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
-              onClick={() => navigate(`/product/${p.slug || p._id}`)}
+              onClick={() => navigate(`/products/${p.slug || p._id}`)}
               className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white text-center hover:bg-black"
             >
               View
             </button>
             <Link
-              to={`/product/${p.slug || p._id}`}
+              to={`/products/${p.slug || p._id}`}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 text-center"
             >
               Details

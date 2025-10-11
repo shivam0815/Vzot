@@ -32,9 +32,9 @@ export interface ProductFilters {
 }
 
 /* ─────────────────────────── Constants ─────────────────────────── */
-const DEFAULT_LIMIT = 24;   // pagination default
-const MAX_LIMIT = 100;      // safety cap
-const MC_TTL = 15_000;      // in-memory TTL
+const DEFAULT_LIMIT = 24;
+const MAX_LIMIT = 100;
+const MC_TTL = 15_000;
 
 /* ─────────────────────────── Utilities ─────────────────────────── */
 const coerceNumber = (v: any): number | undefined => {
@@ -42,7 +42,6 @@ const coerceNumber = (v: any): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
-// Accept URLs, S3 keys, or objects {url|secure_url}, return string URL or ''.
 const extractUrlLike = (x: any): string => {
   if (!x) return '';
   if (typeof x === 'string') return x;
@@ -51,16 +50,15 @@ const extractUrlLike = (x: any): string => {
       x.secure_url ||
       x.url ||
       x.path ||
-      x.location || // some S3 libs
-      x.Location || // AWS SDK v2 putObject response
-      x.key ||      // if a raw key leaks through
+      x.location ||
+      x.Location ||
+      x.key ||
       ''
     );
   }
   return '';
 };
-
-// Normalize imageUrl + images (handles S3 keys and Cloudinary URLs)
+const isObjectId = (s: string) => /^[a-f\d]{24}$/i.test(s);
 function normalizeImages(p: any): { imageUrl?: string; images: string[] } {
   const arrayCandidates: any[] =
     (Array.isArray(p?.images) && p.images) ||
@@ -148,7 +146,6 @@ function normalizeProduct(p: any): Product {
 }
 
 function normalizeProductsResponse(data: any): ProductsResponse {
-  // Accept common shapes
   const rawArray =
     (Array.isArray(data?.products) && data.products) ||
     (Array.isArray(data?.data) && data.data) ||
@@ -158,18 +155,11 @@ function normalizeProductsResponse(data: any): ProductsResponse {
   const products: Product[] = rawArray.map(normalizeProduct);
 
   const pag = data?.pagination ?? {};
-  const pages =
-    Number(pag.pages ?? data?.pages ?? data?.totalPages ?? 1) || 1;
-  const page =
-    Number(pag.page ?? data?.page ?? data?.currentPage ?? 1) || 1;
-  const total =
-    Number(pag.total ?? data?.total ?? products.length) || products.length;
-  const limit =
-    Number(pag.limit ?? data?.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT;
-  const hasMore =
-    typeof pag.hasMore === 'boolean'
-      ? pag.hasMore
-      : page * limit < total;
+  const pages = Number(pag.pages ?? data?.pages ?? data?.totalPages ?? 1) || 1;
+  const page = Number(pag.page ?? data?.page ?? data?.currentPage ?? 1) || 1;
+  const total = Number(pag.total ?? data?.total ?? products.length) || products.length;
+  const limit = Number(pag.limit ?? data?.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT;
+  const hasMore = typeof pag.hasMore === 'boolean' ? pag.hasMore : page * limit < total;
 
   return {
     products,
@@ -224,7 +214,6 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
 const normalizeFiltersForApi = (f: ProductFilters = {}): ProductFilters => {
   const out: ProductFilters = { ...f };
 
-  // allow q alias
   const anyF = f as any;
   if (anyF.q && !out.search) out.search = anyF.q;
   delete (out as any).q;
@@ -260,7 +249,6 @@ export const productService = {
     try {
       const nf = normalizeFiltersForApi(filters);
 
-      // Build params; clamp limit after spread
       const params: Record<string, any> = {
         page: nf.page ?? 1,
         ...nf,
@@ -291,6 +279,25 @@ export const productService = {
     }
   },
 
+  /* Single product: accept ObjectId OR slug/sku */
+  async getProduct(idOrSlug: string): Promise<{ success: boolean; product: Product; message?: string }> {
+  try {
+    if (!idOrSlug) throw new Error('Missing product id');
+
+    const path = isObjectId(idOrSlug)
+      ? `/products/${idOrSlug}`
+      : `/products/slug/${encodeURIComponent(idOrSlug)}`;
+
+    const response = await api.get(path);
+    const product = normalizeProduct(response?.data?.product);
+    return { success: true, product, message: response?.data?.message };
+  } catch (error: any) {
+    console.error('❌ Failed to fetch single product:', error);
+    if (error.response?.status === 404) throw new Error('Product not found or has been removed.');
+    throw new Error(error.response?.data?.message || 'Failed to load product details. Please try again.');
+  }
+},
+
   /* Convenience list returning only array */
   async list(filters: ProductFilters = {}, limit = filters.limit ?? DEFAULT_LIMIT): Promise<Product[]> {
     const res = await this.getProducts({ ...filters, limit });
@@ -303,13 +310,11 @@ export const productService = {
 
   async getRelatedProducts(id: string, limit = 12): Promise<Product[]> {
     try {
-      // Primary endpoint
       const r1 = await api.get(`/products/${id}/related`, { params: { limit } });
       const list1 = (Array.isArray(r1?.data?.products) ? r1.data.products : r1?.data) || [];
       if (list1.length) return list1.map(normalizeProduct);
     } catch {}
 
-    // Fallback: by category
     try {
       const { product } = await this.getProduct(id);
       const byCat = await this.list(
@@ -319,7 +324,6 @@ export const productService = {
       if (byCat.length) return byCat.slice(0, limit);
     } catch {}
 
-    // Last resort: trending
     return this.getTrending(limit);
   },
 
@@ -329,7 +333,6 @@ export const productService = {
       const arr = (Array.isArray(r?.data?.products) ? r.data.products : r?.data) || [];
       if (arr.length) return arr.map(normalizeProduct);
     } catch {}
-    // Fallback via generic list with sortBy=trending
     const list = await this.list({ sortBy: 'trending', sortOrder: 'desc' }, limit);
     return list.slice(0, limit);
   },
@@ -342,25 +345,6 @@ export const productService = {
   async search(query: string, filters: Omit<ProductFilters, 'search'> = {}, limit = 20): Promise<Product[]> {
     const items = await this.list({ ...filters, search: query }, limit);
     return items.slice(0, limit);
-  },
-
-  async getProduct(id: string): Promise<{ success: boolean; product: Product; message?: string }> {
-    try {
-      if (!id || id.length !== 24) {
-        throw new Error('Invalid product ID format. Product IDs must be 24-character MongoDB ObjectIds.');
-      }
-      const response = await api.get(`/products/${id}`);
-      const product = normalizeProduct(response?.data?.product);
-      return { success: true, product, message: response?.data?.message };
-    } catch (error: any) {
-      console.error('❌ Failed to fetch single product:', error);
-      if (error.response?.status === 404) throw new Error('Product not found or has been removed.');
-      if (error.response?.status === 400) throw new Error('Invalid product ID. Please check the product link.');
-      if (error.message?.includes('Cast to ObjectId')) {
-        throw new Error('Invalid product ID format. Product IDs must be 24-character MongoDB ObjectIds.');
-      }
-      throw new Error(error.response?.data?.message || 'Failed to load product details. Please try again.');
-    }
   },
 
   async createProduct(formData: FormData): Promise<{ message: string; product: Product }> {
