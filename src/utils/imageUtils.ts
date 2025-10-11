@@ -51,14 +51,31 @@ export const resolveImageUrl = (imagePath: string | undefined | null): string | 
 };
 
 /** Return first valid image URL from list */
-export const getFirstImageUrl = (images: string[] | undefined): string | undefined => {
-  if (!Array.isArray(images)) return undefined;
-  for (const image of images) {
-    const u = resolveImageUrl(image);
-    if (u) return u;
+export const getFirstImageUrl = (images: any): string | undefined => {
+  if (!images) return;
+
+  // string[] case
+  if (Array.isArray(images)) {
+    // try first non-empty string
+    const s = images.find((x) => typeof x === 'string' && x);
+    if (s) return resolveImageUrl(s)!;
+
+    // try object items {url|secure_url|path}
+    const o = images.find((x) => x && (x.url || x.secure_url || x.path));
+    if (o) return resolveImageUrl(o.url || o.secure_url || o.path)!;
+
+    return;
   }
-  return undefined;
+
+  // CSV string case
+  if (typeof images === 'string') {
+    const tok = images.split(/[,|\s]+/).find(Boolean);
+    if (tok) return resolveImageUrl(tok)!;
+  }
+
+  return;
 };
+
 
 /** Basic Cloudinary transform injector */
 const cloudinaryTransform = (url: string, width: number, height: number) => {

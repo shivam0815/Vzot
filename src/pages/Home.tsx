@@ -123,8 +123,25 @@ const categories = [
 
 
   // Pick primary URL once for a product (S3 key or full URL)
-  const pickPrimaryImage = (p: Product) =>
-    resolveImageUrl(p.imageUrl) ?? getFirstImageUrl(p.images);
+ // replace your pickPrimaryImage with this
+const pickPrimaryImage = (p: any): string | undefined => {
+  const list: any[] = [
+    p.imageUrl, p.image, p.thumbnail,
+    Array.isArray(p.images) ? p.images : undefined,
+    p.photo, p.photos?.[0], p.media?.[0], p.gallery?.[0],
+  ].flat().filter(Boolean);
+
+  for (const cand of list) {
+    const raw =
+      typeof cand === 'string'
+        ? cand
+        : cand?.url || cand?.secure_url || cand?.path || cand?.src;
+    const resolved = resolveImageUrl(raw);
+    if (resolved) return resolved;
+  }
+  return undefined;
+};
+
 
   // Fetch products - Updated with new category fetches
   useEffect(() => {
@@ -258,12 +275,10 @@ const loadMobileRepairTools = async () => {
   /** Product Card (with image fallback) */
   const Card: React.FC<{ p: Product; badge?: React.ReactNode; compact?: boolean }> = ({ p, badge, compact }) => {
     // base image
-    const raw = useMemo(() => pickPrimaryImage(p), [p.imageUrl, p.images]);
-    // try optimized first (Cloudinary transform or S3 variant), else raw
-    const optimized = raw ? getOptimizedImageUrl(raw, 500, 500) : undefined;
-
-    const [imgSrc, setImgSrc] = useState<string | undefined>(optimized ?? raw);
-    useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
+   const raw = useMemo(() => pickPrimaryImage(p), [p]);
+const optimized = raw ? getOptimizedImageUrl(raw, 500, 500) : undefined;
+const [imgSrc, setImgSrc] = useState<string | undefined>(optimized ?? raw);
+useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
 
     const off = priceOffPct(p.price, p.originalPrice);
 
@@ -276,16 +291,12 @@ const loadMobileRepairTools = async () => {
         >
           {imgSrc ? (
             <img
-              src={imgSrc}
-              alt={p.name}
-              className="h-40 w-full object-cover transition-transform duration-500 group-hover:scale-105"
-              loading="lazy"
-              onError={() => {
-                // if optimized failed (404/403), fall back to original; if that also fails, clear
-                if (imgSrc !== raw) setImgSrc(raw);
-                else setImgSrc(undefined);
-              }}
-            />
+  src={imgSrc}
+  alt={p.name}
+  className="h-40 w-full object-contain bg-white transition-transform duration-500 group-hover:scale-105"
+  loading="lazy"
+  onError={() => setImgSrc(imgSrc !== raw ? raw : undefined)}
+/>
           ) : (
             <div className="h-40 w-full bg-gray-100" />
           )}
