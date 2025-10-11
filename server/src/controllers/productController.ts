@@ -287,17 +287,18 @@ const noExtraFilters =
       const rx = makeLooseNameRx(String(brand));
       if (rx) query.brand = rx;
     }
+// search filter: only run when >= 2 chars, and fix tags match
+if (typeof effectiveSearch === 'string' && effectiveSearch.trim().length >= 2) {
+  const rx = new RegExp(esc(effectiveSearch.trim()), 'i');
+  query.$or = [
+    { name: rx },
+    { description: rx },
+    { brand: rx },
+    { category: rx },
+    { tags: rx }, // array of strings can match regex directly
+  ];
+}
 
-    if (effectiveSearch && effectiveSearch !== '') {
-      const rx = new RegExp(esc(String(effectiveSearch)), 'i');
-      query.$or = [
-        { name: rx },
-        { description: rx },
-        { brand: rx },
-        { category: rx },
-        { tags: { $elemMatch: rx } },
-      ];
-    }
 
     if (minPrice || maxPrice) {
       query.price = {};
