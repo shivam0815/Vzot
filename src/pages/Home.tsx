@@ -172,22 +172,15 @@ const loadMobileAccessories = async () => {
 };
 
 // Load Mobile ICs (corrected category name)
-// replace loadMobileIC
 const loadMobileIC = async () => {
   try {
     setLoadingMobileIC(true);
-    const res = await fetch(
-      `${API_BASE}/products?category=${encodeURIComponent('ICs')}&limit=20&status=active`,
-      { credentials: 'include' }
-    );
+    const res = await fetch(`${API_BASE}/products?category=${encodeURIComponent('ICs')}&limit=20&status=active`, { credentials: 'include' });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.message || 'Failed to load mobile IC products');
     setMobileIC(data.products || data.items || []);
-  } finally {
-    setLoadingMobileIC(false);
-  }
+  } finally { setLoadingMobileIC(false); }
 };
-
 
 // Load Mobile Repairing Tools (exact database name)
 const loadMobileRepairTools = async () => {
