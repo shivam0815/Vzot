@@ -13,9 +13,6 @@ import {
   Lock,
   CheckCircle,
   Package,
-  Tag,
-  Gift,
-  BadgePercent,
 } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../hooks/useAuth';
@@ -35,18 +32,17 @@ interface Address {
   landmark: string;
 }
 
-// NEW — GST payload shape stored on the order
 type GstDetails = {
   gstin: string;
   legalName: string;
-  placeOfSupply: string; // State
+  placeOfSupply: string;
   email?: string;
   requestedAt?: string;
 };
 
 type CouponResult = {
   code: string;
-  amount: number; // monetary discount (₹)
+  amount: number;
   freeShipping?: boolean;
   message: string;
 };
@@ -71,23 +67,16 @@ const emptyAddress: Address = {
   landmark: '',
 };
 
-// Simple state list for Place of Supply
-const INDIAN_STATES = [
-  'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu & Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Dadra & Nagar Haveli & Daman & Diu','Andaman & Nicobar Islands'
-];
-
-// (Kept for reference; shipping is now added after packing, so not used here)
-const SHIPPING_FREE_THRESHOLD = 4999;
-const BASE_SHIPPING_FEE = 100;
+const SHIPPING_FREE_THRESHOLD = 1499;
+const BASE_SHIPPING_FEE = 150;
 
 const COD_FEE = 25;
 const GIFT_WRAP_FEE = 0;
 
 const FIRST_ORDER_CAP = 300;
 
-// Online payment fee & GST-on-fee (applies to Razorpay)
-const ONLINE_FEE_RATE = 0.02;      // 2% convenience fee (online methods only)
-const ONLINE_FEE_GST_RATE = 0.18;  // 18% GST on that convenience fee
+const ONLINE_FEE_RATE = 0.02;
+const ONLINE_FEE_GST_RATE = 0.18;
 
 const formatINR = (n: number) => `₹${Math.max(0, Math.round(n)).toLocaleString()}`;
 
@@ -97,7 +86,6 @@ const CheckoutPage: React.FC = () => {
   const { processPayment, isProcessing } = usePayment();
   const navigate = useNavigate();
 
-  // Shipping / Billing
   const [shipping, setShipping] = useState<Address>({
     ...emptyAddress,
     fullName: user?.name || '',
@@ -106,11 +94,9 @@ const CheckoutPage: React.FC = () => {
   const [billing, setBilling] = useState<Address>(emptyAddress);
   const [sameAsShipping, setSameAsShipping] = useState(true);
 
-  // Payment / errors
   const [method, setMethod] = useState<'razorpay' | 'cod'>('razorpay');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Extras
   const [orderNotes, setOrderNotes] = useState('');
   const [wantGSTInvoice, setWantGSTInvoice] = useState(false);
   const [gst, setGst] = useState<GstDetails>({
@@ -121,11 +107,9 @@ const CheckoutPage: React.FC = () => {
   });
   const [giftWrap, setGiftWrap] = useState(false);
 
-  // Coupons & first order
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<CouponResult | null>(null);
 
-  // Calculations
   const rawSubtotal = useMemo(() => getTotalPrice(), [getTotalPrice, cartItems]);
 
   const isFirstOrderCandidate = useMemo(() => {
@@ -139,7 +123,7 @@ const CheckoutPage: React.FC = () => {
 
   const firstOrderDiscount = useMemo(() => {
     if (!isFirstOrderCandidate || rawSubtotal <= 0) return 0;
-    const natural = Math.min(Math.round(rawSubtotal * 18), FIRST_ORDER_CAP);
+    const natural = Math.min(Math.round(rawSubtotal * 0.18), FIRST_ORDER_CAP);
     if (appliedCoupon && appliedCoupon.amount > 0) {
       return appliedCoupon.amount >= natural ? 0 : natural;
     }
@@ -200,17 +184,16 @@ const CheckoutPage: React.FC = () => {
 
   const effectiveSubtotal = Math.max(0, rawSubtotal - monetaryDiscount);
 
-  // 🔔 SHIPPING IS NOT CHARGED AT CHECKOUT ANYMORE
-  const shippingFee = 0;
-  const shippingAddedPostPack = true;
+  // Shipping: ₹150 unless free-shipping coupon or effectiveSubtotal ≥ 1499
+  const qualifiesFreeShip = (appliedCoupon?.freeShipping === true) || effectiveSubtotal >= SHIPPING_FREE_THRESHOLD;
+  const shippingFee = qualifiesFreeShip ? 0 : BASE_SHIPPING_FEE;
+  const shippingAddedPostPack = false;
 
   const giftWrapFee = giftWrap ? GIFT_WRAP_FEE : 0;
   const codCharges = method === 'cod' ? COD_FEE : 0;
 
-  // Tax after discount, before shipping/cod/wrap (on goods/services)
   const tax = useMemo(() => Math.round(effectiveSubtotal * 0.18), [effectiveSubtotal]);
 
-  // Convenience fee for online methods + GST on that fee (online = Razorpay)
   const convenienceFee = useMemo(() => {
     if (method === 'cod') return 0;
     const baseBeforeFee = effectiveSubtotal + tax + shippingFee + giftWrapFee;
@@ -234,10 +217,9 @@ const CheckoutPage: React.FC = () => {
       shippingFee +
       codCharges +
       giftWrapFee +
-      (method !== 'cod' ? convenienceFee + convenienceFeeGst : 0)
+      (method !== 'cod' ? totalProcessingFee : 0)
   );
 
-  // Restore saved address
   useEffect(() => {
     try {
       const saved = localStorage.getItem('checkout:shipping');
@@ -245,7 +227,6 @@ const CheckoutPage: React.FC = () => {
     } catch {}
   }, []);
 
-  // Helpers
   const handleAddr =
     (setter: React.Dispatch<React.SetStateAction<Address>>) =>
     (field: keyof Address, value: string) => {
@@ -259,7 +240,6 @@ const CheckoutPage: React.FC = () => {
     const regPin = /^\d{6}$/;
     const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    // Shipping
     if (!shipping.fullName.trim()) e.fullName = 'Full name is required';
     if (!regPhone.test(shipping.phoneNumber.replace(/\D/g, ''))) e.phoneNumber = 'Please enter a valid 10-digit phone number';
     if (!regEmail.test(shipping.email)) e.email = 'Please enter a valid email address';
@@ -268,7 +248,6 @@ const CheckoutPage: React.FC = () => {
     if (!shipping.state.trim()) e.state = 'State is required';
     if (!regPin.test(shipping.pincode)) e.pincode = 'Please enter a valid 6-digit pincode';
 
-    // Billing (if different)
     if (!sameAsShipping) {
       if (!billing.fullName.trim()) e.billing_fullName = 'Billing name required';
       if (!regPhone.test(billing.phoneNumber.replace(/\D/g, ''))) e.billing_phoneNumber = 'Valid 10-digit phone required';
@@ -279,21 +258,12 @@ const CheckoutPage: React.FC = () => {
       if (!regPin.test(billing.pincode)) e.billing_pincode = 'Valid 6-digit pincode required';
     }
 
-    // GST validations (only when requested)
     if (wantGSTInvoice) {
       const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
-      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) {
-        e.gst_gstin = 'Please enter a valid 15-character GSTIN';
-      }
-      if (!gst.legalName.trim()) {
-        e.gst_legalName = 'Legal/Business name is required';
-      }
-      if (!gst.placeOfSupply.trim()) {
-        e.gst_placeOfSupply = 'Place of supply (state) is required';
-      }
-      if (gst.email && !regEmail.test(gst.email)) {
-        e.gst_email = 'Enter a valid email';
-      }
+      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) e.gst_gstin = 'Please enter a valid 15-character GSTIN';
+      if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name is required';
+      if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply (state) is required';
+      if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email)) e.gst_email = 'Enter a valid email';
     }
 
     setErrors(e);
@@ -302,14 +272,12 @@ const CheckoutPage: React.FC = () => {
 
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-
     if (!validate()) {
       toast.error('Please correct the errors below');
       return;
     }
 
     try {
-      // Save address locally (for next time)
       localStorage.setItem('checkout:shipping', JSON.stringify(shipping));
 
       const orderData = {
@@ -346,18 +314,16 @@ const CheckoutPage: React.FC = () => {
           couponFreeShipping: appliedCoupon?.freeShipping || false,
           effectiveSubtotal,
           tax,
-          shippingFee,                 // 0 at checkout
-          shippingAddedPostPack,       // flag for backend
+          shippingFee,                 // now applied here
+          shippingAddedPostPack,       // false
           codCharges,
           giftWrapFee,
 
-          // Online fee details (ignored if COD)
           convenienceFee,
           convenienceFeeGst,
           convenienceFeeRate: ONLINE_FEE_RATE,
           convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
 
-          // Admin rendering
           gstSummary: {
             requested: wantGSTInvoice,
             rate: 0.18,
@@ -383,15 +349,12 @@ const CheckoutPage: React.FC = () => {
       )) as PaymentResult;
 
       if (!result?.success) return;
-
       if (result.redirected) return;
 
-      // Success path (COD / Razorpay)
       clearCart();
       localStorage.setItem('hasOrderedBefore', '1');
 
       const ord = result.order || {};
-
       const orderId =
         ord.orderNumber ||
         ord._id ||
@@ -472,7 +435,7 @@ const CheckoutPage: React.FC = () => {
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Package className="h-8 w-8 text-gray-600" />
           </div>
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Your Cart is Empty</h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">Your Cart is Empty</h2>
           <p className="text-gray-600 mb-8 leading-relaxed">
             Add some amazing products to your cart before checking out
           </p>
@@ -490,7 +453,6 @@ const CheckoutPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <button
             onClick={() => navigate('/cart')}
@@ -536,55 +498,6 @@ const CheckoutPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Coupon */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-800 mb-2">
-                <div className="flex items-center gap-2">
-                  <Tag className="h-4 w-4 text-rose-600" />
-                  Apply Coupon
-                </div>
-              </label>
-              <div className="flex gap-2">
-                <input
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value)}
-                  className="flex-1 px-4 py-3 border-2 rounded-xl bg-gray-50 border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  placeholder="WELCOME10, SAVE50, FREESHIP, NKD150"
-                />
-                <button
-                  type="button"
-                  onClick={onApplyCoupon}
-                  className="px-4 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700"
-                >
-                  Apply
-                </button>
-              </div>
-              {appliedCoupon && (
-                <div className="mt-2 text-sm text-green-700 flex items-center gap-1">
-                  <BadgePercent className="h-4 w-4" />
-                  {appliedCoupon.message}
-                </div>
-              )}
-            </div>
-
-            {/* Gift wrap */}
-            <div className="mb-6">
-              <label className="inline-flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={giftWrap}
-                  onChange={(e) => setGiftWrap(e.target.checked)}
-                  className="h-4 w-4"
-                />
-                <span className="flex items-center gap-2">
-                  <Gift className="h-4 w-4 text-pink-600" />
-                  <span className="text-sm text-gray-800">
-                    Add gift wrap <span className="text-gray-500">({formatINR(GIFT_WRAP_FEE)})</span>
-                  </span>
-                </span>
-              </label>
-            </div>
-
             <div className="border-t border-gray-200 pt-6 space-y-2 sm:space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal</span>
@@ -603,9 +516,12 @@ const CheckoutPage: React.FC = () => {
                 <span className="font-semibold">{formatINR(tax)}</span>
               </div>
 
-              {/* 🚚 Shipping note instead of amount */}
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs sm:text-sm">
-                <strong>Note:</strong> Shipping fees will be added after your order is packed.
+              {/* Shipping line */}
+              <div className="flex justify-between">
+                <span className="text-gray-600">
+                  Shipping {qualifiesFreeShip && <span className="text-green-600 font-semibold">(Free)</span>}
+                </span>
+                <span className="font-semibold">{formatINR(shippingFee)}</span>
               </div>
 
               {method === 'cod' && (
@@ -615,14 +531,8 @@ const CheckoutPage: React.FC = () => {
                 </div>
               )}
 
-              {giftWrap && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Gift Wrap</span>
-                  <span className="font-semibold">{formatINR(giftWrapFee)}</span>
-                </div>
-              )}
+             
 
-              {/* ✅ Single combined processing fee (Razorpay only) */}
               {method !== 'cod' && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Payment Processing Fee</span>
@@ -640,7 +550,6 @@ const CheckoutPage: React.FC = () => {
               )}
             </div>
 
-            {/* Payment method indicator */}
             <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
               <div className="flex items-center text-sm">
                 <Shield className="h-5 w-5 text-blue-600 mr-2" />
@@ -660,11 +569,7 @@ const CheckoutPage: React.FC = () => {
                   <MapPin className="h-5 w-5 text-green-600" />
                 </div>
                 <h2 className="text-xl font-bold text-gray-900">Shipping Address</h2>
-                {isFirstOrderCandidate && (
-                  <span className="ml-3 px-2 py-1 text-xs rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    First order discount available
-                  </span>
-                )}
+                
               </div>
 
               <div className="space-y-5 sm:space-y-6">
@@ -776,7 +681,7 @@ const CheckoutPage: React.FC = () => {
               </label>
             </div>
 
-            {/* Billing form (if different) */}
+            {/* Billing form */}
             {!sameAsShipping && (
               <div className="mb-8">
                 <div className="flex items-center mb-5 sm:mb-6">
@@ -871,7 +776,7 @@ const CheckoutPage: React.FC = () => {
               </div>
             )}
 
-            {/* Payment Method (Razorpay / COD) */}
+            {/* Payment Method */}
             <div className="border-t border-gray-200 pt-6 sm:pt-8">
               <div className="flex items-center mb-6">
                 <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
@@ -881,7 +786,6 @@ const CheckoutPage: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                {/* Razorpay */}
                 <label
                   className={`relative p-4 sm:p-6 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:-translate-y-1 ${
                     method === 'razorpay' ? 'border-blue-500 bg-blue-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
@@ -906,7 +810,6 @@ const CheckoutPage: React.FC = () => {
                   </div>
                 </label>
 
-                {/* COD */}
                 <label
                   className={`relative p-4 sm:p-6 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:-translate-y-1 ${
                     method === 'cod' ? 'border-green-500 bg-green-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
@@ -931,30 +834,7 @@ const CheckoutPage: React.FC = () => {
                 </label>
               </div>
 
-              {/* Method descriptions */}
-              <div className="mb-6 sm:mb-8">
-                {method === 'razorpay' && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                    <p className="text-blue-800 text-sm flex items-start">
-                      <Shield className="h-4 w-4 mr-2 mt-0.5 text-blue-600" />
-                      <span>
-                        <strong>Razorpay Payment:</strong> Supports UPI, cards, and net banking with bank-level security.
-                      </span>
-                    </p>
-                  </div>
-                )}
-
-                {method === 'cod' && (
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
-                    <p className="text-amber-800 text-sm flex items-start">
-                      <Truck className="h-4 w-4 mr-2 mt-0.5 text-amber-600" />
-                      <span>Pay in cash when your order arrives at your doorstep.</span>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Order Notes & GST */}
+              {/* Notes & GST */}
               <div className="grid gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-semibold text-gray-800 mb-2">Order Notes</label>
@@ -1007,7 +887,9 @@ const CheckoutPage: React.FC = () => {
                         className="w-full px-4 py-3 border-2 rounded-xl bg-gray-50 border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                       >
                         <option value="">Select state…</option>
-                        {INDIAN_STATES.map((st) => (
+                        {[
+                          'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu & Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Dadra & Nagar Haveli & Daman & Diu','Andaman & Nicobar Islands'
+                        ].map((st) => (
                           <option key={st} value={st}>{st}</option>
                         ))}
                       </select>
@@ -1048,7 +930,6 @@ const CheckoutPage: React.FC = () => {
                 )}
               </button>
 
-              {/* Security footer */}
               <div className="mt-6 text-center">
                 <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs text-gray-600 mb-3">
                   <div className="flex items-center">
