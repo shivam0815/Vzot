@@ -33,7 +33,7 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   banks: 'Power Banks',
   'power-bank': 'Power Banks',
   'power-banks': 'Power Banks',
-  ICs: 'Integrated Circuits & Chips',
+  "ICs": 'Integrated Circuits & Chips',
   'Mobile ICs': 'Mobile ICs',
   'mobile-repairing-tools': 'Mobile Repairing Tools',
   'mobile ics': 'Mobile ICs',
