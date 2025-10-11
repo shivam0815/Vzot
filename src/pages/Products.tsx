@@ -11,7 +11,7 @@ import SEO from '../components/Layout/SEO';
 import { useBulkReviews } from '../hooks/useBulkReviews';
 
 /* helpers */
-const getId = (p: any): string | undefined => p?._id || p?.id;
+
 
 /* category normalization */
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
@@ -161,10 +161,21 @@ const getId = (p: any): string | undefined => {
       setLoading(true);
       setError('');
 
-      const filters: any = {};
-      if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
-      if (searchTerm) filters.q = searchTerm;
-      if (sortBy) filters.sort = sortBy;
+     const filters: any = {};
+if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
+if (searchTerm) filters.q = searchTerm;
+
+const mapSort = (ui: typeof sortBy): { sortBy: 'createdAt'|'price'|'rating'|'trending'; sortOrder: 'asc'|'desc' } => {
+  switch (ui) {
+    case 'price-low':  return { sortBy: 'price',     sortOrder: 'asc'  };
+    case 'price-high': return { sortBy: 'price',     sortOrder: 'desc' };
+    case 'rating':     return { sortBy: 'rating',    sortOrder: 'desc' };
+    case 'name':       // no “name” on API → default to newest
+    default:           return { sortBy: 'createdAt', sortOrder: 'desc' };
+  }
+};
+Object.assign(filters, mapSort(sortBy));
+
 
       const params = {
         page,
