@@ -73,8 +73,6 @@ const BASE_SHIPPING_FEE = 150;
 const COD_FEE = 25;
 const GIFT_WRAP_FEE = 0;
 
-
-
 const ONLINE_FEE_RATE = 0.02;
 const ONLINE_FEE_GST_RATE = 0.18;
 
@@ -107,47 +105,21 @@ const CheckoutPage: React.FC = () => {
   });
   const [giftWrap, setGiftWrap] = useState(false);
 
-  const [couponInput, setCouponInput] = useState('');
+  const [couponInput, setCouponInput] = useState(''); // retained if you add UI later
   const [appliedCoupon, setAppliedCoupon] = useState<CouponResult | null>(null);
 
   const rawSubtotal = useMemo(() => getTotalPrice(), [getTotalPrice, cartItems]);
 
-  const isFirstOrderCandidate = useMemo(() => {
-    const localFlag = localStorage.getItem('hasOrderedBefore') === '1';
-    const byBackend =
-      (user as any)?.ordersCount === 0 ||
-      (user as any)?.isFirstOrder === true ||
-      (user as any)?.firstOrderDone === false;
-    return !localFlag && (byBackend || true);
-  }, [user]);
-
-  const firstOrderDiscount = useMemo(() => {
-    if (!isFirstOrderCandidate || rawSubtotal <= 0) return 0;
-    const natural = Math.min(Math.round(rawSubtotal * 0.18),);
-    if (appliedCoupon && appliedCoupon.amount > 0) {
-      return appliedCoupon.amount >= natural ? 0 : natural;
-    }
-    return natural;
-  }, [isFirstOrderCandidate, rawSubtotal, appliedCoupon]);
-
-  
-
-  
-
+  // Discounts: only coupon-based. No first-order logic.
   const couponDiscount = appliedCoupon?.amount || 0;
-  const monetaryDiscount = Math.max(couponDiscount, firstOrderDiscount);
-  const discountLabel = useMemo(() => {
-    if (appliedCoupon && appliedCoupon.amount >= firstOrderDiscount && appliedCoupon.amount > 0) {
-      return `${appliedCoupon.code} discount`;
-    }
-    if (firstOrderDiscount > 0) return 'First order discount';
-    return '';
-  }, [appliedCoupon, firstOrderDiscount]);
+  const monetaryDiscount = couponDiscount;
+  const discountLabel = appliedCoupon ? `${appliedCoupon.code} discount` : '';
 
   const effectiveSubtotal = Math.max(0, rawSubtotal - monetaryDiscount);
 
-  // Shipping: ₹150 unless free-shipping coupon or effectiveSubtotal ≥ 1499
-  const qualifiesFreeShip = (appliedCoupon?.freeShipping === true) || effectiveSubtotal >= SHIPPING_FREE_THRESHOLD;
+  // Shipping: ₹150 unless free-shipping coupon or threshold met
+  const qualifiesFreeShip =
+    appliedCoupon?.freeShipping === true || effectiveSubtotal >= SHIPPING_FREE_THRESHOLD;
   const shippingFee = qualifiesFreeShip ? 0 : BASE_SHIPPING_FEE;
   const shippingAddedPostPack = false;
 
@@ -174,12 +146,7 @@ const CheckoutPage: React.FC = () => {
 
   const total = Math.max(
     0,
-    effectiveSubtotal +
-      tax +
-      shippingFee +
-      codCharges +
-      giftWrapFee +
-      (method !== 'cod' ? totalProcessingFee : 0)
+    effectiveSubtotal + tax + shippingFee + codCharges + giftWrapFee + (method !== 'cod' ? totalProcessingFee : 0)
   );
 
   useEffect(() => {
@@ -203,7 +170,8 @@ const CheckoutPage: React.FC = () => {
     const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!shipping.fullName.trim()) e.fullName = 'Full name is required';
-    if (!regPhone.test(shipping.phoneNumber.replace(/\D/g, ''))) e.phoneNumber = 'Please enter a valid 10-digit phone number';
+    if (!regPhone.test(shipping.phoneNumber.replace(/\D/g, '')))
+      e.phoneNumber = 'Please enter a valid 10-digit phone number';
     if (!regEmail.test(shipping.email)) e.email = 'Please enter a valid email address';
     if (!shipping.addressLine1.trim()) e.addressLine1 = 'Address is required';
     if (!shipping.city.trim()) e.city = 'City is required';
@@ -212,7 +180,8 @@ const CheckoutPage: React.FC = () => {
 
     if (!sameAsShipping) {
       if (!billing.fullName.trim()) e.billing_fullName = 'Billing name required';
-      if (!regPhone.test(billing.phoneNumber.replace(/\D/g, ''))) e.billing_phoneNumber = 'Valid 10-digit phone required';
+      if (!regPhone.test(billing.phoneNumber.replace(/\D/g, '')))
+        e.billing_phoneNumber = 'Valid 10-digit phone required';
       if (!regEmail.test(billing.email)) e.billing_email = 'Valid email required';
       if (!billing.addressLine1.trim()) e.billing_addressLine1 = 'Billing address required';
       if (!billing.city.trim()) e.billing_city = 'Billing city required';
@@ -222,7 +191,8 @@ const CheckoutPage: React.FC = () => {
 
     if (wantGSTInvoice) {
       const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
-      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) e.gst_gstin = 'Please enter a valid 15-character GSTIN';
+      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim()))
+        e.gst_gstin = 'Please enter a valid 15-character GSTIN';
       if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name is required';
       if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply (state) is required';
       if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email)) e.gst_email = 'Enter a valid email';
@@ -276,8 +246,8 @@ const CheckoutPage: React.FC = () => {
           couponFreeShipping: appliedCoupon?.freeShipping || false,
           effectiveSubtotal,
           tax,
-          shippingFee,                 // now applied here
-          shippingAddedPostPack,       // false
+          shippingFee,
+          shippingAddedPostPack, // false
           codCharges,
           giftWrapFee,
 
@@ -303,26 +273,15 @@ const CheckoutPage: React.FC = () => {
         phone: shipping.phoneNumber,
       };
 
-      const result = (await processPayment(
-        total,
-        method,
-        orderData,
-        userDetails
-      )) as PaymentResult;
+      const result = (await processPayment(total, method, orderData, userDetails)) as PaymentResult;
 
       if (!result?.success) return;
       if (result.redirected) return;
 
       clearCart();
-      localStorage.setItem('hasOrderedBefore', '1');
 
       const ord = result.order || {};
-      const orderId =
-        ord.orderNumber ||
-        ord._id ||
-        ord.paymentOrderId ||
-        ord.paymentId ||
-        null;
+      const orderId = ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
 
       const successState = {
         orderId,
@@ -375,7 +334,7 @@ const CheckoutPage: React.FC = () => {
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Lock className="h-8 w-8 text-blue-600" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Login Required</h2>
+        <h2 className="text-3xl font-bold text-gray-900 mb-4">Login Required</h2>
           <p className="text-gray-600 mb-8 leading-relaxed">
             Please log in to your account to proceed with secure checkout
           </p>
@@ -493,8 +452,6 @@ const CheckoutPage: React.FC = () => {
                 </div>
               )}
 
-             
-
               {method !== 'cod' && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Payment Processing Fee</span>
@@ -531,7 +488,6 @@ const CheckoutPage: React.FC = () => {
                   <MapPin className="h-5 w-5 text-green-600" />
                 </div>
                 <h2 className="text-xl font-bold text-gray-900">Shipping Address</h2>
-                
               </div>
 
               <div className="space-y-5 sm:space-y-6">
@@ -552,7 +508,9 @@ const CheckoutPage: React.FC = () => {
                     field="phoneNumber"
                     label="Phone Number *"
                     value={shipping.phoneNumber}
-                    onChange={(v) => handleAddr(setShipping)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))}
+                    onChange={(v) =>
+                      handleAddr(setShipping)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))
+                    }
                     placeholder="10-digit mobile number"
                     icon={Phone}
                     errors={errors}
@@ -612,7 +570,9 @@ const CheckoutPage: React.FC = () => {
                     field="pincode"
                     label="Pincode *"
                     value={shipping.pincode}
-                    onChange={(v) => handleAddr(setShipping)('pincode', v.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(v) =>
+                      handleAddr(setShipping)('pincode', v.replace(/\D/g, '').slice(0, 6))
+                    }
                     placeholder="6-digit pincode"
                     errors={errors}
                   />
@@ -668,7 +628,9 @@ const CheckoutPage: React.FC = () => {
                       field="billing_phoneNumber"
                       label="Phone Number *"
                       value={billing.phoneNumber}
-                      onChange={(v) => handleAddr(setBilling)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))}
+                      onChange={(v) =>
+                        handleAddr(setBilling)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))
+                      }
                       placeholder="10-digit mobile number"
                       icon={Phone}
                       errors={errors}
@@ -729,7 +691,9 @@ const CheckoutPage: React.FC = () => {
                       field="billing_pincode"
                       label="Pincode *"
                       value={billing.pincode}
-                      onChange={(v) => handleAddr(setBilling)('pincode', v.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(v) =>
+                        handleAddr(setBilling)('pincode', v.replace(/\D/g, '').slice(0, 6))
+                      }
                       placeholder="6-digit pincode"
                       errors={errors}
                     />
