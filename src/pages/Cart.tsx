@@ -389,32 +389,38 @@ const Cart: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile sticky footer summary */}
-      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
-        <div className="max-w-5xl mx-auto px-3 py-2.5 flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] text-gray-500">Total</div>
-            <div className="text-base font-semibold">₹{grandTotal.toLocaleString()}</div>
-          </div>
 
-          {user ? (
-            <Link
-              to="/checkout"
-              className="flex-1 ml-2 inline-flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
-            >
-              Proceed to Checkout
-            </Link>
-          ) : (
-            <Link
-              to="/login"
-              state={{ from: '/checkout' }}
-              className="flex-1 ml-2 inline-flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
-            >
-              Login to Checkout
-            </Link>
-          )}
-        </div>
+      {/* Mobile sticky footer summary */}
+<div className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+  <div className="max-w-5xl mx-auto px-3 py-2.5 flex items-center justify-between gap-3">
+    <div className="flex-1">
+      <div className="text-[11px] text-gray-500">
+        Subtotal ₹{totalPrice.toLocaleString()} • Shipping ₹{shippingFee.toLocaleString()}
       </div>
+      <div className="text-base font-semibold">
+        ₹{grandTotal.toLocaleString()}
+      </div>
+    </div>
+
+    {user ? (
+      <Link
+        to="/checkout"
+        className="flex-1 ml-2 inline-flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+      >
+        Proceed to Checkout
+      </Link>
+    ) : (
+      <Link
+        to="/login"
+        state={{ from: '/checkout' }}
+        className="flex-1 ml-2 inline-flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+      >
+        Login to Checkout
+      </Link>
+    )}
+  </div>
+</div>
+
     </div>
   );
 };
