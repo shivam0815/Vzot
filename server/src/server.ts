@@ -211,7 +211,7 @@ const burstDuration = Number(process.env.RATE_LIMIT_BURST_DURATION ?? 1);
 
 // General window limiter (sliding window)
 const windowLimiter = useRedis
-  ? new RateLimiterRedis({ storeClient: redis!, keyPrefix: 'rlf:win', points, duration, execEvenly: true })
+  ? new RateLimiterRedis({ storeClient: redis!, keyPrefix: 'rlf:win', points, duration })
   : new RateLimiterMemory({ keyPrefix: 'rlf:win', points, duration });
 
 // Short burst limiter (protects sudden spikes without hurting sustained flows)
@@ -221,11 +221,11 @@ const burstLimiter = useRedis
 
 // Optional: per-route weights (heavier endpoints cost more tokens)
 const weightTable: Array<{ test: (req: express.Request) => boolean; cost: number }> = [
-  // Payments & orders are heavier
-  { test: req => req.path.startsWith('/api/payment'), cost: 5 },
-  { test: req => req.path.startsWith('/api/orders'), cost: 3 },
-  { test: req => req.path.startsWith('/api/admin'), cost: 2 },
-  // default weight below
+  { test: req => req.method !== 'GET' && req.path.startsWith('/api/payment'), cost: 5 },
+  { test: req => req.method !== 'GET' && req.path.startsWith('/api/orders'),  cost: 5 },
+  { test: req => req.path.startsWith('/api/admin'),                             cost: 3 },
+  { test: req => req.path.startsWith('/api/products') && req.method === 'GET',  cost: 1 },
+  // default = 1
 ];
 
 const getWeight = (req: express.Request) => {
@@ -241,6 +241,7 @@ const keyFromReq = (req: express.Request) => {
   return `ip:${req.ip}`;
 };
 
+
 // Standard response headers
 const setRateHeaders = (res: express.Response, rlRes?: { remainingPoints?: number; msBeforeNext?: number }, limitPoints = points, limitDuration = duration) => {
   if (!rlRes) return;
@@ -251,7 +252,8 @@ const setRateHeaders = (res: express.Response, rlRes?: { remainingPoints?: numbe
   res.setHeader('RateLimit-Remaining', String(remaining));
   res.setHeader('RateLimit-Reset', String(resetSec));
 };
-
+const skipBurst = (req: express.Request) =>
+  req.method === 'GET' && req.path.startsWith('/api/products');
 // Paths to skip limiting entirely (health, debug, webhooks you trust, etc.)
 const skipPaths = ['/api/health', '/api/debug', '/api/webhooks'];
 
@@ -260,25 +262,28 @@ const advancedRateLimit: express.RequestHandler = async (req, res, next) => {
   try {
     if (skipPaths.some(p => req.path.startsWith(p))) return next();
     if (isAllowlisted(req.ip)) return next();
+        if (req.method === 'OPTIONS') return next();
+
 
     // Determine cost + key
     const cost = getWeight(req);
     const key = keyFromReq(req);
 
     // Burst check first (failing this means too spiky)
-    try {
-      const burstRes = await burstLimiter.consume(key, cost);
-      setRateHeaders(res, burstRes as any, burstPoints, burstDuration);
-    } catch (burstErr: any) {
-      res.setHeader('Retry-After', Math.ceil((burstErr.msBeforeNext ?? 1000) / 1000));
-      return res.status(429).json({
-        error: 'Too many requests (burst)',
-        hint: 'Spread requests more evenly or lower concurrency.',
-        retryAfterSeconds: Math.ceil((burstErr.msBeforeNext ?? 1000) / 1000),
-        requestId: (req as any).requestId,
-      });
+     if (!skipBurst(req)) {
+      try {
+        const burstRes = await burstLimiter.consume(key, cost);
+        setRateHeaders(res, burstRes as any, burstPoints, burstDuration);
+      } catch (burstErr: any) {
+        res.setHeader('Retry-After', Math.ceil((burstErr.msBeforeNext ?? 1000) / 1000));
+        return res.status(429).json({
+          error: 'Too many requests (burst)',
+          hint: 'Spread requests more evenly or lower concurrency.',
+          retryAfterSeconds: Math.ceil((burstErr.msBeforeNext ?? 1000) / 1000),
+          requestId: (req as any).requestId,
+        });
+      }
     }
-
     // Windowed budget
     try {
       const winRes = await windowLimiter.consume(key, cost);
