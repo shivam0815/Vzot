@@ -42,7 +42,7 @@ const HeroSlider: React.FC = () => {
         centeredSlides
         loop
         spaceBetween={0}
-        autoplay={prefersReduced ? false : { delay: 3500, disableOnInteraction: false }}
+        autoplay={prefersReduced ? false : { delay: 2000, disableOnInteraction: false }}
         pagination={{ clickable: true }}
         navigation
         keyboard={{ enabled: true, onlyInViewport: true }}

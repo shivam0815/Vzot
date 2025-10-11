@@ -156,6 +156,10 @@ const Cart: React.FC = () => {
   const totalPrice = getTotalPrice();
   const totalItems = getTotalItems();
 
+  // Shipping and grand total
+  const shippingFee = totalPrice > 0 ? 150 : 0;
+  const grandTotal = totalPrice + shippingFee;
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24 sm:pb-8">
       <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
@@ -342,13 +346,13 @@ const Cart: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Shipping</span>
-                  <span className="font-medium text-green-600">Free</span>
+                  <span className="font-medium">₹{shippingFee.toLocaleString()}</span>
                 </div>
                 <div className="border-t pt-3">
                   <div className="flex justify-between items-center">
                     <span className="text-base font-medium text-gray-900">Total</span>
                     <span className="text-lg font-bold text-gray-900">
-                      ₹{totalPrice.toLocaleString()}
+                      ₹{grandTotal.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -390,7 +394,7 @@ const Cart: React.FC = () => {
         <div className="max-w-5xl mx-auto px-3 py-2.5 flex items-center justify-between gap-3">
           <div>
             <div className="text-[11px] text-gray-500">Total</div>
-            <div className="text-base font-semibold">₹{totalPrice.toLocaleString()}</div>
+            <div className="text-base font-semibold">₹{grandTotal.toLocaleString()}</div>
           </div>
 
           {user ? (
