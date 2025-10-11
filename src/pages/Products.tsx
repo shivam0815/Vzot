@@ -1,5 +1,5 @@
 // src/pages/Products.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Grid, List, Search } from 'lucide-react';
@@ -10,8 +10,14 @@ import type { Product } from '../types';
 import SEO from '../components/Layout/SEO';
 import { useBulkReviews } from '../hooks/useBulkReviews';
 
-/* helpers */
-
+/* --------------------- helpers --------------------- */
+const HEX24 = /^[a-f\d]{24}$/i;
+const getId = (p: any): string | undefined => {
+  const raw = p?._id ?? p?.id;
+  if (!raw) return undefined;
+  const s = typeof raw === 'string' ? raw : String(raw);
+  return HEX24.test(s) ? s : undefined;
+};
 
 /* category normalization */
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
@@ -54,13 +60,12 @@ const NAME_TO_SLUG: Record<string, string> = {
   'Mobile Repairing Tools': 'mobile-repairing-tools',
   Electronics: 'electronics',
   Accessories: 'accessories',
-  'Mobile ICs': 'Mobile ICs',
-  'Mobile Accessories': 'Mobile Accessories',
-  'mobile ics': 'Mobile ICs',
-  'mobile-ics': 'Mobile ICs',
+  'Mobile ICs': 'mobile-ics',
+  'Mobile Accessories': 'mobile-accessories',
   Others: 'others',
 };
 
+/* --------------------- component --------------------- */
 const Products: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlCategorySlug = (searchParams.get('category') || '').trim().toLowerCase();
@@ -69,6 +74,12 @@ const Products: React.FC = () => {
 
   /* UI state */
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
   const [selectedCategory, setSelectedCategory] = useState<string>(normalizedFromUrl);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 20000]);
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'rating'>('name');
@@ -97,21 +108,10 @@ const Products: React.FC = () => {
     'Car Chargers',
     'Bluetooth Speakers',
     'Power Banks',
-    'Others',
-    'ICs',
     'Mobile ICs',
-    'Mobile accessories',
+    'Mobile Accessories',
+    'Others',
   ]);
-
-  // src/pages/Products.tsx (top)
-const HEX24 = /^[a-f\d]{24}$/i;
-const getId = (p: any): string | undefined => {
-  const raw = p?._id ?? p?.id;
-  if (!raw) return undefined;
-  const s = typeof raw === 'string' ? raw : String(raw);
-  return HEX24.test(s) ? s : undefined;
-};
-
 
   /* URL -> dropdown */
   useEffect(() => {
@@ -155,27 +155,38 @@ const getId = (p: any): string | undefined => {
     };
   }, []);
 
+  /* request guard */
+  const reqSeq = useRef(0);
+
   /* server fetch with pagination */
   const fetchProducts = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
+      const mySeq = ++reqSeq.current;
 
-     const filters: any = {};
-if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
-if (searchTerm) filters.q = searchTerm;
+      const filters: any = {};
+      if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
 
-const mapSort = (ui: typeof sortBy): { sortBy: 'createdAt'|'price'|'rating'|'trending'; sortOrder: 'asc'|'desc' } => {
-  switch (ui) {
-    case 'price-low':  return { sortBy: 'price',     sortOrder: 'asc'  };
-    case 'price-high': return { sortBy: 'price',     sortOrder: 'desc' };
-    case 'rating':     return { sortBy: 'rating',    sortOrder: 'desc' };
-    case 'name':       // no “name” on API → default to newest
-    default:           return { sortBy: 'createdAt', sortOrder: 'desc' };
-  }
-};
-Object.assign(filters, mapSort(sortBy));
+      // Optional: avoid server spam for very short queries
+      if (debouncedSearch && debouncedSearch.length >= 2) {
+        filters.q = debouncedSearch;
+      }
 
+      const mapSort = (ui: typeof sortBy) => {
+        switch (ui) {
+          case 'price-low':
+            return { sortBy: 'price', sortOrder: 'asc' };
+          case 'price-high':
+            return { sortBy: 'price', sortOrder: 'desc' };
+          case 'rating':
+            return { sortBy: 'rating', sortOrder: 'desc' };
+          case 'name':
+          default:
+            return { sortBy: 'createdAt', sortOrder: 'desc' };
+        }
+      };
+      Object.assign(filters, mapSort(sortBy));
 
       const params = {
         page,
@@ -185,6 +196,9 @@ Object.assign(filters, mapSort(sortBy));
       };
 
       const r = await productService.getProducts(params, forceRefresh);
+
+      // ignore stale responses
+      if (mySeq !== reqSeq.current) return;
 
       const list =
         (Array.isArray((r as any)?.items) && (r as any).items) ||
@@ -209,8 +223,11 @@ Object.assign(filters, mapSort(sortBy));
         localStorage.removeItem('force-refresh-products');
       }
     } catch (err) {
+      // invalidate in-flight on hard error
+      reqSeq.current++;
       console.error('❌ Error fetching products via service:', err);
       setError('Failed to connect to server. Please try again later.');
+      // best-effort fallback direct call
       try {
         const fallback = await api.get('/products', { params: { _t: Date.now() } });
         const arr =
@@ -238,18 +255,18 @@ Object.assign(filters, mapSort(sortBy));
   /* reset to first page when filters change */
   useEffect(() => {
     setPage(1);
-  }, [normalizedCategoryForApi, sortBy, searchTerm]);
+  }, [normalizedCategoryForApi, sortBy, debouncedSearch]);
 
   /* refetch when page or filters change */
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, normalizedCategoryForApi, sortBy, searchTerm]);
+  }, [page, normalizedCategoryForApi, sortBy, debouncedSearch]);
 
   /* client safety net: search/price/isActive + local sort */
   const filteredProducts = useMemo(() => {
     const list = Array.isArray(products) ? products : [];
-    const q = (searchTerm || '').toLowerCase();
+    const q = (debouncedSearch || '').toLowerCase();
 
     const filtered = list
       .filter((p) => {
@@ -282,7 +299,7 @@ Object.assign(filters, mapSort(sortBy));
       });
 
     return filtered;
-  }, [products, searchTerm, priceRange, sortBy]);
+  }, [products, debouncedSearch, priceRange, sortBy]);
 
   // ---- Bulk review summaries (one call) ----
   const productIds = useMemo(
@@ -331,7 +348,7 @@ Object.assign(filters, mapSort(sortBy));
     <div className="min-h-screen bg-gray-50">
       <SEO
         title={normalizedCategoryForApi ? `${normalizedCategoryForApi} — Shop Products` : 'Shop Products'}
-        description="Browse TWS, Bluetooth neckbands, data cables, chargers, ICs, and tools,Bluetooth Speakers."
+        description="Browse TWS, Bluetooth neckbands, data cables, chargers, ICs, tools, and Bluetooth speakers."
         canonicalPath="/products"
         jsonLd={{
           '@context': 'https://schema.org',
@@ -455,7 +472,7 @@ Object.assign(filters, mapSort(sortBy));
           <p className="text-gray-600">
             Showing {filteredProducts.length} of {total || products.length} products
             {normalizedCategoryForApi && ` in ${normalizedCategoryForApi}`}
-            {searchTerm && ` · matching "${searchTerm}"`}
+            {debouncedSearch && ` · matching "${debouncedSearch}"`}
           </p>
         </div>
 
