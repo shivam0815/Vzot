@@ -568,7 +568,10 @@ const toImg = (u: string): string => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link to="/products?category=Mobile%20ICs" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">View all →</Link>
+              <Link to="/products?category=ICs" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">
+  View all →
+</Link>
+
 
               <button onClick={mobileICRef.scrollLeft} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Prev">
                 <ChevronLeft className="w-5 h-5" />

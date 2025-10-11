@@ -32,7 +32,7 @@ const CATEGORIES: Category[] = [
    { label: 'Neckbands',             slug: 'neckband',           img: '/Neckband-removebg-preview.png' },
   { label: 'Bluetooth Speakers',     slug: 'bluetooth-speakers',  img: '/Bluetooth-Speaker.webp' },
   { label: 'Power Banks',           slug: 'power-bank',         img: '/Powerbank.webp' },
-  { label: 'Mobile ICs',            slug: 'Mobile ICs',          img: '/ics.webp' },
+  { label: 'Mobile ICs',            slug: 'ICs',          img: '/ics.webp' },
 
     { label: 'Mobile Tools',          slug: 'mobile-repairing-tools', img: '/Reapring-Tools.webp' },
 
