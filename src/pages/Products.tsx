@@ -103,6 +103,16 @@ const Products: React.FC = () => {
     'Mobile accessories',
   ]);
 
+  // src/pages/Products.tsx (top)
+const HEX24 = /^[a-f\d]{24}$/i;
+const getId = (p: any): string | undefined => {
+  const raw = p?._id ?? p?.id;
+  if (!raw) return undefined;
+  const s = typeof raw === 'string' ? raw : String(raw);
+  return HEX24.test(s) ? s : undefined;
+};
+
+
   /* URL -> dropdown */
   useEffect(() => {
     if (normalizedFromUrl && normalizedFromUrl !== selectedCategory) {

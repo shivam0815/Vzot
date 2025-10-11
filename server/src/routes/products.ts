@@ -269,15 +269,25 @@ router.get('/:id/related', async (req, res) => {
 /**
  * GET /products/:id (single product) — with Redis cache
  */
+// src/routes/products.ts  (single product route)
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const redis = req.app.get('redis') as Redis | undefined;
     const cacheKey = `product:${id}`;
 
-    if (!mongoose.isValidObjectId(id)) {
-      return res.status(400).json({ success: false, message: 'Invalid product id format' });
-    }
+    const findByAlt = async () =>
+      Product.findOne({ $or: [{ slug: id }, { sku: id }, { productId: id }] })
+        .select('-__v')
+        .lean();
+
+    const fetchDoc = async () => {
+      if (mongoose.isValidObjectId(id)) {
+        const doc = await Product.findById(id).select('-__v').lean();
+        if (doc) return doc;
+      }
+      return await findByAlt();
+    };
 
     if (redis) {
       const cached = await redis.get(cacheKey);
@@ -287,9 +297,12 @@ router.get('/:id', async (req, res) => {
       }
     }
 
-    const product = await Product.findById(id).select('-__v').lean();
+    const product = await fetchDoc();
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product ID format or not found',
+      });
     }
 
     const response = { success: true, message: 'Product details fetched', product, cached: false };

@@ -114,7 +114,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
   console.log('📁 Created uploads directory:', uploadsDir);
 }
-
+app.use(express.static(path.join(__dirname, '../public')));
 // Security middleware
 app.use(helmet({ crossOriginEmbedderPolicy: false, contentSecurityPolicy: false }));
 
