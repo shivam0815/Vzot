@@ -36,8 +36,6 @@ type Product = {
   stock?: number;
   tags?: string[];
 };
-const IC_CATEGORY = 'ICs';
-
 
 const priceOffPct = (price?: number, original?: number) => {
   if (!price || !original || original <= price) return 0;
@@ -102,9 +100,8 @@ const categories = [
   { id: 'Data Cables', name: 'Data Cable', icon: '🔌', gradient: 'from-green-500 to-teal-500', description: 'Fast charging & sync cables', color: 'bg-green-500' },
   { id: 'Mobile Chargers', name: 'Wall Charger', icon: '⚡', gradient: 'from-yellow-500 to-orange-500', description: 'Quick & safe charging solutions', color: 'bg-yellow-500' },
   { id: 'Car Chargers', name: 'Car Charger', icon: '🚗', gradient: 'from-gray-600 to-gray-800', description: 'On-the-go charging solutions', color: 'bg-gray-600' },
- { id: IC_CATEGORY, name: 'Mobile IC', icon: '🔧', gradient: 'from-red-500 to-rose-500', description: 'Integrated circuits & semiconductors', color: 'bg-red-500' },
+  { id: 'ICs', name: 'Mobile IC', icon: '🔧', gradient: 'from-red-500 to-rose-500', description: 'Integrated circuits & semiconductors', color: 'bg-red-500' },
   { id: 'Mobile Repairing Tools', name: 'Mobile Repairing Tools', icon: '🛠️', gradient: 'from-indigo-500 to-blue-500', description: 'Professional repair toolkit', color: 'bg-indigo-500' },
-
 ];
 
 
@@ -178,18 +175,12 @@ const loadMobileAccessories = async () => {
 const loadMobileIC = async () => {
   try {
     setLoadingMobileIC(true);
-    const res = await fetch(
-      `${API_BASE}/products?category=${encodeURIComponent(IC_CATEGORY)}&limit=20&status=active`,
-      { credentials: 'include' }
-    );
+    const res = await fetch(`${API_BASE}/products?category=${encodeURIComponent('Mobile ICs')}&limit=20&status=active`, { credentials: 'include' });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.message || 'Failed to load mobile IC products');
     setMobileIC(data.products || data.items || []);
-  } finally {
-    setLoadingMobileIC(false);
-  }
+  } finally { setLoadingMobileIC(false); }
 };
-
 
 // Load Mobile Repairing Tools (exact database name)
 const loadMobileRepairTools = async () => {
@@ -577,10 +568,7 @@ const toImg = (u: string): string => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link to="/products?category=ICs" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">
-  View all →
-</Link>
-
+              <Link to="/products?category=ICs" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">View all →</Link>
 
               <button onClick={mobileICRef.scrollLeft} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Prev">
                 <ChevronLeft className="w-5 h-5" />
