@@ -11,10 +11,9 @@ import {
 import { Toaster } from 'react-hot-toast';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import Scrolltop from './components/Layout/Scrolltop';
 // import
 
-import AdminDashboard from "./pages/AdminDashboard";
-import ProductReview from "./components/Layout/ProductReview";
 
 // inside <Routes>
 <Route path="/order-success" element={<OrderSuccess />} />
@@ -88,6 +87,7 @@ function GuardedProfileRoute() {
 function App() {
   return (
     <Router>
+      <Scrolltop />
       <div className="min-h-screen flex flex-col">
         <Routes>
           {/* ADMIN */}
