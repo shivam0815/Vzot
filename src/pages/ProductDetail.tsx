@@ -396,18 +396,7 @@ const handleAddToCart = async () => {
                 )}
               </div>
 
-              {/* Stock */}
-              <div className="flex items-center flex-wrap gap-2 sm:gap-3">
-                <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-xs sm:text-sm font-medium ${
-                  (product as any).inStock ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
-                  <span className={`w-2 h-2 rounded-full ${(product as any).inStock ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                  <span>{(product as any).inStock ? 'In Stock' : 'Out of Stock'}</span>
-                </div>
-                {(product as any).stockQuantity ? (
-                  <span className="text-gray-500 text-xs sm:text-sm">{(product as any).stockQuantity} available</span>
-                ) : null}
-              </div>
+              
 
               {/* Quantity */}
               {(product as any).inStock && (
