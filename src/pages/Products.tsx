@@ -41,6 +41,7 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   electronics: 'Electronics',
   accessories: 'Accessories',
   others: 'Others',
+   ics: 'ICs',  
 };
 const NAME_TO_SLUG: Record<string, string> = {
   TWS: 'tws',
@@ -59,6 +60,7 @@ const NAME_TO_SLUG: Record<string, string> = {
   'mobile ics': 'Mobile ICs',
   'mobile-ics': 'Mobile ICs',
   Others: 'others',
+    ICs: 'ics',
 };
 
 const Products: React.FC = () => {
