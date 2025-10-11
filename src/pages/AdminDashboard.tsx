@@ -1182,6 +1182,27 @@ const ProductManagement = memo<{
               <label htmlFor="description">Description</label>
               <textarea id="description" name="description" value={formData.description} onChange={handleInputChange} disabled={isSubmitting} placeholder="Enter product description" rows={3} />
             </div>
+            {/* Specifications */}
+<div className="form-group">
+  <label htmlFor="specifications">Specifications (JSON object)</label>
+  <textarea
+    id="specifications"
+    name="specifications"
+    value={specificationsText}
+    onChange={(e) => handleSpecificationsChange(e.target.value)}
+    disabled={isSubmitting}
+    placeholder='e.g. {"warranty":"6 months","connector":"USB-C","length":"1m"}'
+    rows={3}
+  />
+  {specificationsError ? (
+    <small style={{ color: '#e00' }}>❌ {specificationsError}</small>
+  ) : specificationsText.trim() ? (
+    <small style={{ color: '#2c7' }}>✅ JSON OK</small>
+  ) : (
+    <small style={{ color: '#666' }}>Enter valid JSON. Must be an object.</small>
+  )}
+</div>
+
 
             {/* NEW — SEO + SKU */}
             <div className="form-row">
