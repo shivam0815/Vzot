@@ -24,12 +24,6 @@ import {
   DocumentTextIcon,
 } from '@heroicons/react/24/solid';
 
-import {
-  ArrowDownTrayIcon,
-  PrinterIcon,
-  DocumentCheckIcon,
-} from '@heroicons/react/24/outline';
-
 import NotificationCenter from '../components/Layout/NotificationCenter';
 import HelpSupport from '../components/Layout/HelpSupport';
 import FAQs from '../components/Layout/FAQs';
@@ -90,33 +84,19 @@ interface Order {
   paymentStatus: 'awaiting_payment' | 'paid' | 'failed' | 'cod_pending' | 'cod_paid';
   paymentMethod: 'razorpay' | 'cod';
   total: number;
-  subtotal?: number;
-  tax?: number;
-  shipping?: number;
   items: Array<{
     productId: string;
     name: string;
     quantity: number;
     price: number;
     image?: string;
+    // order item _id may exist but isn't required by this file
     _id?: string;
   }>;
   createdAt: string;
   trackingNumber?: string;
+  // deliveredAt could exist on your API, but UI doesn’t require it (backend enforces window)
   deliveredAt?: string;
-  invoiceUrl?: string;
-  invoiceNumber?: string;
-  gst?: {
-    wantInvoice?: boolean;
-    gstin?: string;
-    legalName?: string;
-    placeOfSupply?: string;
-    taxPercent?: number;
-    taxBase?: number;
-    taxAmount?: number;
-    invoiceUrl?: string;
-    invoiceNumber?: string;
-  };
 }
 
 const fade = {
@@ -171,228 +151,6 @@ const statusIcon = (status: string) => {
   }
 };
 
-// NEW: Invoice Section Component
-const InvoiceSection: React.FC<{ order: Order }> = ({ order }) => {
-  const hasGSTInvoice = order.gst?.wantInvoice || order.gst?.gstin;
-  const gstInvoiceUrl = order.gst?.invoiceUrl;
-  const shippingInvoiceUrl = order.invoiceUrl;
-  
-  const formatMoney = (n?: number) => n != null ? `₹${n.toFixed(2)}` : '—';
-  
-  const gstPercent = order.gst?.taxPercent || (order.subtotal && order.tax ? Math.round((order.tax / order.subtotal) * 100) : 18);
-  const isSameState = true;
-  
-  const cgst = isSameState && order.tax ? order.tax / 2 : 0;
-  const sgst = isSameState && order.tax ? order.tax / 2 : 0;
-  const igst = !isSameState && order.tax ? order.tax : 0;
-
-  return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
-            <DocumentCheckIcon className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h4 className="font-semibold text-gray-900">Invoice & Tax Details</h4>
-            <p className="text-xs text-gray-600">
-              {hasGSTInvoice ? 'GST Invoice Available' : 'Standard Invoice'}
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {(gstInvoiceUrl || shippingInvoiceUrl) && (
-            <>
-              <button
-                onClick={() => window.open(gstInvoiceUrl || shippingInvoiceUrl, '_blank')}
-                className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-gray-900 font-medium inline-flex items-center gap-2 text-sm"
-                title="Download Invoice"
-              >
-                <ArrowDownTrayIcon className="w-4 h-4" />
-                Download
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-50 text-gray-900 font-medium inline-flex items-center gap-2 text-sm"
-                title="Print Invoice"
-              >
-                <PrinterIcon className="w-4 h-4" />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl p-4 space-y-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Invoice Information
-          </div>
-          
-          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-            <span className="text-sm text-gray-600">Order Number</span>
-            <span className="text-sm font-semibold text-gray-900">#{order.orderNumber}</span>
-          </div>
-          
-          {order.invoiceNumber && (
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-sm text-gray-600">Invoice Number</span>
-              <span className="text-sm font-semibold text-gray-900">{order.invoiceNumber}</span>
-            </div>
-          )}
-          
-          {order.gst?.invoiceNumber && (
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-sm text-gray-600">GST Invoice No.</span>
-              <span className="text-sm font-semibold text-gray-900">{order.gst.invoiceNumber}</span>
-            </div>
-          )}
-          
-          <div className="flex justify-between items-center py-2 border-b border-gray-100">
-            <span className="text-sm text-gray-600">Invoice Date</span>
-            <span className="text-sm font-semibold text-gray-900">{formatDate(order.createdAt)}</span>
-          </div>
-          
-          <div className="flex justify-between items-center py-2">
-            <span className="text-sm text-gray-600">Status</span>
-            <span className={clsx('px-2.5 py-1 rounded-full text-xs font-medium', statusPill(order.paymentStatus))}>
-              {order.paymentStatus.replace('_', ' ').toUpperCase()}
-            </span>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl p-4 space-y-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            GST Details
-          </div>
-          
-          {hasGSTInvoice ? (
-            <>
-              {order.gst?.gstin && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">GSTIN</span>
-                  <span className="text-sm font-mono font-semibold text-gray-900">{order.gst.gstin}</span>
-                </div>
-              )}
-              
-              {order.gst?.legalName && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">Legal Name</span>
-                  <span className="text-sm font-semibold text-gray-900 text-right truncate max-w-[200px]" title={order.gst.legalName}>
-                    {order.gst.legalName}
-                  </span>
-                </div>
-              )}
-              
-              {order.gst?.placeOfSupply && (
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">Place of Supply</span>
-                  <span className="text-sm font-semibold text-gray-900">{order.gst.placeOfSupply}</span>
-                </div>
-              )}
-              
-              <div className="flex justify-between items-center py-2">
-                <span className="text-sm text-gray-600">GST Rate</span>
-                <span className="text-sm font-semibold text-gray-900">{gstPercent}%</span>
-              </div>
-            </>
-          ) : (
-            <div className="py-4 text-center">
-              <div className="text-gray-400 mb-2">
-                <DocumentTextIcon className="w-8 h-8 mx-auto" />
-              </div>
-              <p className="text-sm text-gray-600">No GST invoice requested</p>
-              <p className="text-xs text-gray-500 mt-1">Standard invoice available</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl p-4">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-          Tax Breakdown
-        </div>
-        
-        <div className="space-y-2">
-          <div className="flex justify-between items-center py-2 text-sm">
-            <span className="text-gray-600">Subtotal</span>
-            <span className="font-semibold text-gray-900">{formatMoney(order.subtotal)}</span>
-          </div>
-          
-          {isSameState ? (
-            <>
-              <div className="flex justify-between items-center py-2 text-sm border-t border-gray-100">
-                <span className="text-gray-600">CGST ({gstPercent / 2}%)</span>
-                <span className="font-medium text-gray-900">{formatMoney(cgst)}</span>
-              </div>
-              <div className="flex justify-between items-center py-2 text-sm">
-                <span className="text-gray-600">SGST ({gstPercent / 2}%)</span>
-                <span className="font-medium text-gray-900">{formatMoney(sgst)}</span>
-              </div>
-            </>
-          ) : (
-            <div className="flex justify-between items-center py-2 text-sm border-t border-gray-100">
-              <span className="text-gray-600">IGST ({gstPercent}%)</span>
-              <span className="font-medium text-gray-900">{formatMoney(igst)}</span>
-            </div>
-          )}
-            <div className="flex justify-between items-center py-2 text-sm">
-      <span className="text-gray-600">Shipping</span>
-      <span className="font-medium text-gray-900">
-        {order.shipping === 0 ? (
-          <span className="text-emerald-600 font-semibold">FREE</span>
-        ) : (
-          formatMoney(order.shipping)
-        )}
-      </span>
-    </div>
-          
-          
-          <div className="flex justify-between items-center py-3 text-base font-bold border-t-2 border-gray-200">
-            <span className="text-gray-900">Total Amount</span>
-            <span className="text-blue-600">{formatMoney(order.total)}</span>
-          </div>
-        </div>
-      </div>
-
-      {(gstInvoiceUrl || shippingInvoiceUrl) && (
-        <div className="flex flex-wrap gap-2 pt-2">
-          {gstInvoiceUrl && (
-            <a
-              href={gstInvoiceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 min-w-[200px] px-4 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium inline-flex items-center justify-center gap-2 transition-colors"
-            >
-              <DocumentCheckIcon className="w-5 h-5" />
-              Download GST Invoice
-            </a>
-          )}
-          
-          {shippingInvoiceUrl && !gstInvoiceUrl && (
-            <a
-              href={shippingInvoiceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 min-w-[200px] px-4 py-3 rounded-lg bg-gray-900 hover:bg-black text-white font-medium inline-flex items-center justify-center gap-2 transition-colors"
-            >
-              <DocumentTextIcon className="w-5 h-5" />
-              Download Invoice
-            </a>
-          )}
-        </div>
-      )}
-      
-      {!gstInvoiceUrl && !shippingInvoiceUrl && (
-        <div className="text-center py-3 text-sm text-gray-500">
-          Invoice will be available once order is confirmed
-        </div>
-      )}
-    </div>
-  );
-};
-
 const Profile: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
@@ -406,6 +164,7 @@ const Profile: React.FC = () => {
   const [orderFilter, setOrderFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // NEW: open Return modal with the chosen order
   const [returnOrder, setReturnOrder] = useState<Order | null>(null);
 
   const navigate = useNavigate();
@@ -503,6 +262,7 @@ const Profile: React.FC = () => {
     };
   }, [user?._id]);
 
+  // ---- Shiprocket widget injector: run when Orders tab is active ----
   useEffect(() => {
     if (activeTab !== 'orders') return;
 
@@ -534,12 +294,14 @@ const Profile: React.FC = () => {
       }
     };
 
+    // Retry because the widget may render after script onload
     const retryApplyStyles = () => {
       applyStyles();
       setTimeout(applyStyles, 300);
       setTimeout(applyStyles, 900);
     };
 
+    // Add CSS (once)
     let cssEl = document.getElementById(cssId) as HTMLLinkElement | null;
     if (!cssEl) {
       cssEl = document.createElement('link');
@@ -549,6 +311,7 @@ const Profile: React.FC = () => {
       document.body.appendChild(cssEl);
     }
 
+    // Add JS (once)
     let jsEl = document.getElementById(jsId) as HTMLScriptElement | null;
     if (!jsEl) {
       jsEl = document.createElement('script');
@@ -558,9 +321,11 @@ const Profile: React.FC = () => {
       jsEl.onload = retryApplyStyles;
       document.body.appendChild(jsEl);
     } else {
+      // Already present → attempt styling immediately
       retryApplyStyles();
     }
 
+    // Observe DOM changes to re-apply styles if widget re-renders
     const mo = new MutationObserver(() => applyStyles());
     mo.observe(document.body, { childList: true, subtree: true });
 
@@ -603,6 +368,7 @@ const Profile: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header Card (white, subtle) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 mb-6">
           <div className="flex flex-col md:flex-row items-center gap-6">
             <div className="relative">
@@ -642,14 +408,16 @@ const Profile: React.FC = () => {
           )}
         </div>
 
+        {/* Tabs (vertical, polished) */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="flex flex-col md:flex-row">
+            {/* Sidebar nav */}
             <aside className="md:w-64 border-b md:border-b-0 md:border-r border-gray-100">
               <nav className="p-2 md:p-4 space-y-1">
                 {[
                   { id: 'profile', label: 'Profile', icon: <UserIcon className="w-4 h-4" /> },
                   { id: 'orders', label: 'Orders', icon: <ShoppingBagIcon className="w-4 h-4" /> },
-                  { id: 'returns', label: 'Returns', icon: <ArrowPathIcon className="w-4 h-4" /> },
+                  { id: 'returns', label: 'Returns', icon: <ArrowPathIcon className="w-4 h-4" /> }, // NEW
                   { id: 'notifications', label: 'Notifications', icon: <BellIcon className="w-4 h-4" /> },
                   { id: 'support', label: 'Help & Support', icon: <LifebuoyIcon className="w-4 h-4" /> },
                   { id: 'faqs', label: 'FAQs', icon: <QuestionMarkCircleIcon className="w-4 h-4" /> },
@@ -673,6 +441,7 @@ const Profile: React.FC = () => {
               </nav>
             </aside>
 
+            {/* Panels */}
             <section className="flex-1 p-6 md:p-8 min-h-[420px]">
               <AnimatePresence mode="wait">
                 {activeTab === 'profile' && (
@@ -695,6 +464,7 @@ const Profile: React.FC = () => {
                       setOrderFilter={setOrderFilter}
                       onRefresh={fetchOrders}
                       navigate={navigate}
+                      // NEW
                       onOpenReturn={(o) => setReturnOrder(o)}
                     />
                   </motion.div>
@@ -735,6 +505,7 @@ const Profile: React.FC = () => {
         </div>
       </div>
 
+      {/* NEW: Return request modal (opens from Orders tab) */}
       {returnOrder && (
         <ReturnRequestModal
           order={returnOrder}
@@ -819,6 +590,7 @@ const OrdersTab: React.FC<{
   setOrderFilter: (f: 'all' | 'pending' | 'completed') => void;
   onRefresh: () => void;
   navigate: (p: string) => void;
+  // NEW
   onOpenReturn: (order: Order) => void;
 }> = ({ orders, ordersLoading, orderFilter, setOrderFilter, onRefresh, navigate, onOpenReturn }) => {
   return (
@@ -941,15 +713,6 @@ const OrdersTab: React.FC<{
                   )}
                 </div>
 
-                {(o.status === 'confirmed' || 
-                  o.status === 'processing' || 
-                  o.status === 'shipped' || 
-                  o.status === 'delivered') && (
-                  <div className="mb-4">
-                    <InvoiceSection order={o} />
-                  </div>
-                )}
-
                 <div className="flex flex-wrap gap-3">
                   <button
                     onClick={() => navigate(`/order-details/${o._id}`)}
@@ -967,6 +730,7 @@ const OrdersTab: React.FC<{
                     </button>
                   )}
 
+                  {/* NEW: Request Return (shown for delivered orders – backend still validates window) */}
                   {String(o.status).toLowerCase() === 'delivered' && (
                     <button
                       onClick={() => onOpenReturn(o)}
