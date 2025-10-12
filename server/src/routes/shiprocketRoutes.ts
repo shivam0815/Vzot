@@ -161,6 +161,35 @@ r.post("/orders/:id/shiprocket/create", authenticate, requireAdmin, async (req, 
     payload.sub_total = Number(payload.sub_total ?? 0);
     (["length","breadth","height","weight"] as const).forEach(k => payload[k] = Number(payload[k] ?? 0));
 
+
+    // ---- sanitize short addresses (Shiprocket requires addr1+addr2 >= 3) ----
+const fixShort = (a1?: string, a2?: string, city?: string) => {
+  const A1 = String(a1 || '').trim();
+  const A2 = String(a2 || '').trim();
+  if ((A1 + A2).length >= 3) return { A1, A2 };
+  // fallback: push something meaningful into line 1
+  const fallback = (A1 || A2 || city || 'Address Missing').toString().trim();
+  return { A1: fallback, A2: A2 };
+};
+
+// payload fields from your mapper
+const { A1: shipA1, A2: shipA2 } = fixShort(
+  (payload as any).shipping_address,
+  (payload as any).shipping_address_2,
+  (order.shippingAddress as any)?.city
+);
+(payload as any).shipping_address    = shipA1;
+(payload as any).shipping_address_2  = shipA2;
+
+const { A1: billA1, A2: billA2 } = fixShort(
+  (payload as any).billing_address,
+  (payload as any).billing_address_2,
+  (order.billingAddress as any)?.city
+);
+(payload as any).billing_address     = billA1;
+(payload as any).billing_address_2   = billA2;
+
+
     const errs = validateShiprocketPayload(payload);
     if (errs.length) {
       return res.status(400).json({ ok: false, error: "Validation failed", errors: errs, payload });

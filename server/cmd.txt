@@ -1,0 +1,4 @@
+cd ~/b2c/server
+pm2 restart nakodab2c-backend --update-env
+pm2 delete nakodab2c-backend
+pm2 start dist/server.js --name nakodab2c-backend
