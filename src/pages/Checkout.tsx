@@ -19,6 +19,7 @@ import { useAuth } from '../hooks/useAuth';
 import { usePayment } from '../hooks/usePayment';
 import toast from 'react-hot-toast';
 import Input from '../components/Layout/Input';
+import api from '../config/api';
 
 interface Address {
   fullName: string;
@@ -69,6 +70,8 @@ const emptyAddress: Address = {
 
 const SHIPPING_FREE_THRESHOLD = 1499;
 const BASE_SHIPPING_FEE = 150;
+const { cartItems, getTotalPrice, clearCart, isLoading: cartLoading, refreshCart } = useCart();
+
 
 const COD_FEE = 25;
 const GIFT_WRAP_FEE = 0;
@@ -202,118 +205,124 @@ const CheckoutPage: React.FC = () => {
     return Object.keys(e).length === 0;
   };
 
-  const onSubmit = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    if (!validate()) {
-      toast.error('Please correct the errors below');
+  // 2) replace onSubmit with this version
+const onSubmit = async (ev: React.FormEvent) => {
+  ev.preventDefault();
+  if (!validate()) { toast.error('Please correct the errors below'); return; }
+
+  try {
+    localStorage.setItem('checkout:shipping', JSON.stringify(shipping));
+
+    const orderPayload = {
+      items: cartItems.map((it: any) => ({
+        productId: it.productId || it.id,
+        name: it.name,
+        image: it.image || it.img,
+        quantity: it.quantity,
+        price: it.price,
+      })),
+      shippingAddress: shipping,
+      billingAddress: sameAsShipping ? shipping : billing,
+      paymentMethod: method,
+      extras: {
+        orderNotes: orderNotes.trim() || undefined,
+        wantGSTInvoice,
+        gst: wantGSTInvoice
+          ? {
+              gstin: gst.gstin.trim(),
+              legalName: gst.legalName.trim(),
+              placeOfSupply: gst.placeOfSupply,
+              email: gst.email?.trim() || undefined,
+              requestedAt: new Date().toISOString(),
+            }
+          : undefined,
+        giftWrap,
+      },
+      pricing: {
+        rawSubtotal,
+        discount: appliedCoupon?.amount || 0,
+        discountLabel: appliedCoupon?.code || undefined,
+        coupon: appliedCoupon?.code || undefined,
+        couponFreeShipping: appliedCoupon?.freeShipping || false,
+        effectiveSubtotal,
+        tax,
+        shippingFee,
+        shippingAddedPostPack,
+        codCharges,
+        giftWrapFee,
+        convenienceFee,
+        convenienceFeeGst,
+        convenienceFeeRate: ONLINE_FEE_RATE,
+        convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
+        gstSummary: { requested: wantGSTInvoice, rate: 0.18, taxableValue: effectiveSubtotal, gstAmount: tax },
+        total,
+      },
+    };
+
+    // 1) Create order on backend (atomic stock decrement)
+    const ordRes = await api.post('/orders', orderPayload);
+    const ord = ordRes.data.order; // {_id, orderNumber, total, paymentStatus}
+
+    if (method === 'cod') {
+      clearCart(); // server also clears
+      navigate(`/order/${ord._id}/thank-you`);
       return;
     }
 
-    try {
-      localStorage.setItem('checkout:shipping', JSON.stringify(shipping));
+    // 2) Create Razorpay order for this orderId
+    const payRes = await api.post('/payments/create', {
+      orderId: ord._id,
+      paymentMethod: 'razorpay',
+    });
+    const pay = payRes.data;
 
-      const orderData = {
-        items: cartItems.map((item: any) => ({
-          productId: item.productId || item.id,
-          name: item.name,
-          image: item.image || item.img,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-        // @ts-ignore
-        shippingAddress: shipping,
-        // @ts-ignore
-        billingAddress: sameAsShipping ? shipping : billing,
-        extras: {
-          orderNotes: orderNotes.trim() || undefined,
-          wantGSTInvoice,
-          gst: wantGSTInvoice
-            ? {
-                gstin: gst.gstin.trim(),
-                legalName: gst.legalName.trim(),
-                placeOfSupply: gst.placeOfSupply,
-                email: gst.email?.trim() || undefined,
-                requestedAt: new Date().toISOString(),
-              }
-            : undefined,
-          giftWrap,
-        },
-        pricing: {
-          rawSubtotal,
-          discount: monetaryDiscount,
-          discountLabel: discountLabel || undefined,
-          coupon: appliedCoupon?.code || undefined,
-          couponFreeShipping: appliedCoupon?.freeShipping || false,
-          effectiveSubtotal,
-          tax,
-          shippingFee,
-          shippingAddedPostPack, // false
-          codCharges,
-          giftWrapFee,
-
-          convenienceFee,
-          convenienceFeeGst,
-          convenienceFeeRate: ONLINE_FEE_RATE,
-          convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
-
-          gstSummary: {
-            requested: wantGSTInvoice,
-            rate: 0.18,
-            taxableValue: effectiveSubtotal,
-            gstAmount: tax,
-          },
-
-          total,
-        },
-      };
-
-      const userDetails = {
+    // 3) Open Razorpay Checkout
+    const rz = new (window as any).Razorpay({
+      key: pay.razorpayKeyId,
+      amount: Math.round(ord.total * 100),
+      currency: 'INR',
+      name: 'Nakoda Mobile',
+      description: `Order ${ord.orderNumber}`,
+      order_id: pay.paymentOrderId,
+      prefill: {
         name: shipping.fullName,
         email: shipping.email,
-        phone: shipping.phoneNumber,
-      };
+        contact: shipping.phoneNumber,
+      },
+      handler: async (resp: any) => {
+        try {
+          await api.post('/payments/verify', {
+            paymentMethod: 'razorpay',
+            paymentId: resp.razorpay_payment_id,
+            orderId: resp.razorpay_order_id,
+            signature: resp.razorpay_signature,
+          });
+          clearCart();
+          navigate(`/order/${ord._id}/thank-you`);
+        } catch (e: any) {
+          toast.error(e?.response?.data?.message || 'Verification failed');
+        }
+      },
+      modal: {
+        ondismiss: () => toast('Payment cancelled'),
+      },
+      notes: { orderId: ord._id, orderNumber: ord.orderNumber },
+      theme: { color: '#2563eb' },
+    });
+    rz.open();
+} catch (e: any) {
+  if (e?.response?.status === 409) {
+    toast.error('Stock changed. Cart updated.');
+    await refreshCart(true);
+    navigate('/cart');
+  } else {
+    toast.error(e?.response?.data?.message || e?.message || 'Checkout failed');
+  }
+}
 
-      const result = (await processPayment(total, method, orderData, userDetails)) as PaymentResult;
 
-      if (!result?.success) return;
-      if (result.redirected) return;
+};
 
-      clearCart();
-
-      const ord = result.order || {};
-      const orderId = ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
-
-      const successState = {
-        orderId,
-        order: ord,
-        paymentMethod: result.method,
-        paymentId: result.paymentId ?? null,
-      };
-
-      const snapshot = {
-        orderNumber: ord.orderNumber ?? orderId ?? undefined,
-        _id: ord._id ?? orderId ?? undefined,
-        total: ord.total ?? ord.amount ?? total,
-        createdAt: ord.createdAt ?? new Date().toISOString(),
-        items: Array.isArray(ord.items) && ord.items.length ? ord.items : orderData.items,
-        shippingAddress: ord.shippingAddress ?? shipping,
-      };
-
-      localStorage.setItem(
-        'lastOrderSuccess',
-        JSON.stringify({
-          ...successState,
-          snapshot,
-        })
-      );
-
-      const qs = orderId ? `?id=${encodeURIComponent(orderId)}` : '';
-      navigate(`/order-success${qs}`, { state: successState, replace: true });
-    } catch (error: any) {
-      console.error('Checkout error:', error);
-      toast.error(error?.message || 'Checkout failed. Please try again.');
-    }
-  };
 
   if (cartLoading) {
     return (

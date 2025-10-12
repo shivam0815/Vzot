@@ -24,63 +24,35 @@ const cleanGstin = (s?: any) =>
 
 /* ───────────────── CREATE ORDER (stock deduction, GST & emails) ───────────────── */
 
+// CREATE ORDER — transactional stock decrement
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user) { res.status(401).json({ message: "User not authenticated" }); return; }
+  const user = req.user as AuthenticatedUser;
+  const userId = user.id;
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    const { shippingAddress, paymentMethod, billingAddress, extras, pricing } = req.body;
+    const { shippingAddress, paymentMethod, billingAddress, extras } = req.body;
 
-    if (!req.user) {
-      res.status(401).json({ message: "User not authenticated" });
-      return;
-    }
+    // Load cart in-session
+    const cart = await Cart.findOne({ userId }).populate("items.productId").session(session);
+    if (!cart || !cart.items?.length) { await session.abortTransaction(); res.status(400).json({ message: "Cart is empty" }); return; }
 
-    const user = req.user as AuthenticatedUser;
-    const userId = user.id;
-
-    // Load cart
-    const cart = await Cart.findOne({ userId }).populate("items.productId");
-    if (!cart || !cart.items || cart.items.length === 0) {
-      res.status(400).json({ message: "Cart is empty" });
-      return;
-    }
-
-    const orderItems: Array<{
-      productId: mongoose.Types.ObjectId;
-      name: string;
-      price: number;
-      quantity: number;
-      image: string;
-    }> = [];
-
+    // Build items with stock clamp
+    const orderItems: Array<{ productId: mongoose.Types.ObjectId; name: string; price: number; quantity: number; image: string; }> = [];
     let subtotal = 0;
 
-    // Build items with stock-only clamping (B2C: no MOQ, no max per line)
     for (const cartItem of cart.items) {
-      const product = cartItem.productId as any;
-
+      const product: any = cartItem.productId;
       if (!product || !product.isActive || !product.inStock) {
-        res.status(400).json({
-          message: `Product unavailable: ${product?.name || "Unknown"}`,
-        });
-        return;
+        await session.abortTransaction(); res.status(400).json({ message: `Product unavailable: ${product?.name || "Unknown"}` }); return;
       }
-
       const stock = Math.max(0, Number(product.stockQuantity ?? 0));
       const desired = Math.max(1, Number(cartItem.quantity) || 1);
-
-      if (stock < 1) {
-        res.status(400).json({
-          message: `Insufficient stock for ${product?.name || "item"}.`,
-        });
-        return;
-      }
-
+      if (stock < 1) { await session.abortTransaction(); res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` }); return; }
       const qty = Math.min(desired, stock);
-      if (qty < 1) {
-        res.status(400).json({
-          message: `Insufficient stock for ${product?.name || "item"}.`,
-        });
-        return;
-      }
+      if (qty < 1) { await session.abortTransaction(); res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` }); return; }
 
       orderItems.push({
         productId: product._id,
@@ -89,25 +61,37 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
         quantity: qty,
         image: product.images?.[0] || "",
       });
-
       subtotal += cartItem.price * qty;
     }
 
-    // Pricing (server-side). Adjust as needed.
-    const shipping = subtotal > 500 ? 0 : 50; // free above ₹500
-    const tax = Math.round(subtotal * 0.18);  // 18% GST rounded
+    // Pricing
+    const shipping = subtotal > 500 ? 0 : 50;
+    const tax = Math.round(subtotal * 0.18);
     const total = subtotal + shipping + tax;
 
     // IDs
-    // IDs
-const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
-const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
+    const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
 
-    // GST block
+    // GST
     const gstBlock = buildGstBlock(req.body, shippingAddress, { subtotal, tax });
 
-    // Create and save
-    const order = new Order({
+    // 1) Decrement inventory atomically per line
+    for (const item of orderItems) {
+      const resUpd = await Product.updateOne(
+        { _id: item.productId, stockQuantity: { $gte: item.quantity } },
+        { $inc: { stockQuantity: -item.quantity } },
+        { session }
+      );
+      if (resUpd.modifiedCount !== 1) {
+        await session.abortTransaction();
+        res.status(409).json({ message: `Stock changed for ${item.name}. Please try again.` });
+        return;
+      }
+    }
+
+    // 2) Create order
+    const order = await Order.create([{
       userId: new mongoose.Types.ObjectId(userId),
       orderNumber,
       items: orderItems,
@@ -124,87 +108,40 @@ const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined
       paymentStatus: paymentMethod === "cod" ? "cod_pending" : "awaiting_payment",
       gst: gstBlock,
       customerNotes: (extras?.orderNotes || "").toString().trim() || undefined,
-    });
+      inventoryCommitted: true,
+    }], { session });
 
-    const savedOrder = await order.save();
+    const savedOrder = order[0];
 
-    // REAL-TIME STOCK DEDUCTION (based on persisted quantities)
+    // 3) Clear cart
+    await Cart.deleteOne({ userId }, { session });
+
+    // Commit
+    await session.commitTransaction();
+    session.endSession();
+
+    // Emails (post-commit)
+    const emailResults = { customerEmailSent: false, adminEmailSent: false, emailError: null as string | null };
     try {
-      for (const item of savedOrder.items) {
-        const updated = await Product.findOneAndUpdate(
-          { _id: item.productId, stockQuantity: { $gte: item.quantity } },
-          { $inc: { stockQuantity: -item.quantity } },
-          { new: true }
-        ).lean();
+      emailResults.customerEmailSent = await EmailAutomationService.sendOrderConfirmation(savedOrder as any, savedOrder.shippingAddress.email);
+      emailResults.adminEmailSent = await EmailAutomationService.notifyAdminNewOrder(savedOrder as any);
+    } catch (e: any) { emailResults.emailError = e.message || "Email error"; }
 
-        if (!updated) {
-          throw new Error(`Stock changed for an item during order save`);
-        }
-      }
-    } catch (stockError) {
-      await Order.findByIdAndDelete(savedOrder._id);
-      res.status(409).json({ message: "Stock changed. Please try again." });
-      return;
-    }
-
-    // Clear cart
-    await Cart.findOneAndDelete({ userId });
-
-    // EMAIL AUTOMATION (non-blocking error handling)
-    const emailResults = {
-      customerEmailSent: false,
-      adminEmailSent: false,
-      emailError: null as string | null,
-    };
-
-    try {
-      emailResults.customerEmailSent =
-        await EmailAutomationService.sendOrderConfirmation(
-          savedOrder as any,
-          savedOrder.shippingAddress.email
-        );
-      emailResults.adminEmailSent =
-        await EmailAutomationService.notifyAdminNewOrder(savedOrder as any);
-    } catch (emailError: any) {
-      emailResults.emailError = emailError.message || "Email error";
-    }
-
-    // Socket pushes
+    // Sockets
     if (req.io) {
-      interface IUserSummary {
-        _id: mongoose.Types.ObjectId;
-        name?: string;
-        email?: string;
-      }
-
-      let userDoc: IUserSummary | null = null;
+      let userDoc: any = null;
       try {
-        userDoc = await mongoose
-          .model<IUserSummary>("User")
-          .findById(savedOrder.userId)
-          .select("name email")
-          .lean()
-          .exec();
-      } catch {
-        userDoc = null;
-      }
-
-      const userSummary = {
-        _id: savedOrder.userId.toString(),
-        name: userDoc?.name || savedOrder.shippingAddress?.fullName,
-        email: userDoc?.email || savedOrder.shippingAddress?.email,
-      };
-
+        userDoc = await mongoose.model("User").findById(savedOrder.userId).select("name email").lean().exec();
+      } catch {}
       req.io.to("admins").emit("orderCreated", {
         _id: (savedOrder._id as mongoose.Types.ObjectId).toString(),
         orderNumber: savedOrder.orderNumber,
-        status: savedOrder.status || savedOrder.orderStatus || "pending",
-        orderStatus: savedOrder.orderStatus,
+        status: savedOrder.orderStatus,
         paymentMethod,
         paymentStatus: savedOrder.paymentStatus,
         total: savedOrder.total,
         items: orderItems,
-        userId: userSummary,
+        userId: { _id: savedOrder.userId.toString(), name: userDoc?.name || savedOrder.shippingAddress?.fullName, email: userDoc?.email || savedOrder.shippingAddress?.email },
         createdAt: savedOrder.createdAt,
         gst: savedOrder.gst,
       });
@@ -225,12 +162,12 @@ const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined
       },
     });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message || "Server error",
-    });
+    try { await session.abortTransaction(); } catch {}
+    session.endSession();
+    res.status(500).json({ success: false, message: error.message || "Server error" });
   }
 };
+
 
 /* ───────────────── GET USER ORDERS (paginated) ───────────────── */
 
