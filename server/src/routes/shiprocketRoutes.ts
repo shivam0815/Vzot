@@ -173,21 +173,55 @@ const fixShort = (a1?: string, a2?: string, city?: string) => {
 };
 
 // payload fields from your mapper
-const { A1: shipA1, A2: shipA2 } = fixShort(
-  (payload as any).shipping_address,
-  (payload as any).shipping_address_2,
-  (order.shippingAddress as any)?.city
-);
-(payload as any).shipping_address    = shipA1;
-(payload as any).shipping_address_2  = shipA2;
+// Enforce min address for any key variant the mapper might use
+function ensureMinAddress(p: any, a1Keys: string[], a2Keys: string[], fallback: string) {
+  const get = (keys: string[]) => keys.map(k => String(p[k] ?? '').trim()).find(v => v !== '') || '';
+  const set = (keys: string[], val: string) => keys.forEach(k => { if (k in p) p[k] = val; });
 
-const { A1: billA1, A2: billA2 } = fixShort(
-  (payload as any).billing_address,
-  (payload as any).billing_address_2,
-  (order.billingAddress as any)?.city
+  const a1 = get(a1Keys);
+  const a2 = get(a2Keys);
+  const combo = (a1 + a2).trim();
+
+  if (combo.length >= 3) return;
+
+  const fixed = (a1 || a2 || fallback || 'Address Missing').trim();
+  // write back to all known keys so downstream code can’t undo it
+  set(a1Keys, fixed);
+  if (!a2) set(a2Keys, ''); // keep a2 empty if you want
+}
+
+// after mapping:
+const cityShip = (order.shippingAddress as any)?.city || '';
+const cityBill = (order.billingAddress as any)?.city || '';
+
+// handle common key variants
+ensureMinAddress(
+  payload,
+  ['shipping_address', 'shipping_address_1', 'customer_address', 'customer_address_1'],
+  ['shipping_address_2', 'customer_address_2'],
+  cityShip
 );
-(payload as any).billing_address     = billA1;
-(payload as any).billing_address_2   = billA2;
+ensureMinAddress(
+  payload,
+  ['billing_address', 'billing_address_1'],
+  ['billing_address_2'],
+  cityBill
+);
+
+// Optional: hard-stop locally instead of hitting SR
+const sa1 = String((payload as any).shipping_address || (payload as any).shipping_address_1 || '');
+const sa2 = String((payload as any).shipping_address_2 || '');
+const ba1 = String((payload as any).billing_address || (payload as any).billing_address_1 || '');
+const ba2 = String((payload as any).billing_address_2 || '');
+
+if ((sa1 + sa2).trim().length < 3 || (ba1 + ba2).trim().length < 3) {
+  return res.status(400).json({
+    ok: false,
+    error: 'Validation failed: address1+address2 must be >= 3 chars',
+    debug: { sa1, sa2, ba1, ba2 }
+  });
+}
+
 
 
     const errs = validateShiprocketPayload(payload);
