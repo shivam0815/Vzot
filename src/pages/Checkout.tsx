@@ -168,12 +168,15 @@ const CheckoutPage: React.FC = () => {
     const regPhone = /^\d{10}$/;
     const regPin = /^\d{6}$/;
     const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+     const minAddr = 7;
 
     if (!shipping.fullName.trim()) e.fullName = 'Full name is required';
     if (!regPhone.test(shipping.phoneNumber.replace(/\D/g, '')))
       e.phoneNumber = 'Please enter a valid 10-digit phone number';
     if (!regEmail.test(shipping.email)) e.email = 'Please enter a valid email address';
-    if (!shipping.addressLine1.trim()) e.addressLine1 = 'Address is required';
+     if (!shipping.addressLine1.trim()) e.addressLine1 = 'Address is required';
+  else if (shipping.addressLine1.replace(/\s/g, '').length < minAddr)
+    e.addressLine1 = `Address must be at least ${minAddr} characters`;
     if (!shipping.city.trim()) e.city = 'City is required';
     if (!shipping.state.trim()) e.state = 'State is required';
     if (!regPin.test(shipping.pincode)) e.pincode = 'Please enter a valid 6-digit pincode';
