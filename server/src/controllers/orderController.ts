@@ -94,7 +94,9 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     }
 
     // Pricing (server-side). Adjust as needed.
-    const shipping = subtotal > 500 ? 0 : 50; // free above ₹500
+    const FREE_SHIPPING_THRESHOLD = 2000;
+const SHIPPING_COST = 150;
+const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST; // free above ₹500
     const tax = Math.round(subtotal * 0.18);  // 18% GST rounded
     const total = subtotal + shipping + tax;
 

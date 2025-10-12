@@ -103,7 +103,7 @@ class EmailAutomationService {
 
       await this.sendSMS(
         order.shippingAddress.phoneNumber,
-        `🎉 Order confirmed! Order #${orderNo(order)} for ₹${money(order.total)}. Track: ${process.env.APP_BASE_URL || 'https://nakodamobile.in'}/track/${toId(order._id)}`
+        `🎉 Order confirmed! Order #${orderNo(order)} for ₹${money(order.total)}. Track: ${process.env.APP_BASE_URL || 'https://nakodamobile.com'}/track/${toId(order._id)}`
       );
 
       console.log('✅ Order confirmation sent:', orderNo(order));
@@ -277,7 +277,7 @@ class EmailAutomationService {
         <p>${body}</p>
         ${payload.shortUrl ? `<p><a href="${payload.shortUrl}">Open payment link</a></p>` : ''}
         <p style="margin-top:12px">
-          <a href="${process.env.APP_BASE_URL || 'https://nakodamobile.in'}/orders/${toId(order._id)}">View order details</a>
+          <a href="${process.env.APP_BASE_URL || 'https://nakodamobile.com'}/orders/${toId(order._id)}">View order details</a>
         </p>
       </div>
     `;
@@ -420,7 +420,7 @@ class EmailAutomationService {
             <div style="padding: 30px;">
               <p>Your order status has been updated from <strong>${previousStatus}</strong> to <strong>${order.orderStatus}</strong></p>
               ${order.trackingNumber ? `<p><strong>Tracking Number:</strong> ${order.trackingNumber}</p>` : ''}
-              <p><a href="${process.env.APP_BASE_URL || 'https://nakodamobile.in'}/track/${toId(order._id)}">Track your order</a></p>
+              <p><a href="${process.env.APP_BASE_URL || 'https://nakodamobile.com'}/track/${toId(order._id)}">Track your order</a></p>
             </div>
           </div>
         </body>
