@@ -53,6 +53,8 @@ export interface IGstDetails {
   taxPercent?: number;
   taxBase?: number;
   taxAmount?: number;
+   invoiceNumber?: string;
+  invoiceUrl?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -65,6 +67,7 @@ export interface IOrderItem {
   price: number;
   name?: string;
   image?: string;
+    
 }
 
 export interface IAddress {
@@ -108,7 +111,7 @@ export interface IOrder extends Document {
 
   shippingAddress: IAddress;
   billingAddress: IAddress;
-
+ invoiceNumber?: string;
   paymentMethod: PaymentMethod;
   paymentOrderId?: string; // ✅ optional for COD
   paymentId?: string;
@@ -271,6 +274,8 @@ const GstSchema = new Schema<IGstDetails>(
     taxPercent: { type: Number, min: 0 },
     taxBase: { type: Number, min: 0 },
     taxAmount: { type: Number, min: 0 },
+      invoiceNumber: { type: String, trim: true },
+    invoiceUrl: { type: String, trim: true },
   },
   { _id: false }
 );
@@ -348,8 +353,10 @@ const OrderSchema = new Schema<IOrder, IOrderModel, IOrderMethods>(
     shipmentId: { type: Number, index: true },
     awbCode: { type: String, trim: true, uppercase: true, index: true },
     courierName: { type: String, trim: true },
+    
     labelUrl: { type: String, trim: true },
     invoiceUrl: { type: String, trim: true },
+      invoiceNumber:{ type: String, trim: true }, 
     manifestUrl: { type: String, trim: true },
     shiprocketStatus: {
       type: String,

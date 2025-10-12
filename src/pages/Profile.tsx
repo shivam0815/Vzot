@@ -337,17 +337,17 @@ const InvoiceSection: React.FC<{ order: Order }> = ({ order }) => {
               <span className="font-medium text-gray-900">{formatMoney(igst)}</span>
             </div>
           )}
+            <div className="flex justify-between items-center py-2 text-sm">
+      <span className="text-gray-600">Shipping</span>
+      <span className="font-medium text-gray-900">
+        {order.shipping === 0 ? (
+          <span className="text-emerald-600 font-semibold">FREE</span>
+        ) : (
+          formatMoney(order.shipping)
+        )}
+      </span>
+    </div>
           
-          <div className="flex justify-between items-center py-2 text-sm">
-            <span className="text-gray-600">Shipping</span>
-            <span className="font-medium text-gray-900">
-              {order.shipping === 0 ? (
-                <span className="text-emerald-600 font-semibold">FREE</span>
-              ) : (
-                formatMoney(order.shipping)
-              )}
-            </span>
-          </div>
           
           <div className="flex justify-between items-center py-3 text-base font-bold border-t-2 border-gray-200">
             <span className="text-gray-900">Total Amount</span>
