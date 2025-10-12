@@ -3,7 +3,6 @@
 
 import { Request, Response } from "express";
 import mongoose from "mongoose";
-import PDFDocument from "pdfkit";
 import Order, { IOrder } from "../models/Order";
 import Cart from "../models/Cart";
 import Product from "../models/Product";
@@ -18,51 +17,10 @@ interface AuthenticatedUser {
   name?: string;
 }
 
-/* ───────────────── Config for invoice links ───────────────── */
-const PUBLIC_BASE =
-  process.env.API_PUBLIC_BASE ||
-  process.env.BACKEND_PUBLIC_URL ||
-  process.env.FRONTEND_URL || // e.g. https://nakodamobile.com
-  "https://nakodamobile.com";
-
 /* ───────────────── Small helpers ───────────────── */
+
 const cleanGstin = (s?: any) =>
   (s ?? "").toString().toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 15);
-
-function makeInvNo(dt = new Date(), ordNo = "") {
-  const y = String(dt.getFullYear()).slice(-2);
-  const m = String(dt.getMonth() + 1).padStart(2, "0");
-  const d = String(dt.getDate()).padStart(2, "0");
-  const tail = String(ordNo || "").slice(-4) || String(Math.floor(Math.random() * 9000 + 1000));
-  return `INV${y}${m}${d}-${tail}`;
-}
-
-/** Ensure both invoice URLs exist as per rules:
- *  - Normal invoice always once order is active (confirmed/processing/shipped/delivered) or prepaid.
- *  - GST invoice only if gst.wantInvoice or gstin exists.
- */
-async function ensureInvoiceLinks(order: any) {
-  let changed = false;
-
-  if (!order.invoiceNumber) {
-    order.invoiceNumber = makeInvNo(new Date(order.createdAt || Date.now()), order.orderNumber);
-    changed = true;
-  }
-  if (!order.invoiceUrl) {
-    order.invoiceUrl = `${PUBLIC_BASE}/orders/${order._id}/invoice.pdf`;
-    changed = true;
-  }
-
-  if (order.gst?.wantInvoice || order.gst?.gstin) {
-    const gst = { ...(order.gst || {}) };
-    if (!gst.invoiceNumber) gst.invoiceNumber = `${order.invoiceNumber}-GST`;
-    if (!gst.invoiceUrl) gst.invoiceUrl = `${PUBLIC_BASE}/orders/${order._id}/invoice.pdf?gst=1`;
-    order.gst = gst;
-    changed = true;
-  }
-
-  if (changed) await order.save();
-}
 
 /* ───────────────── CREATE ORDER (stock deduction, GST & emails) ───────────────── */
 
@@ -110,13 +68,17 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       const desired = Math.max(1, Number(cartItem.quantity) || 1);
 
       if (stock < 1) {
-        res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` });
+        res.status(400).json({
+          message: `Insufficient stock for ${product?.name || "item"}.`,
+        });
         return;
       }
 
       const qty = Math.min(desired, stock);
       if (qty < 1) {
-        res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` });
+        res.status(400).json({
+          message: `Insufficient stock for ${product?.name || "item"}.`,
+        });
         return;
       }
 
@@ -132,15 +94,14 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     }
 
     // Pricing (server-side). Adjust as needed.
-    const FREE_SHIPPING_THRESHOLD = 2000;
-    const SHIPPING_COST = 150;
-    const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
+    const shipping = subtotal > 500 ? 0 : 50; // free above ₹500
     const tax = Math.round(subtotal * 0.18);  // 18% GST rounded
     const total = subtotal + shipping + tax;
 
     // IDs
-    const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
-    const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
+    // IDs
+const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
+const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
 
     // GST block
     const gstBlock = buildGstBlock(req.body, shippingAddress, { subtotal, tax });
@@ -167,7 +128,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
     const savedOrder = await order.save();
 
-    // REAL-TIME STOCK DEDUCTION
+    // REAL-TIME STOCK DEDUCTION (based on persisted quantities)
     try {
       for (const item of savedOrder.items) {
         const updated = await Product.findOneAndUpdate(
@@ -176,7 +137,9 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
           { new: true }
         ).lean();
 
-        if (!updated) throw new Error(`Stock changed for an item during order save`);
+        if (!updated) {
+          throw new Error(`Stock changed for an item during order save`);
+        }
       }
     } catch (stockError) {
       await Order.findByIdAndDelete(savedOrder._id);
@@ -187,12 +150,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     // Clear cart
     await Cart.findOneAndDelete({ userId });
 
-    // For prepaid flows, you can pre-create invoice links immediately
-    if (paymentMethod !== "cod") {
-      await ensureInvoiceLinks(savedOrder);
-    }
-
-    // EMAIL AUTOMATION (non-blocking)
+    // EMAIL AUTOMATION (non-blocking error handling)
     const emailResults = {
       customerEmailSent: false,
       adminEmailSent: false,
@@ -213,12 +171,23 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
     // Socket pushes
     if (req.io) {
-      interface IUserSummary { _id: mongoose.Types.ObjectId; name?: string; email?: string; }
+      interface IUserSummary {
+        _id: mongoose.Types.ObjectId;
+        name?: string;
+        email?: string;
+      }
+
       let userDoc: IUserSummary | null = null;
       try {
-        userDoc = await mongoose.model<IUserSummary>("User")
-          .findById(savedOrder.userId).select("name email").lean().exec();
-      } catch { userDoc = null; }
+        userDoc = await mongoose
+          .model<IUserSummary>("User")
+          .findById(savedOrder.userId)
+          .select("name email")
+          .lean()
+          .exec();
+      } catch {
+        userDoc = null;
+      }
 
       const userSummary = {
         _id: savedOrder.userId.toString(),
@@ -256,7 +225,10 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Server error" });
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
   }
 };
 
@@ -297,8 +269,11 @@ export const getOrders = async (req: Request, res: Response): Promise<void> => {
         hasPrevPage: Number(page) > 1,
       },
     });
-  } catch {
-    res.status(500).json({ success: false, message: "Server error" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -315,7 +290,10 @@ export const getOrder = async (req: Request, res: Response): Promise<void> => {
     const userId = user.id;
 
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      res.status(400).json({ success: false, message: "Invalid order ID format" });
+      res.status(400).json({
+        success: false,
+        message: "Invalid order ID format",
+      });
       return;
     }
 
@@ -327,13 +305,22 @@ export const getOrder = async (req: Request, res: Response): Promise<void> => {
       .lean();
 
     if (!order) {
-      res.status(404).json({ success: false, message: "Order not found" });
+      res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
       return;
     }
 
-    res.json({ success: true, order });
-  } catch {
-    res.status(500).json({ success: false, message: "Server error" });
+    res.json({
+      success: true,
+      order,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -342,42 +329,57 @@ export const getOrder = async (req: Request, res: Response): Promise<void> => {
 export const getOrderDetails = async (req: Request, res: Response): Promise<void> => {
   try {
     const { orderId } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       res.status(400).json({ success: false, message: "Invalid order ID format" });
       return;
     }
 
-    const isAdmin = !!req.user && ["admin", "super_admin"].includes((req.user as any).role);
+    const isAdmin =
+      !!req.user && ["admin", "super_admin"].includes((req.user as any).role);
     const userId = (req.user as any)?.id;
 
     const query = isAdmin
       ? { _id: new mongoose.Types.ObjectId(orderId) }
-      : { _id: new mongoose.Types.ObjectId(orderId), userId: new mongoose.Types.ObjectId(userId) };
+      : {
+          _id: new mongoose.Types.ObjectId(orderId),
+          userId: new mongoose.Types.ObjectId(userId),
+        };
 
     const order = await Order.findOne(query)
-      .populate({ path: "items.productId", select: "name images price category description stockQuantity" })
+      .populate({
+        path: "items.productId",
+        select: "name images price category description stockQuantity",
+      })
       .lean();
 
     if (!order) {
-      res.status(404).json({ success: false, message: "Order not found or access denied" });
+      res
+        .status(404)
+        .json({ success: false, message: "Order not found or access denied" });
       return;
     }
 
     const statusOrder = ["pending", "confirmed", "processing", "shipped", "delivered"];
     const currentStatusIndex = statusOrder.indexOf(order.orderStatus);
-    const orderProgress = currentStatusIndex >= 0 ? ((currentStatusIndex + 1) / statusOrder.length) * 100 : 0;
+    const orderProgress =
+      currentStatusIndex >= 0
+        ? ((currentStatusIndex + 1) / statusOrder.length) * 100
+        : 0;
 
     res.json({
       success: true,
       order: {
-        ...order,
+        ...order, // includes gst
         orderProgress,
         canCancel: ["pending", "confirmed"].includes(order.orderStatus),
         canTrack: ["shipped", "out_for_delivery"].includes(order.orderStatus),
-        estimatedDelivery: (order as any).estimatedDelivery || new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        estimatedDelivery:
+          order.estimatedDelivery ||
+          new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
       },
     });
-  } catch {
+  } catch (e: any) {
     res.status(500).json({ success: false, message: "Failed to fetch order details" });
   }
 };
@@ -407,11 +409,17 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
 
     const previousStatus = order.orderStatus;
 
+    // Guard: immutable final states
     if (["delivered", "cancelled"].includes(previousStatus)) {
-      res.status(400).json({ success: false, message: `Order already ${previousStatus}` });
+      res
+        .status(400)
+        .json({ success: false, message: `Order already ${previousStatus}` });
       return;
     }
 
+    // NOTE: We DO NOT deduct stock here (stock was deducted during createOrder)
+
+    // Apply fields
     order.orderStatus = status;
     order.status = status;
 
@@ -420,9 +428,11 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     if (trackingUrl) order.trackingUrl = trackingUrl;
     if (notes) order.notes = notes;
 
+    // Timestamps
     switch (status) {
       case "confirmed":
-        if (!order.paidAt && order.paymentStatus === "paid") order.paidAt = new Date();
+        if (!order.paidAt && order.paymentStatus === "paid")
+          order.paidAt = new Date();
         break;
       case "shipped":
         order.shippedAt = new Date();
@@ -437,18 +447,18 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
 
     const updatedOrder = await order.save();
 
-    // Create links once active
-    if (["confirmed", "processing", "shipped", "delivered"].includes(updatedOrder.orderStatus)) {
-      await ensureInvoiceLinks(updatedOrder);
-    }
-
     // Email (non-blocking)
     let emailSent = false;
     try {
-      emailSent = await EmailAutomationService.sendOrderStatusUpdate(updatedOrder as any, previousStatus);
-    } catch {}
+      emailSent = await EmailAutomationService.sendOrderStatusUpdate(
+        updatedOrder as any,
+        previousStatus
+      );
+    } catch (emailError: any) {
+      // swallow email failure
+    }
 
-    // Sockets
+    // Socket pushes
     if (req.io) {
       const payload = {
         _id: updatedOrder._id,
@@ -479,7 +489,9 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
       emailSent,
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: error.message });
   }
 };
 
@@ -487,7 +499,15 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
 
 export const getAllOrders = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { page = 1, limit = 20, status, paymentMethod, dateFrom, dateTo, search } = req.query;
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      paymentMethod,
+      dateFrom,
+      dateTo,
+      search,
+    } = req.query;
 
     if (!req.user) {
       res.status(401).json({ message: "Authentication required" });
@@ -500,13 +520,16 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
     }
 
     const query: any = {};
+
     if (status) query.orderStatus = status;
     if (paymentMethod) query.paymentMethod = paymentMethod;
+
     if (dateFrom || dateTo) {
       query.createdAt = {};
       if (dateFrom) query.createdAt.$gte = new Date(dateFrom as string);
       if (dateTo) query.createdAt.$lte = new Date(dateTo as string);
     }
+
     if (search) {
       query.$or = [
         { orderNumber: { $regex: search, $options: "i" } },
@@ -527,7 +550,10 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
     const totalCount = await Order.countDocuments(query);
     const totalValue = orders.reduce((sum, o: any) => sum + (o.total || 0), 0);
 
-    const statusCounts = await Order.aggregate([{ $match: query }, { $group: { _id: "$orderStatus", count: { $sum: 1 } } }]);
+    const statusCounts = await Order.aggregate([
+      { $match: query },
+      { $group: { _id: "$orderStatus", count: { $sum: 1 } } },
+    ]);
 
     res.json({
       success: true,
@@ -549,7 +575,11 @@ export const getAllOrders = async (req: Request, res: Response): Promise<void> =
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 
@@ -573,37 +603,52 @@ export const cancelOrder = async (req: Request, res: Response): Promise<void> =>
     });
 
     if (!order) {
-      res.status(404).json({ success: false, message: "Order not found" });
+      res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
       return;
     }
 
     if (!["pending", "confirmed"].includes(order.orderStatus)) {
-      res.status(400).json({ success: false, message: "Order cannot be cancelled at this stage" });
+      res.status(400).json({
+        success: false,
+        message: "Order cannot be cancelled at this stage",
+      });
       return;
     }
 
     const previousStatus = order.orderStatus;
 
+    // Mark cancelled
     order.orderStatus = "cancelled";
     order.status = "cancelled";
     order.cancelledAt = new Date();
     (order as any).customerNotes = reason || "Cancelled by customer";
 
+    // Restore inventory (since we deducted on create)
     try {
       for (const item of order.items) {
-        await Product.findByIdAndUpdate(item.productId, { $inc: { stockQuantity: item.quantity } });
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { stockQuantity: item.quantity },
+        });
       }
-    } catch {}
+    } catch {
+      // non-blocking
+    }
 
     const cancelledOrder = await order.save();
 
+    // Email (non-blocking)
     let emailSent = false;
     try {
       emailSent = await EmailAutomationService.sendOrderStatusUpdate(
         cancelledOrder as any,
         previousStatus
       );
-    } catch {}
+    } catch {
+      // swallow email failure
+    }
 
     res.json({
       success: true,
@@ -618,7 +663,11 @@ export const cancelOrder = async (req: Request, res: Response): Promise<void> =>
       emailSent,
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 
@@ -629,7 +678,10 @@ export const trackOrder = async (req: Request, res: Response): Promise<void> => 
     const { orderId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      res.status(400).json({ success: false, message: "Invalid order ID format" });
+      res.status(400).json({
+        success: false,
+        message: "Invalid order ID format",
+      });
       return;
     }
 
@@ -638,15 +690,40 @@ export const trackOrder = async (req: Request, res: Response): Promise<void> => 
       .lean();
 
     if (!order) {
-      res.status(404).json({ success: false, message: "Order not found" });
+      res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
       return;
     }
 
     const timeline = [
-      { status: "Order Placed", date: order.createdAt, completed: true, description: "Your order has been placed successfully" },
-      { status: "Order Confirmed", date: (order as any).paidAt, completed: !!(order as any).paidAt, description: "Your order has been confirmed and is being processed" },
-      { status: "Shipped", date: (order as any).shippedAt, completed: !!(order as any).shippedAt, description: order.trackingNumber ? `Shipped with tracking: ${order.trackingNumber}` : "Your order has been shipped" },
-      { status: "Delivered", date: (order as any).deliveredAt, completed: !!(order as any).deliveredAt, description: "Your order has been delivered successfully" },
+      {
+        status: "Order Placed",
+        date: order.createdAt,
+        completed: true,
+        description: "Your order has been placed successfully",
+      },
+      {
+        status: "Order Confirmed",
+        date: (order as any).paidAt,
+        completed: !!(order as any).paidAt,
+        description: "Your order has been confirmed and is being processed",
+      },
+      {
+        status: "Shipped",
+        date: (order as any).shippedAt,
+        completed: !!(order as any).shippedAt,
+        description: order.trackingNumber
+          ? `Shipped with tracking: ${order.trackingNumber}`
+          : "Your order has been shipped",
+      },
+      {
+        status: "Delivered",
+        date: (order as any).deliveredAt,
+        completed: !!(order as any).deliveredAt,
+        description: "Your order has been delivered successfully",
+      },
     ];
 
     res.json({
@@ -661,8 +738,12 @@ export const trackOrder = async (req: Request, res: Response): Promise<void> => 
       },
       timeline,
     });
-  } catch {
-    res.status(500).json({ success: false, message: "Server error" });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 
@@ -692,7 +773,9 @@ export const sendTestOrderEmail = async (req: Request, res: Response): Promise<v
       order as any,
       order.shippingAddress.email
     );
-    const adminEmailSent = await EmailAutomationService.notifyAdminNewOrder(order as any);
+    const adminEmailSent = await EmailAutomationService.notifyAdminNewOrder(
+      order as any
+    );
 
     res.json({
       success: true,
@@ -705,7 +788,11 @@ export const sendTestOrderEmail = async (req: Request, res: Response): Promise<v
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: "Email test failed", error: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Email test failed",
+      error: error.message,
+    });
   }
 };
 
@@ -721,7 +808,9 @@ export const getOrderByIdAdmin = async (req: Request, res: Response) => {
 
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ success: false, message: "Invalid order ID format" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid order ID format" });
     }
 
     const order = await Order.findById(id)
@@ -729,93 +818,16 @@ export const getOrderByIdAdmin = async (req: Request, res: Response) => {
       .lean();
 
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
 
     res.json({ success: true, order });
-  } catch {
+  } catch (e: any) {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
-/* ───────────────── INVOICE PDF (normal or GST) ───────────────── */
-
-export const getInvoicePdf = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const isGst = String(req.query.gst) === "1";
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      res.status(400).send("Invalid id");
-      return;
-    }
-
-    const order = await Order.findById(id).lean();
-    if (!order) {
-      res.status(404).send("Not found");
-      return;
-    }
-
-    // Security: only owner or admin
-    const isAdmin = !!req.user && ["admin", "super_admin"].includes((req.user as any).role);
-    const isOwner = !!req.user && String((req.user as any).id) === String(order.userId);
-    if (!isAdmin && !isOwner) {
-      res.status(403).send("Forbidden");
-      return;
-    }
-
-    const fileName = (isGst ? order?.gst?.invoiceNumber : order?.invoiceNumber) || "invoice";
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${fileName}.pdf"`);
-
-    const doc = new PDFDocument({ margin: 36 });
-    doc.pipe(res);
-
-    // Header
-    doc.fontSize(18).text(isGst ? "GST TAX INVOICE" : "ORDER INVOICE", { align: "right" });
-    doc.moveDown();
-    doc.fontSize(12).text(`Order No: ${order.orderNumber}`);
-    doc.text(`Invoice No: ${isGst ? order?.gst?.invoiceNumber || "-" : order.invoiceNumber || "-"}`);
-    doc.text(`Date: ${new Date(order.createdAt as any).toDateString()}`);
-    doc.moveDown();
-
-    const ship = order.shippingAddress as any;
-    doc.text("Bill To:");
-    doc.text(`${ship?.fullName || "-"}`);
-    doc.text(`${ship?.addressLine1 || ""} ${ship?.addressLine2 || ""}`);
-    doc.text(`${ship?.city || ""}, ${ship?.state || ""} ${ship?.pincode || ""}`);
-    doc.moveDown();
-
-    (order.items as any[]).forEach((it) => {
-      doc.text(`${it.quantity} x ${it.name} @ ₹${it.price}`);
-    });
-
-    doc.moveDown();
-    doc.text(`Subtotal: ₹${order.subtotal}`);
-    if (isGst) {
-      doc.text(`GST Rate: ${order.gst?.taxPercent || 18}%`);
-      doc.text(`GST Amount: ₹${order.gst?.taxAmount ?? order.tax}`);
-    } else {
-      doc.text(`Tax: ₹${order.tax}`);
-    }
-    doc.text(`Shipping: ₹${order.shipping}`);
-    doc.moveDown();
-    doc.fontSize(13).text(`Total: ₹${order.total}`, { underline: true });
-
-    if (isGst && order.gst) {
-      doc.moveDown();
-      doc.text(`GSTIN: ${order.gst.gstin || "-"}`);
-      doc.text(`Place of Supply: ${order.gst.placeOfSupply || "-"}`);
-      if (order.gst.legalName) doc.text(`Legal Name: ${order.gst.legalName}`);
-    }
-
-    doc.end();
-  } catch {
-    res.status(500).send("Server error");
-  }
-};
-
-/* ───────────────── GST builder ───────────────── */
 
 function buildGstBlock(
   payload: any,

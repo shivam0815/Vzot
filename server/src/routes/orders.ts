@@ -13,7 +13,6 @@ import {
 } from '../controllers/orderController';
 import { authenticate, authorize } from '../middleware/auth';
 import { setPackageAndMaybeLink, createShippingPaymentLink } from '../controllers/shippingController';
-import { getInvoicePdf } from "../controllers/orderController";
 
 const router = express.Router();
 
@@ -24,7 +23,6 @@ router.get('/admin/all', authenticate, authorize(['admin', 'super_admin']), getA
 router.get('/admin/:id', authenticate, authorize(['admin', 'super_admin']), getOrderByIdAdmin);
 router.put('/:id/status', authenticate, authorize(['admin', 'super_admin']), updateOrderStatus);
 router.put('/:id/shipping/package', authenticate, authorize(['admin','super_admin']), setPackageAndMaybeLink);
-router.get("/orders/:id/invoice.pdf", getInvoicePdf);
 
 // admin (re)creates a payment link
 router.post('/:id/shipping/payment-link', authenticate, authorize(['admin','super_admin']), createShippingPaymentLink);
