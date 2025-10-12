@@ -432,13 +432,6 @@ OrderSchema.virtual("isPaid").get(function (this: IOrder) {
   return this.paymentStatus === "paid" || this.paymentStatus === "cod_paid";
 });
 
-OrderSchema.pre<IOrder>('validate', function(next) {
-  if (!this.items || this.items.length === 0) {
-    return next(new Error('Order must contain at least one item'));
-  }
-  next();
-});
-
 // ✅ Helpful for Admin badge/chip
 OrderSchema.virtual("gstStatus").get(function (this: IOrder) {
   const g = this.gst;
@@ -466,9 +459,6 @@ OrderSchema.index({ "gst.wantInvoice": 1, createdAt: -1 }); // ✅ fast filter f
 OrderSchema.index({ shipmentId: 1 });
 OrderSchema.index({ awbCode: 1 });
 OrderSchema.index({ "shippingPayment.linkId": 1 });
-OrderSchema.index({ paymentId: 1 }, { unique: true, sparse: true });
-
-
 
 /* ------------------------------------------------------------------ */
 /* Middleware                                                          */

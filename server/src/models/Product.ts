@@ -23,8 +23,6 @@ export interface IProduct extends Document {
   // stock
   inStock: boolean;
   stockQuantity: number;
-  reservedQty: { type: Number, required: true, min: 0, default: 0 }, // NEW
-
   // content
   features: string[];
   specifications: Map<string, any> | Record<string, any>;
@@ -217,8 +215,6 @@ productSchema.index({ category: 1, price: 1 });
 productSchema.index({ rating: -1 });
 productSchema.index({ createdAt: -1 });
 productSchema.index({ isActive: 1, inStock: 1, status: 1 });
-productSchema.index({ _id: 1, stockQuantity: 1 }); // for $inc with $gte check
-
 
 // For popular/trending lists
 productSchema.index({ salesCount7d: -1, rating: -1 });
@@ -241,11 +237,6 @@ productSchema.pre('validate', function (next) {
       .slice(0, 120);
   }
   next();
-});
-productSchema.post('findOneAndUpdate', function(doc: any) {
-  if (!doc) return;
-  const inStock = (doc.stockQuantity || 0) > 0;
-  if (doc.inStock !== inStock) doc.updateOne({ $set: { inStock } }).exec();
 });
 
 /** ───────────────────────── Statics (helper for controller) ───────────────────────── */

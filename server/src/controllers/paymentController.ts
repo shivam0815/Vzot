@@ -105,66 +105,125 @@ const generateOrderNumber = (): string => {
    CREATE PAYMENT ORDER  —  this is where GST must be persisted
 =========================================================================================== */
 export const createPaymentOrder = async (req: Request, res: Response): Promise<void> => {
-  const user = req.user as AuthenticatedUser;
-  if (!user) { res.status(401).json({ success: false, message: 'User not authenticated' }); return; }
+  try {
+    const { amount, currency = 'INR', paymentMethod, orderData } = req.body;
+    const user = req.user as AuthenticatedUser;
 
-  const { orderId, paymentMethod = 'razorpay', amount, currency = 'INR' } = req.body;
-  if (!mongoose.Types.ObjectId.isValid(orderId)) { res.status(400).json({ success: false, message: 'Valid orderId required' }); return; }
-
-  const order = await Order.findById(orderId);
-  if (!order) { res.status(404).json({ success: false, message: 'Order not found' }); return; }
-  if (order.userId.toString() !== user.id) { res.status(403).json({ success: false, message: 'Unauthorized' }); return; }
-  if (order.paymentStatus === 'paid' || order.paymentStatus === 'cod_paid') {
-    res.json({ success: true, message: 'Already paid', orderId: order._id, orderNumber: order.orderNumber, paymentOrderId: order.paymentOrderId });
-    return;
-  }
-
-  let paymentOrderId = order.paymentOrderId || '';
-  if (paymentMethod === 'razorpay') {
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      res.status(500).json({ success: false, message: 'Payment gateway configuration error' }); return;
+      res.status(500).json({ success: false, message: 'Payment gateway configuration error' });
+      return;
     }
-    // amount fallback to order.total
-    const paise = Math.round(((amount ?? order.total) as number) * 100);
-   if (!order.paymentOrderId) {
-  const userIdStr = String((req.user as AuthenticatedUser).id || "");
-  const orderIdStr = (order._id as mongoose.Types.ObjectId).toHexString();
+    if (!user) {
+      res.status(401).json({ success: false, message: 'User not authenticated' });
+      return;
+    }
+    if (!amount || amount <= 0) {
+      res.status(400).json({ success: false, message: 'Invalid amount' });
+      return;
+    }
+    if (!orderData || !orderData.items?.length) {
+      res.status(400).json({ success: false, message: 'Invalid order data - items are required' });
+      return;
+    }
+    if (!orderData.shippingAddress) {
+      res.status(400).json({ success: false, message: 'Shipping address is required' });
+      return;
+    }
 
-  const shortReceipt = `ord_${Date.now().toString().slice(-8)}_${userIdStr.slice(-8)}` as const;
+    let paymentOrderId = '';
 
-  const rz = await razorpay.orders.create({
-    amount: paise,
-    currency,
-    receipt: shortReceipt, // <= 40 chars
-    notes: { orderId: orderIdStr, userId: userIdStr, orderNumber: order.orderNumber },
-  });
+    if (paymentMethod === 'razorpay') {
+      const shortReceipt = `ord_${Date.now().toString().slice(-8)}_${user.id.slice(-8)}`;
+      if (shortReceipt.length > 40) throw new Error(`Receipt too long (${shortReceipt.length})`);
 
-  order.paymentOrderId = rz.id as string;
-  await order.save();
-}
+      const razorpayOrder = await razorpay.orders.create({
+        amount: Math.round(amount * 100),
+        currency,
+        receipt: shortReceipt,
+        notes: {
+          userId: user.id,
+          orderType: 'product_purchase',
+          itemCount: orderData.items.length,
+          customerEmail: user.email || 'unknown',
+          fullTimestamp: Date.now().toString(),
+        },
+      });
+      paymentOrderId = razorpayOrder.id;
+    } else if (paymentMethod === 'cod') {
+      paymentOrderId = `cod_${Date.now().toString().slice(-8)}_${user.id.slice(-8)}`;
+    } else {
+      res.status(400).json({ success: false, message: 'Invalid payment method. Supported: razorpay, cod' });
+      return;
+    }
 
-  } else if (paymentMethod === 'cod') {
-    order.paymentMethod = 'cod';
-    order.paymentStatus = 'cod_pending';
+    // Compute/fallback pricing if frontend didn’t send them
+    const fallbackSubtotal =
+      typeof orderData.subtotal === 'number'
+        ? orderData.subtotal
+        : orderData.items.reduce(
+            (s: number, it: any) => s + Number(it.price || 0) * Number(it.quantity || 1),
+            0
+          );
+
+    const subtotal = Math.max(0, Number(fallbackSubtotal));
+    const tax = typeof orderData.tax === 'number' ? Number(orderData.tax) : Math.round(subtotal * 0.18);
+    const shipping = typeof orderData.shipping === 'number' ? Number(orderData.shipping) : 0;
+    const total = typeof orderData.total === 'number' ? Number(orderData.total) : amount;
+
+    // Build GST from payload
+    const gstBlock = buildGstBlock(req.body, orderData.shippingAddress, { subtotal, tax });
+
+    const order = new Order({
+      userId: new mongoose.Types.ObjectId(user.id),
+      orderNumber: generateOrderNumber(),
+      items: orderData.items,
+      shippingAddress: orderData.shippingAddress,
+      billingAddress: orderData.billingAddress || orderData.shippingAddress,
+      paymentMethod,
+      paymentOrderId,
+      subtotal,
+      tax,
+      shipping,
+      total,
+      status: 'pending',
+      orderStatus: 'pending',
+      paymentStatus: paymentMethod === 'cod' ? 'cod_pending' : 'awaiting_payment',
+      gst: gstBlock, // ⬅️ PERSIST GST
+      customerNotes:
+        (orderData?.extras?.orderNotes || '').toString().trim() || undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
     await order.save();
-    paymentOrderId = order.paymentOrderId || `cod_${Date.now().toString().slice(-8)}_${user.id.slice(-8)}`;
-    if (!order.paymentOrderId) { order.paymentOrderId = paymentOrderId; await order.save(); }
-  } else {
-    res.status(400).json({ success: false, message: 'Invalid payment method' }); return;
+
+    res.json({
+      success: true,
+      orderId: order._id,
+      orderNumber: order.orderNumber,
+      paymentOrderId,
+      amount: total,
+      currency,
+      paymentMethod,
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      order: {
+        _id: order._id,
+        orderNumber: order.orderNumber,
+        total: order.total,
+        orderStatus: order.orderStatus,
+        paymentStatus: order.paymentStatus,
+        items: order.items,
+        gst: order.gst, // ⬅️ return for quick verification
+      },
+    });
+  } catch (error: any) {
+    console.error('❌ Payment order creation error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create payment order',
+    });
   }
-
-  res.json({
-    success: true,
-    orderId: order._id,
-    orderNumber: order.orderNumber,
-    paymentOrderId,
-    amount: order.total,
-    currency,
-    paymentMethod,
-    razorpayKeyId: process.env.RAZORPAY_KEY_ID,
-  });
 };
-
 
 /* ===========================================================================================
    VERIFY PAYMENT — unchanged logic, kept for completeness
