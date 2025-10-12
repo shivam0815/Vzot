@@ -234,7 +234,7 @@ const InventoryManagement = memo<{
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [stockFilter, setStockFilter] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'price' | 'stockQuantity'>('name');
+  const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
@@ -267,20 +267,13 @@ const InventoryManagement = memo<{
         sortOrder
       };
       const response = await getProducts(params);
-     if (response.success) {
-  const raw = response.products || [];
-  setProducts(
-    raw.map((p: any) => ({
-      ...p,
-      stock: Number(p.stockQuantity ?? p.stock ?? 0), // alias for UI
-    }))
-  );
-  setTotalProducts(response.totalProducts);
-  setTotalPages(response.totalPages);
-} else {
-  throw new Error(response.message || 'Failed to fetch products');
-}
-
+      if (response.success) {
+        setProducts(response.products);
+        setTotalProducts(response.totalProducts);
+        setTotalPages(response.totalPages);
+      } else {
+        throw new Error(response.message || 'Failed to fetch products');
+      }
     } catch (error: any) {
       setError(error.message);
       showNotification('Failed to load products', 'error');
@@ -294,10 +287,10 @@ const InventoryManagement = memo<{
   useEffect(() => { if (currentPage !== 1) setCurrentPage(1); }, [searchQuery, categoryFilter, stockFilter]);
 
   const handleSearch = useCallback((query: string) => setSearchQuery(query), []);
- const handleSort = (field: 'name' | 'price' | 'stockQuantity') => {
-  if (sortBy === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-  else { setSortBy(field); setSortOrder('asc'); }
-};
+  const handleSort = (field: string) => {
+    if (sortBy === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(field); setSortOrder('asc'); }
+  };
 
   const handleEditProduct = (product: any) => {
     setEditingProduct(product._id);
@@ -305,7 +298,7 @@ const InventoryManagement = memo<{
       name: product.name,
       price: product.price,
       compareAtPrice: product.compareAtPrice || product.originalPrice || '',
-     stock: product.stockQuantity ?? product.stock ?? 0, 
+      stock: product.stock,
       category: product.category,
       description: product.description || '',
       status: product.status || 'active',
@@ -336,7 +329,7 @@ const InventoryManagement = memo<{
     const payload: any = {
       name: editFormData.name?.trim(),
       price: priceNum,
-      stockQuantity: stockNum, 
+      stock: stockNum,
       category: editFormData.category,
       description: editFormData.description || '',
       status: editFormData.status,
@@ -544,11 +537,7 @@ const InventoryManagement = memo<{
                 <th onClick={() => handleSort('name')} className="sortable">Name {sortBy === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
                 <th onClick={() => handleSort('price')} className="sortable">Price {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
                 <th>Compare</th>
-                // header click
-<th onClick={() => handleSort('stockQuantity')} className="sortable">
-  Stock {sortBy === 'stockQuantity' && (sortOrder === 'asc' ? '↑' : '↓')}
-</th>
-
+                <th onClick={() => handleSort('stock')} className="sortable">Stock {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
                 <th>Category</th>
                 <th>Spec</th>
                 <th>Status</th>
@@ -655,22 +644,20 @@ const InventoryManagement = memo<{
                   </td>
                   <td>
                     {editingProduct === product._id ? (
-                      // stock input in edit row
-<input
-  type="number"
-  value={editFormData.stock}
-  onChange={(e) => setEditFormData({ ...editFormData, stock: e.target.value })}
-/>
-
+                      <input
+                        type="number"
+                        value={editFormData.stock}
+                        onChange={(e) => setEditFormData({...editFormData, stock: e.target.value})}
+                        className="edit-input"
+                        min="0"
+                      />
                     ) : (
-                      // stock cell (read view)
-<div className="stock-info">
-  <span className="stock-number">{product.stockQuantity ?? product.stock ?? 0}</span>
-  <span className={`stock-status ${getStockStatus(product.stockQuantity ?? product.stock ?? 0).class}`}>
-    {getStockStatus(product.stockQuantity ?? product.stock ?? 0).label}
-  </span>
-</div>
-
+                      <div className="stock-info">
+                        <span className="stock-number">{product.stock}</span>
+                        <span className={`stock-status ${getStockStatus(product.stock).class}`}>
+                          {getStockStatus(product.stock).label}
+                        </span>
+                      </div>
                     )}
                   </td>
                   <td>
@@ -789,7 +776,7 @@ const ProductManagement = memo<{
     stock: '',
     category: '',
     description: '',
-    specification: '',
+    // NEW
     sku: '',
     metaTitle: '',
     metaDescription: '',
@@ -1049,7 +1036,7 @@ const ProductManagement = memo<{
         setFormData({
           name: '', price: '', stock: '', category: '', compareAtPrice: '', description: '',
           // reset new fields
-          sku: '', metaTitle: '', metaDescription: '',specification: '',
+          sku: '', metaTitle: '', metaDescription: '',
         });
         setUploadedImages([]);
         setUploadProgress(0);
