@@ -92,6 +92,9 @@ const fade = {
   visible: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -14 },
 };
+const SHIPPING_FLAT = 150;
+const FREE_SHIP_THRESHOLD = 2000; // subtotal >= 2000 ⇒ free
+
 
 const ORDER_FLOW: OrderDetails['status'][] = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
 
@@ -119,9 +122,10 @@ function deriveBreakdown(o: OrderDetails) {
     return sum + q * p;
   }, 0);
 
-  // Start from explicit values or items-derived
+  // Base amounts
   let subtotal = toNum(o.subtotal) || itemsSubtotal;
 
+  // Known values from API (if any)
   let shippingKnown =
     toNum((o as any).shipping) ||
     toNum((o as any).shippingFee) ||
@@ -134,35 +138,31 @@ function deriveBreakdown(o: OrderDetails) {
     toNum((o as any).gst) ||
     toNum((o as any).vat);
 
-  const totalKnown = toNum(o.total);
-
-  // derive from GST/tax% if present
+  // Derive tax from percentage if provided
   const pct = toNum((o as any).gstPercent) || toNum((o as any).taxRate) || 0;
   if (taxKnown === 0 && pct > 0) {
     taxKnown = +(subtotal * (pct / 100)).toFixed(2);
   }
 
-  // If API left both 0 but sent a total, push the remainder into TAX (shipping added later)
-  if (totalKnown > 0) {
-    const remainder = +(totalKnown - subtotal).toFixed(2);
-    if (taxKnown === 0 && shippingKnown === 0 && remainder > 0) {
-      taxKnown = remainder; // show tax; we deliberately keep shipping at 0
-    } else if (taxKnown === 0 && shippingKnown > 0) {
-      taxKnown = Math.max(0, +(totalKnown - subtotal - shippingKnown).toFixed(2));
-    } else if (shippingKnown === 0 && taxKnown > 0) {
-      shippingKnown = Math.max(0, +(totalKnown - subtotal - taxKnown).toFixed(2));
-    }
+  // Our shipping rule only applies when backend didn't send a value
+  let shipping: number;
+  let freeEligible = subtotal >= FREE_SHIP_THRESHOLD;
+  if (shippingKnown > 0 || (shippingKnown === 0 && (o as any).shipping != null)) {
+    // Honor explicit backend amount (but zero it if free rule applies)
+    shipping = freeEligible ? 0 : shippingKnown;
+  } else {
+    // Compute by rule
+    shipping = freeEligible ? 0 : SHIPPING_FLAT;
   }
 
-  const total =
-    totalKnown > 0 ? totalKnown : Math.max(0, +(subtotal + taxKnown + shippingKnown).toFixed(2));
-
+  const total = Math.max(0, +(subtotal + taxKnown + shipping).toFixed(2));
   const taxLabel = pct > 0 ? `Tax (GST ${pct}%)` : 'Tax';
 
   return {
     subtotal: Math.max(0, +subtotal.toFixed(2)),
     tax: Math.max(0, +taxKnown.toFixed(2)),
-    shipping: Math.max(0, +shippingKnown.toFixed(2)),
+    shipping,
+    freeEligible,
     total,
     taxLabel,
   };
@@ -594,9 +594,13 @@ const OrderDetailsPage: React.FC = () => {
               </div>
 
               {/* 🚚 Shipping note instead of amount */}
-              <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-                <strong>Note:</strong> Shipping fees will be added after your order is packed.
-              </div>
+              <div className="flex justify-between text-gray-600">
+  <span>
+    Shipping {breakdown.freeEligible ? '(Free over ₹2,000)' : '(Flat ₹150; Free ≥ ₹2,000)'}
+  </span>
+  <span>{breakdown.shipping === 0 ? 'FREE' : inr(breakdown.shipping)}</span>
+</div>
+
 
               <div className="flex justify-between text-base font-semibold text-gray-900 pt-2 border-t border-gray-100">
                 <span>Total</span>
