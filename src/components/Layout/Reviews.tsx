@@ -145,7 +145,7 @@ const Reviews: React.FC<Props> = ({ productId, productName }) => {
               ))}
             </div>
           </div>
-          <div className="text-sm text-gray-600 mt-1">{totalReviews} verified reviews</div>
+          <div className="text-sm text-gray-700 mt-1">{totalReviews} verified reviews</div>
 
           <div className="mt-4 space-y-1">
             {[5,4,3,2,1].map((n) => {
@@ -157,7 +157,7 @@ const Reviews: React.FC<Props> = ({ productId, productName }) => {
                   <div className="flex-1 h-2 bg-gray-200 rounded">
                     <div className="h-2 bg-yellow-400 rounded" style={{ width: `${pct}%` }} />
                   </div>
-                  <span className="w-10 text-right text-xs text-gray-600">{cnt}</span>
+                  <span className="w-10 text-right text-xs text-gray-700">{cnt}</span>
                 </div>
               );
             })}
@@ -168,9 +168,9 @@ const Reviews: React.FC<Props> = ({ productId, productName }) => {
       {/* Middle: list */}
       <div className="lg:col-span-2 space-y-4">
         {loading ? (
-          <div className="p-6 text-gray-500">Loading reviews...</div>
+          <div className="p-6 text-gray-600">Loading reviews...</div>
         ) : items.length === 0 ? (
-          <div className="p-6 text-gray-600 bg-white rounded-lg border">
+          <div className="p-6 text-gray-700 bg-white rounded-lg border">
             No reviews yet. Be the first to review <strong>{productName}</strong>.
           </div>
         ) : (
@@ -179,9 +179,9 @@ const Reviews: React.FC<Props> = ({ productId, productName }) => {
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">{r.rating}★</span>
                 <span className="text-sm font-medium">{r.title || r.userName || 'Anonymous'}</span>
-                <span className="text-xs text-gray-500">• {new Date(r.createdAt).toLocaleDateString()}</span>
+                <span className="text-xs text-gray-600">• {new Date(r.createdAt).toLocaleDateString()}</span>
               </div>
-              <div className="text-gray-700 whitespace-pre-line">{r.comment}</div>
+              <div className="text-gray-800 whitespace-pre-line">{r.comment}</div>
             </div>
           ))
         )}
@@ -205,7 +205,7 @@ const Reviews: React.FC<Props> = ({ productId, productName }) => {
           <h4 className="text-lg font-semibold mb-3">Write a review</h4>
 
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm text-gray-700">Your rating:</span>
+            <span className="text-sm text-gray-800">Your rating:</span>
             <div className="flex">
               {[1,2,3,4,5].map((n) => (
                 <button
@@ -264,7 +264,7 @@ const Reviews: React.FC<Props> = ({ productId, productName }) => {
             {submitting ? 'Submitting…' : 'Submit Review'}
           </button>
 
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-gray-600 mt-2">
             Reviews are published after moderation.
           </p>
         </form>
