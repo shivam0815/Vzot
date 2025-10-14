@@ -432,16 +432,16 @@ const Products: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <SEO
-        title={pageTitle}
-        description={pageDesc}
-        canonicalPath={canonical.replace('https://nakodamobile.com', '')}
-        jsonLd={
-          breadcrumbJsonLd
-            ? [breadcrumbJsonLd, itemListJsonLd].filter(Boolean)
-            : itemListJsonLd
-        }
-      />
+    <SEO
+  title={pageTitle}
+  description={pageDesc}
+  canonicalPath={canonical.replace('https://nakodamobile.com','')}
+  robots={robots}               // "index,follow" or "noindex,follow"
+  prevHref={prevLink || null}   // absolute URLs if present
+  nextHref={nextLink || null}
+  jsonLd={[breadcrumbJsonLd, itemListJsonLd].filter(Boolean) as object[]}
+/>
+
       {/* Head extras for robots + canonical + prev/next + JSON-LD when SEO component lacks props */}
       <>
         <link rel="canonical" href={canonical} />

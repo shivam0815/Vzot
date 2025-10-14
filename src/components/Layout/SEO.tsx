@@ -1,3 +1,4 @@
+// src/components/Layout/SEO.tsx
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useLocation } from 'react-router-dom';
@@ -6,21 +7,27 @@ type SEOProps = {
   title?: string;
   description?: string;
   image?: string;
-  canonicalPath?: string; // e.g. /products/123
-  noindex?: boolean;
-  jsonLd?: object | object[];
+  canonicalPath?: string;          // e.g. "/products?page=2"
+  robots?: string;                 // e.g. "index,follow" | "noindex,follow"
+  noindex?: boolean;               // backward compat; sets robots if robots not provided
+  prevHref?: string | null;        // absolute URL or null
+  nextHref?: string | null;        // absolute URL or null
+  jsonLd?: object | object[];      // Product, ItemList, BreadcrumbList, etc.
 };
 
 const SITE_NAME = 'Nakoda Mobile';
-const SITE_URL = 'https://nakodamobile.com'; // <-- change to your domain
-const DEFAULT_IMAGE = `${SITE_URL}/og-default.png`; // put a fallback in /public
+const SITE_URL = 'https://nakodamobile.com';
+const DEFAULT_IMAGE = `${SITE_URL}/og-default.png`;
 
 export default function SEO({
   title,
   description = 'Shop premium tech accessories at great prices.',
   image,
   canonicalPath,
+  robots,
   noindex,
+  prevHref,
+  nextHref,
   jsonLd,
 }: SEOProps) {
   const { pathname } = useLocation();
@@ -28,13 +35,25 @@ export default function SEO({
   const pageTitle = title ? `${title} | ${SITE_NAME}` : SITE_NAME;
   const ogImage = image || DEFAULT_IMAGE;
 
+  // resolve robots precedence
+  const robotsContent =
+    robots ??
+    (noindex ? 'noindex,nofollow' : undefined);
+
+  // normalize JSON-LD to array
+  const jsonBlocks = Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : [];
+
   return (
     <Helmet>
       {/* Basic */}
       <title>{pageTitle}</title>
       {description && <meta name="description" content={description} />}
       <link rel="canonical" href={fullUrl} />
-      {noindex && <meta name="robots" content="noindex,nofollow" />}
+      {robotsContent && <meta name="robots" content={robotsContent} />}
+
+      {/* Pagination hints */}
+      {prevHref ? <link rel="prev" href={prevHref} /> : null}
+      {nextHref ? <link rel="next" href={nextHref} /> : null}
 
       {/* Open Graph */}
       <meta property="og:type" content="website" />
@@ -51,11 +70,11 @@ export default function SEO({
       {ogImage && <meta name="twitter:image" content={ogImage} />}
 
       {/* JSON-LD */}
-      {jsonLd && (
-        <script type="application/ld+json">
-          {Array.isArray(jsonLd) ? JSON.stringify(jsonLd) : JSON.stringify(jsonLd)}
+      {jsonBlocks.map((block, i) => (
+        <script key={i} type="application/ld+json">
+          {JSON.stringify(block)}
         </script>
-      )}
+      ))}
     </Helmet>
   );
 }
