@@ -122,15 +122,7 @@ function deriveBreakdown(o: OrderDetails) {
     return sum + q * p;
   }, 0);
 
-  // Base amounts
-  let subtotal = toNum(o.subtotal) || itemsSubtotal;
-
-  // Known values from API (if any)
-  let shippingKnown =
-    toNum((o as any).shipping) ||
-    toNum((o as any).shippingFee) ||
-    toNum((o as any).shippingCost) ||
-    toNum((o as any).deliveryCharge);
+  const subtotal = toNum(o.subtotal) || itemsSubtotal;
 
   let taxKnown =
     toNum((o as any).tax) ||
@@ -138,22 +130,12 @@ function deriveBreakdown(o: OrderDetails) {
     toNum((o as any).gst) ||
     toNum((o as any).vat);
 
-  // Derive tax from percentage if provided
   const pct = toNum((o as any).gstPercent) || toNum((o as any).taxRate) || 0;
-  if (taxKnown === 0 && pct > 0) {
-    taxKnown = +(subtotal * (pct / 100)).toFixed(2);
-  }
+  if (taxKnown === 0 && pct > 0) taxKnown = +(subtotal * (pct / 100)).toFixed(2);
 
-  // Our shipping rule only applies when backend didn't send a value
-  let shipping: number;
-  let freeEligible = subtotal >= FREE_SHIP_THRESHOLD;
-  if (shippingKnown > 0 || (shippingKnown === 0 && (o as any).shipping != null)) {
-    // Honor explicit backend amount (but zero it if free rule applies)
-    shipping = freeEligible ? 0 : shippingKnown;
-  } else {
-    // Compute by rule
-    shipping = freeEligible ? 0 : SHIPPING_FLAT;
-  }
+  // Force shipping rule: ₹150 if subtotal < 2000, else FREE
+  const freeEligible = subtotal >= FREE_SHIP_THRESHOLD;
+  const shipping = freeEligible ? 0 : SHIPPING_FLAT;
 
   const total = Math.max(0, +(subtotal + taxKnown + shipping).toFixed(2));
   const taxLabel = pct > 0 ? `Tax (GST ${pct}%)` : 'Tax';
@@ -167,6 +149,7 @@ function deriveBreakdown(o: OrderDetails) {
     taxLabel,
   };
 }
+
 
 const niceDate = (s?: string) => {
   if (!s) return 'N/A';
@@ -595,10 +578,12 @@ const OrderDetailsPage: React.FC = () => {
 
               {/* 🚚 Shipping note instead of amount */}
               <div className="flex justify-between text-gray-600">
+  <span>Shipping (Flat ₹150; Free ≥ ₹2,000)</span>
   <span>
-    Shipping {breakdown.freeEligible ? '(Free over ₹2,000)' : '(Flat ₹150; Free ≥ ₹2,000)'}
+    {breakdown.freeEligible
+      ? 'FREE'
+      : inr(breakdown.shipping || 150)}
   </span>
-  <span>{breakdown.shipping === 0 ? 'FREE' : inr(breakdown.shipping)}</span>
 </div>
 
 
