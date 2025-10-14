@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { getAdminStats, uploadProduct, bulkUploadProducts, getProducts, updateProduct, deleteProduct, bulkUpdateProducts } from '../config/adminApi';
 import './AdminDashboard.css';
+import SlideBar from '../components/Layout/SlideBar';
 
 import OrdersTab from '../components/Layout/OrderTab';
 import ReturnProduct from '../components/Layout/ReturnProduct';
@@ -1427,32 +1428,7 @@ const Overview = React.memo<{
 // ------------------------------
 // Navigation (unchanged)
 // ------------------------------
-const Navigation = memo<{
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  adminData?: any;
-  onLogout?: () => void;
-}>(({ activeTab, setActiveTab, adminData, onLogout }) => (
-  <nav className="dashboard-nav">
-    <div className="nav-brand">
-      <h1>🚀 Admin Dashboard</h1>
-      {adminData && (<span className="admin-name">Welcome, {adminData.name}</span>)}
-    </div>
-    <div className="nav-items">
-      <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>📊 Overview</button>
-      <button className={activeTab === 'products' ? 'active' : ''} onClick={() => setActiveTab('products')}>📦 Products</button>
-      <button className={activeTab === 'inventory' ? 'active' : ''} onClick={() => setActiveTab('inventory')}>📋 Inventory</button>
-      <button className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')}>📦 Orders</button>
-      <button className={activeTab === 'returns' ? 'active' : ''} onClick={() => setActiveTab('returns')}>🔄 Returns</button>
-      <button className={activeTab === 'reviews' ? 'active' : ''} onClick={() => setActiveTab('reviews')}>⭐ Reviews</button>
-      <button className={activeTab === 'payments' ? 'active' : ''} onClick={() => setActiveTab('payments')}>💳 Payments</button>
-      <button className={activeTab === 'support' ? 'active' : ''} onClick={() => setActiveTab('support')}>🆘 Support</button>
-      <button className={activeTab === 'notifications' ? 'active' : ''} onClick={() => setActiveTab('notifications')}>🔔 Notifications</button>
-      <button className={activeTab === 'blog' ? 'active' : ''} onClick={() => setActiveTab('blog')}>📝 Blog</button>
-      {onLogout && (<button className="logout-btn" onClick={onLogout}>🚪 Logout</button>)}
-    </div>
-  </nav>
-));
+
 
 // ------------------------------
 // Main Admin Dashboard
@@ -1570,17 +1546,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminData, onLogout }) 
     }
   };
 
-  return (
-    <div className="admin-dashboard">
-      <Navigation
-        activeTab={activeTab}
-        setActiveTab={setActiveTab as (tab: string) => void}
-        adminData={adminData}
-        onLogout={onLogout}
-      />
-      <main className="dashboard-main">{renderActiveComponent()}</main>
-    </div>
-  );
+ // in AdminDashboard render:
+return (
+  <div className="admin-shell">
+    <SlideBar
+      activeTab={activeTab}
+      setActiveTab={setActiveTab as (t: string) => void}
+      adminData={adminData}
+      onLogout={onLogout}
+    />
+    <main className="admin-content">{renderActiveComponent()}</main>
+    <style>{`
+      .admin-shell{display:flex; min-height:100vh; background:#0b1220}
+      .admin-content{flex:1; min-width:0; padding:16px; background:linear-gradient(180deg,#0b1220 0%, #0e1627 100%)}
+    `}</style>
+  </div>
+);
+
 };
 
 export default AdminDashboard;
