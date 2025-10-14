@@ -17,7 +17,6 @@ import SEO from '../components/Layout/SEO';
 import { newsletterService } from '../services/newsletterService';
 import toast from 'react-hot-toast';
 
-// 🔽 S3/Cloudinary-aware helpers
 import { resolveImageUrl, getFirstImageUrl, getOptimizedImageUrl } from '../utils/imageUtils';
 import { useTranslation } from 'react-i18next';
 
@@ -69,37 +68,43 @@ const useCountdown = (intervalHours = 6) => {
   return { label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`, remaining };
 };
 
+const slugify = (s: string) =>
+  (s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '');
+
+const productUrl = (p: Product) => `/product/${slugify(p.slug || p.name || p._id)}`;
+
 const Home: React.FC = () => {
   const overlayRef = useRef<HTMLDivElement | null>(null);
-const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
-useFirstVisitCelebration({
-  enabled: Boolean(isAuthenticated),          // run after login
-  userId: user?.id || user?.id,              // per-user cooldown
-  cooldownHours: 24,                           // change to 0 for “first login only” if you store a server flag
-  containerRef: overlayRef,                    // render on this overlay
-});
+  useFirstVisitCelebration({
+    enabled: Boolean(isAuthenticated),
+    userId: user?.id || user?.id,
+    cooldownHours: 24,
+    containerRef: overlayRef,
+  });
 
   useTranslation();
   const navigate = useNavigate();
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
 
-  // Newsletter
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
-  const [company, setCompany] = useState(''); // honeypot
+  const [company, setCompany] = useState('');
 
-  // Products - Updated with new categories
   const [hot, setHot] = useState<Product[]>([]);
   const [newArrivals, setNewArrivals] = useState<Product[]>([]);
   const [popular, setPopular] = useState<Product[]>([]);
   const [mobileAccessories, setMobileAccessories] = useState<Product[]>([]);
   const [mobileIC, setMobileIC] = useState<Product[]>([]);
   const [mobileRepairTools, setMobileRepairTools] = useState<Product[]>([]);
-  
-  // Loading states
+
   const [loadingHot, setLoadingHot] = useState(false);
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingPopular, setLoadingPopular] = useState(false);
@@ -107,17 +112,15 @@ useFirstVisitCelebration({
   const [loadingMobileIC, setLoadingMobileIC] = useState(false);
   const [loadingMobileRepairTools, setLoadingMobileRepairTools] = useState(false);
 
-const categories = [
-  { id: 'Bluetooth Neckbands', name: 'Bluetooth Neckband', icon: '🎧', gradient: 'from-blue-500 to-purple-500', description: 'Premium wireless neckbands', color: 'bg-blue-500' },
-  { id: 'TWS', name: 'True Wireless Stereo', icon: '🎵', gradient: 'from-purple-500 to-pink-500', description: 'High-quality TWS earbuds', color: 'bg-purple-500' },
-  { id: 'Data Cables', name: 'Data Cable', icon: '🔌', gradient: 'from-green-500 to-teal-500', description: 'Fast charging & sync cables', color: 'bg-green-500' },
-  { id: 'Mobile Chargers', name: 'Wall Charger', icon: '⚡', gradient: 'from-yellow-500 to-orange-500', description: 'Quick & safe charging solutions', color: 'bg-yellow-500' },
-  { id: 'Car Chargers', name: 'Car Charger', icon: '🚗', gradient: 'from-gray-600 to-gray-800', description: 'On-the-go charging solutions', color: 'bg-gray-600' },
-  { id: 'ICs', name: 'Mobile IC', icon: '🔧', gradient: 'from-red-500 to-rose-500', description: 'Integrated circuits & semiconductors', color: 'bg-red-500' },
-  { id: 'Mobile Repairing Tools', name: 'Mobile Repairing Tools', icon: '🛠️', gradient: 'from-indigo-500 to-blue-500', description: 'Professional repair toolkit', color: 'bg-indigo-500' },
-];
-
-
+  const categories = [
+    { id: 'Bluetooth Neckbands', name: 'Bluetooth Neckband', icon: '🎧', gradient: 'from-blue-500 to-purple-500', description: 'Premium wireless neckbands', color: 'bg-blue-500' },
+    { id: 'TWS', name: 'True Wireless Stereo', icon: '🎵', gradient: 'from-purple-500 to-pink-500', description: 'High-quality TWS earbuds', color: 'bg-purple-500' },
+    { id: 'Data Cables', name: 'Data Cable', icon: '🔌', gradient: 'from-green-500 to-teal-500', description: 'Fast charging & sync cables', color: 'bg-green-500' },
+    { id: 'Mobile Chargers', name: 'Wall Charger', icon: '⚡', gradient: 'from-yellow-500 to-orange-500', description: 'Quick & safe charging solutions', color: 'bg-yellow-500' },
+    { id: 'Car Chargers', name: 'Car Charger', icon: '🚗', gradient: 'from-gray-600 to-gray-800', description: 'On-the-go charging solutions', color: 'bg-gray-600' },
+    { id: 'ICs', name: 'Mobile IC', icon: '🔧', gradient: 'from-red-500 to-rose-500', description: 'Integrated circuits & semiconductors', color: 'bg-red-500' },
+    { id: 'Mobile Repairing Tools', name: 'Mobile Repairing Tools', icon: '🛠️', gradient: 'from-indigo-500 to-blue-500', description: 'Professional repair toolkit', color: 'bg-indigo-500' },
+  ];
 
   const testimonials = [
     { name: "Saransh", role: "Tech Enthusiast", content: "Amazing quality products! The TWS earbuds I bought exceeded my expectations. Crystal clear sound and perfect fit.", rating: 5, image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face" },
@@ -132,31 +135,27 @@ const categories = [
     return () => clearInterval(timer);
   }, []);
 
-  const handleCategoryClick = (categoryId: string) => navigate(`/products?category=${encodeURIComponent(categoryId)}`);
+  const handleCategoryClick = (categoryId: string) =>
+    navigate(`/products?category=${encodeURIComponent(categoryId)}`);
 
+  const pickPrimaryImage = (p: any): string | undefined => {
+    const list: any[] = [
+      p.imageUrl, p.image, p.thumbnail,
+      Array.isArray(p.images) ? p.images : undefined,
+      p.photo, p.photos?.[0], p.media?.[0], p.gallery?.[0],
+    ].flat().filter(Boolean);
 
-  // Pick primary URL once for a product (S3 key or full URL)
- // replace your pickPrimaryImage with this
-const pickPrimaryImage = (p: any): string | undefined => {
-  const list: any[] = [
-    p.imageUrl, p.image, p.thumbnail,
-    Array.isArray(p.images) ? p.images : undefined,
-    p.photo, p.photos?.[0], p.media?.[0], p.gallery?.[0],
-  ].flat().filter(Boolean);
+    for (const cand of list) {
+      const raw =
+        typeof cand === 'string'
+          ? cand
+          : cand?.url || cand?.secure_url || cand?.path || cand?.src;
+      const resolved = resolveImageUrl(raw);
+      if (resolved) return resolved;
+    }
+    return undefined;
+  };
 
-  for (const cand of list) {
-    const raw =
-      typeof cand === 'string'
-        ? cand
-        : cand?.url || cand?.secure_url || cand?.path || cand?.src;
-    const resolved = resolveImageUrl(raw);
-    if (resolved) return resolved;
-  }
-  return undefined;
-};
-
-
-  // Fetch products - Updated with new category fetches
   useEffect(() => {
     const loadHot = async () => {
       try {
@@ -167,7 +166,7 @@ const pickPrimaryImage = (p: any): string | undefined => {
         setHot(data.products || data.items || []);
       } finally { setLoadingHot(false); }
     };
-    
+
     const loadNew = async () => {
       try {
         setLoadingNew(true);
@@ -177,7 +176,7 @@ const pickPrimaryImage = (p: any): string | undefined => {
         setNewArrivals(data.products || data.items || []);
       } finally { setLoadingNew(false); }
     };
-    
+
     const loadPopular = async () => {
       try {
         setLoadingPopular(true);
@@ -186,53 +185,47 @@ const pickPrimaryImage = (p: any): string | undefined => {
         setPopular(res.ok ? (data.products || data.items || []) : []);
       } finally { setLoadingPopular(false); }
     };
-    
-    // Load Mobile Accessories (general accessories categories combined)
-  // Load Mobile Accessories (updated with correct database category names)
-const loadMobileAccessories = async () => {
-  try {
-    setLoadingMobileAccessories(true);
-    const accessoryCategories = ['Bluetooth Neckbands', 'TWS', 'Data Cables', 'Mobile Chargers', 'Car Chargers'];
-    const categoryQuery = accessoryCategories.map(cat => `category=${encodeURIComponent(cat)}`).join('&');
-    const res = await fetch(`${API_BASE}/products?${categoryQuery}&limit=24&status=active`, { credentials: 'include' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.message || 'Failed to load mobile accessories');
-    setMobileAccessories(data.products || data.items || []);
-  } finally { setLoadingMobileAccessories(false); }
-};
 
-// Load Mobile ICs (corrected category name)
-const loadMobileIC = async () => {
-  try {
-    setLoadingMobileIC(true);
-    const res = await fetch(`${API_BASE}/products?category=${encodeURIComponent('ICs')}&limit=20&status=active`, { credentials: 'include' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.message || 'Failed to load mobile IC products');
-    setMobileIC(data.products || data.items || []);
-  } finally { setLoadingMobileIC(false); }
-};
+    const loadMobileAccessories = async () => {
+      try {
+        setLoadingMobileAccessories(true);
+        const accessoryCategories = ['Bluetooth Neckbands', 'TWS', 'Data Cables', 'Mobile Chargers', 'Car Chargers'];
+        const categoryQuery = accessoryCategories.map(cat => `category=${encodeURIComponent(cat)}`).join('&');
+        const res = await fetch(`${API_BASE}/products?${categoryQuery}&limit=24&status=active`, { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || 'Failed to load mobile accessories');
+        setMobileAccessories(data.products || data.items || []);
+      } finally { setLoadingMobileAccessories(false); }
+    };
 
-// Load Mobile Repairing Tools (exact database name)
-const loadMobileRepairTools = async () => {
-  try {
-    setLoadingMobileRepairTools(true);
-    const res = await fetch(`${API_BASE}/products?category=${encodeURIComponent('Mobile Repairing Tools')}&limit=20&status=active`, { credentials: 'include' });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.message || 'Failed to load mobile repair tools');
-    setMobileRepairTools(data.products || data.items || []);
-  } finally { setLoadingMobileRepairTools(false); }
-};
+    const loadMobileIC = async () => {
+      try {
+        setLoadingMobileIC(true);
+        const res = await fetch(`${API_BASE}/products?category=${encodeURIComponent('ICs')}&limit=20&status=active`, { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || 'Failed to load mobile IC products');
+        setMobileIC(data.products || data.items || []);
+      } finally { setLoadingMobileIC(false); }
+    };
 
-    
-    loadHot(); 
-    loadNew(); 
+    const loadMobileRepairTools = async () => {
+      try {
+        setLoadingMobileRepairTools(true);
+        const res = await fetch(`${API_BASE}/products?category=${encodeURIComponent('Mobile Repairing Tools')}&limit=20&status=active`, { credentials: 'include' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.message || 'Failed to load mobile repair tools');
+        setMobileRepairTools(data.products || data.items || []);
+      } finally { setLoadingMobileRepairTools(false); }
+    };
+
+    loadHot();
+    loadNew();
     loadPopular();
     loadMobileAccessories();
     loadMobileIC();
     loadMobileRepairTools();
   }, []);
 
-  // Derived sections
   const hotDeals = useMemo(() => {
     const base = hot.length ? hot : newArrivals;
     const withOff = base
@@ -256,9 +249,6 @@ const loadMobileRepairTools = async () => {
     return (under599.length ? under599 : merged).slice(0, 10);
   }, [hot, newArrivals]);
 
- 
-
-  // scroll helpers
   const useScroller = () => {
     const ref = useRef<HTMLDivElement | null>(null);
     const scrollBy = (dx: number) => ref.current?.scrollBy({ left: dx, behavior: 'smooth' });
@@ -269,7 +259,6 @@ const loadMobileRepairTools = async () => {
   const mobileICRef = useScroller();
   const mobileRepairRef = useScroller();
 
-  // Newsletter
   const handleSubscribe = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!isValidEmail(email)) { toast.error('Enter a valid email'); return; }
@@ -285,31 +274,29 @@ const loadMobileRepairTools = async () => {
     } finally { setLoading(false); }
   };
 
-  /** Product Card (with image fallback) */
   const Card: React.FC<{ p: Product; badge?: React.ReactNode; compact?: boolean }> = ({ p, badge, compact }) => {
-    // base image
-   const raw = useMemo(() => pickPrimaryImage(p), [p]);
-const optimized = raw ? getOptimizedImageUrl(raw, 500, 500) : undefined;
-const [imgSrc, setImgSrc] = useState<string | undefined>(optimized ?? raw);
-useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
+    const raw = useMemo(() => pickPrimaryImage(p), [p]);
+    const optimized = raw ? getOptimizedImageUrl(raw, 500, 500) : undefined;
+    const [imgSrc, setImgSrc] = useState<string | undefined>(optimized ?? raw);
+    useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
 
     const off = priceOffPct(p.price, p.originalPrice);
 
     return (
       <article className={`group rounded-2xl border border-gray-200 bg-white p-4 hover:shadow-md transition ${compact ? 'w-[220px] shrink-0' : ''}`}>
         <button
-          onClick={() => navigate(`/products/${p.slug || p._id}`)}
+          onClick={() => navigate(productUrl(p))}
           className="relative block w-full overflow-hidden rounded-xl bg-gray-50"
           aria-label={p.name}
         >
           {imgSrc ? (
             <img
-  src={imgSrc}
-  alt={p.name}
-  className="h-40 w-full object-contain bg-white transition-transform duration-500 group-hover:scale-105"
-  loading="lazy"
-  onError={() => setImgSrc(imgSrc !== raw ? raw : undefined)}
-/>
+              src={imgSrc}
+              alt={p.name}
+              className="h-40 w-full object-contain bg-white transition-transform duration-500 group-hover:scale-105"
+              loading="lazy"
+              onError={() => setImgSrc(imgSrc !== raw ? raw : undefined)}
+            />
           ) : (
             <div className="h-40 w-full bg-gray-100" />
           )}
@@ -332,13 +319,13 @@ useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
-              onClick={() => navigate(`/products/${p.slug || p._id}`)}
+              onClick={() => navigate(productUrl(p))}
               className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-semibold text-white text-center hover:bg-black"
             >
               View
             </button>
             <Link
-              to={`/products/${p.slug || p._id}`}
+              to={productUrl(p)}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 text-center"
             >
               Details
@@ -349,7 +336,6 @@ useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
     );
   };
 
-  /** Skeletons */
   const SkeletonGrid: React.FC<{ count: number }> = ({ count }) => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
       {Array.from({ length: count }).map((_, i) => (
@@ -376,6 +362,51 @@ useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
     </div>
   );
 
+  // ---- SEO JSON-LD blocks (computed after product arrays) ----
+  const websiteJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Nakoda Mobile',
+    url: 'https://nakodamobile.com',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: 'https://nakodamobile.com/products?q={search_term_string}',
+      'query-input': 'required name=search_term_string',
+    },
+  };
+
+  const organizationJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Nakoda Mobile',
+    url: 'https://nakodamobile.com',
+    logo: 'https://nakodamobile.com/favicon-512.png',
+    sameAs: [
+      'https://www.facebook.com/jitukumarkothari/',
+      'https://x.com/_nakodamobile_?t=yJpXFZwym_u7fbB_3ORckQ&s=08',
+      'https://www.instagram.com/v2m_nakoda_mobile/',
+    ],
+  };
+
+  const bestSellersItemList = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Best Sellers',
+    url: 'https://nakodamobile.com/',
+    itemListElement: bestSellers.slice(0, 8).map((p, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: `https://nakodamobile.com${productUrl(p)}`,
+      name: p.name,
+      image: getOptimizedImageUrl(p.images?.[0] || p.imageUrl || '', 800, 800) || undefined,
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'INR',
+        price: p.price,
+        availability: 'https://schema.org/InStock',
+      },
+    })),
+  };
   
     return (
   <div className="min-h-screen">
