@@ -607,7 +607,7 @@ const ProductDetail: React.FC = () => {
                   <div className="flex flex-col items-center space-y-1.5 sm:space-y-2">
                     <div className="bg-blue-100 p-2 rounded-full"><Truck className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" /></div>
                     <span className="text-xs sm:text-sm font-medium text-gray-700">Free Delivery</span>
-                    <span className="text-[11px] sm:text-xs text-gray-500">On orders above ₹499</span>
+                    <span className="text-[11px] sm:text-xs text-gray-500">On orders above ₹1999</span>
                   </div>
                   <div className="flex flex-col items-center space-y-1.5 sm:space-y-2">
                     <div className="bg-green-100 p-2 rounded-full"><Shield className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" /></div>
