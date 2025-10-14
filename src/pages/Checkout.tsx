@@ -540,10 +540,10 @@ const CheckoutPage: React.FC = () => {
                   errors={errors}
                 />
                 <Input
-                  field="HouseNo and Floor"
-                  label="HouseNo and Floor *"
+                  field="Area & Colony"
+                  label="Area & Colony *"
                   value={shipping.addressLine2}
-                  onChange={(v) => handleAddr(setShipping)('addressLine1', v)}
+                  onChange={(v) => handleAddr(setShipping)('addressLine2', v)}
                   placeholder="Area, Colony, Sector, Village"
                   icon={MapPin}
                   errors={errors}
@@ -670,10 +670,10 @@ const CheckoutPage: React.FC = () => {
                     errors={errors}
                   />
                   <Input
-                    field="billing_HouseNo and Floor"
-                    label="HouseNo and Floor *"
+                    field="Area & Colony"
+                    label="Area & Colony *"
                     value={billing.addressLine2}
-                    onChange={(v) => handleAddr(setBilling)('addressLine1', v)}
+                    onChange={(v) => handleAddr(setBilling)('addressLine2', v)}
                     placeholder="Area, Colony, Sector, Village"
                     icon={MapPin}
                     errors={errors}
