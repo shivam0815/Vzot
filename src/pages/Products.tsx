@@ -1,6 +1,6 @@
 // src/pages/Products.tsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Grid, List, Search } from 'lucide-react';
 import ProductCard from '../components/UI/ProductCard';
@@ -10,8 +10,7 @@ import type { Product } from '../types';
 import SEO from '../components/Layout/SEO';
 import { useBulkReviews } from '../hooks/useBulkReviews';
 
-/* helpers */
-
+/* ───────────────── helpers ───────────────── */
 
 /* category normalization */
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
@@ -41,7 +40,7 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   electronics: 'Electronics',
   accessories: 'Accessories',
   others: 'Others',
-   ics: 'ICs',  
+  ics: 'ICs',
 };
 const NAME_TO_SLUG: Record<string, string> = {
   TWS: 'tws',
@@ -60,7 +59,52 @@ const NAME_TO_SLUG: Record<string, string> = {
   'mobile ics': 'Mobile ICs',
   'mobile-ics': 'Mobile ICs',
   Others: 'others',
-    ICs: 'ics',
+  ICs: 'ics',
+};
+
+const HEX24 = /^[a-f\d]{24}$/i;
+const getId = (p: any): string | undefined => {
+  const raw = p?._id ?? p?.id;
+  if (!raw) return undefined;
+  const s = typeof raw === 'string' ? raw : String(raw);
+  return HEX24.test(s) ? s : undefined;
+};
+
+// Build absolute product URL for ItemList JSON-LD
+const productUrl = (p: any) => {
+  const slug = (p?.slug || p?.name || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
+  const id = getId(p);
+  const handle = slug || id || 'item';
+  return `https://nakodamobile.com/product/${handle}`;
+};
+
+// Canonical + robots + prev/next builder for collection pages
+const useCanonical = (category: string, page: number, hasFilters: boolean) => {
+  const { pathname } = useLocation();
+  const base = 'https://nakodamobile.com';
+  const params = new URLSearchParams();
+  if (category) params.set('category', (NAME_TO_SLUG[category] || category).toLowerCase());
+  if (page > 1) params.set('page', String(page));
+  const qs = params.toString();
+  const path = pathname.startsWith('/products') ? '/products' : '/products';
+  const canonical = `${base}${path}${qs ? `?${qs}` : ''}`;
+  const robots = hasFilters ? 'noindex,follow' : 'index,follow';
+  const prevLink =
+    page > 1
+      ? `${base}${path}${
+          (() => {
+            const p = new URLSearchParams(qs);
+            p.set('page', String(page - 1));
+            return p.toString() ? `?${p.toString()}` : '';
+          })()
+        }`
+      : null;
+  return { canonical, robots, prevLink };
 };
 
 const Products: React.FC = () => {
@@ -105,15 +149,7 @@ const Products: React.FC = () => {
     'Mobile accessories',
   ]);
 
-  // src/pages/Products.tsx (top)
-const HEX24 = /^[a-f\d]{24}$/i;
-const getId = (p: any): string | undefined => {
-  const raw = p?._id ?? p?.id;
-  if (!raw) return undefined;
-  const s = typeof raw === 'string' ? raw : String(raw);
-  return HEX24.test(s) ? s : undefined;
-};
-
+  const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';
 
   /* URL -> dropdown */
   useEffect(() => {
@@ -140,8 +176,6 @@ const getId = (p: any): string | undefined => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory]);
 
-  const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';
-
   /* fetch categories (once) */
   useEffect(() => {
     let cancelled = false;
@@ -163,21 +197,26 @@ const getId = (p: any): string | undefined => {
       setLoading(true);
       setError('');
 
-     const filters: any = {};
-if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
-if (searchTerm) filters.q = searchTerm;
+      const filters: any = {};
+      if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
+      if (searchTerm) filters.q = searchTerm;
 
-const mapSort = (ui: typeof sortBy): { sortBy: 'createdAt'|'price'|'rating'|'trending'; sortOrder: 'asc'|'desc' } => {
-  switch (ui) {
-    case 'price-low':  return { sortBy: 'price',     sortOrder: 'asc'  };
-    case 'price-high': return { sortBy: 'price',     sortOrder: 'desc' };
-    case 'rating':     return { sortBy: 'rating',    sortOrder: 'desc' };
-    case 'name':       // no “name” on API → default to newest
-    default:           return { sortBy: 'createdAt', sortOrder: 'desc' };
-  }
-};
-Object.assign(filters, mapSort(sortBy));
-
+      const mapSort = (
+        ui: typeof sortBy
+      ): { sortBy: 'createdAt' | 'price' | 'rating' | 'trending'; sortOrder: 'asc' | 'desc' } => {
+        switch (ui) {
+          case 'price-low':
+            return { sortBy: 'price', sortOrder: 'asc' };
+          case 'price-high':
+            return { sortBy: 'price', sortOrder: 'desc' };
+          case 'rating':
+            return { sortBy: 'rating', sortOrder: 'desc' };
+          case 'name':
+          default:
+            return { sortBy: 'createdAt', sortOrder: 'desc' };
+        }
+      };
+      Object.assign(filters, mapSort(sortBy));
 
       const params = {
         page,
@@ -295,6 +334,73 @@ Object.assign(filters, mapSort(sortBy));
 
   const handleManualRefresh = () => fetchProducts(true);
 
+  // ────────────── SEO: canonical, robots, JSON-LD ──────────────
+  const hasSearch = !!searchTerm.trim();
+  const hasPriceFilter = !(priceRange[0] === 0 && priceRange[1] === 20000);
+  const hasFilters = hasSearch || hasPriceFilter;
+
+  // derive pagination to compute nextLink before render
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil((total || 0) / limit)),
+    [total, limit]
+  );
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+
+  const { canonical, robots, prevLink } = useCanonical(normalizedCategoryForApi, page, hasFilters);
+  const nextLink =
+    canNext
+      ? (() => {
+          const u = new URL(canonical);
+          const p = u.searchParams;
+          p.set('page', String(page + 1));
+          u.search = p.toString();
+          return u.toString();
+        })()
+      : null;
+
+  // ItemList JSON-LD only for indexable states
+  const itemListJsonLd = !hasFilters
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        itemListOrder: 'http://schema.org/ItemListOrderAscending',
+        numberOfItems: filteredProducts.length,
+        url: canonical,
+        itemListElement: filteredProducts.map((p, idx) => ({
+          '@type': 'ListItem',
+          position: idx + 1,
+          url: productUrl(p),
+          name: p?.name || undefined,
+          image:
+            (Array.isArray((p as any)?.images) && (p as any).images[0]) ||
+            (p as any)?.image ||
+            undefined,
+          sku: (p as any)?.sku || undefined,
+          brand: (p as any)?.brand ? { '@type': 'Brand', name: (p as any).brand } : undefined,
+        })),
+      }
+    : undefined;
+
+  const breadcrumbJsonLd = normalizedCategoryForApi
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://nakodamobile.com/' },
+          { '@type': 'ListItem', position: 2, name: 'Products', item: 'https://nakodamobile.com/products' },
+          { '@type': 'ListItem', position: 3, name: normalizedCategoryForApi, item: canonical },
+        ],
+      }
+    : undefined;
+
+  const pageTitle = normalizedCategoryForApi
+    ? `${normalizedCategoryForApi} — Shop Products`
+    : 'Shop Products';
+  const pageDesc = normalizedCategoryForApi
+    ? `Buy ${normalizedCategoryForApi} online at Nakoda Mobile. Fast shipping. GST invoice.`
+    : 'Browse tech accessories at Nakoda Mobile. Fast shipping. GST invoice.';
+
   /* loading */
   if (loading) {
     return (
@@ -324,24 +430,37 @@ Object.assign(filters, mapSort(sortBy));
     );
   }
 
-  /* derived pagination info */
-  const totalPages = Math.max(1, Math.ceil((total || 0) / limit));
-  const canPrev = page > 1;
-  const canNext = page < totalPages;
-
   return (
     <div className="min-h-screen bg-gray-50">
       <SEO
-        title={normalizedCategoryForApi ? `${normalizedCategoryForApi} — Shop Products` : 'Shop Products'}
-        description="Browse TWS, Bluetooth neckbands, data cables, chargers, ICs, and tools,Bluetooth Speakers."
-        canonicalPath="/products"
-        jsonLd={{
-          '@context': 'https://schema.org',
-          '@type': 'CollectionPage',
-          name: normalizedCategoryForApi ? `${normalizedCategoryForApi} Products` : 'Products',
-          url: 'https://nakodamobile.com/products',
-        }}
+        title={pageTitle}
+        description={pageDesc}
+        canonicalPath={canonical.replace('https://nakodamobile.com', '')}
+        jsonLd={
+          breadcrumbJsonLd
+            ? [breadcrumbJsonLd, itemListJsonLd].filter(Boolean)
+            : itemListJsonLd
+        }
       />
+      {/* Head extras for robots + canonical + prev/next + JSON-LD when SEO component lacks props */}
+      <>
+        <link rel="canonical" href={canonical} />
+        {prevLink && <link rel="prev" href={prevLink} />}
+        {nextLink && <link rel="next" href={nextLink} />}
+        <meta name="robots" content={robots} />
+        {itemListJsonLd && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
+          />
+        )}
+        {breadcrumbJsonLd && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+          />
+        )}
+      </>
 
       {/* Hero */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-16">
@@ -477,7 +596,7 @@ Object.assign(filters, mapSort(sortBy));
               {filteredProducts.map((product, i) => {
                 const key = getId(product) || `${product.name || 'item'}-${i}`;
                 const pid = getId(product);
-                const summary = pid ? reviewsMap[pid] : undefined;
+                const summary = pid ? (reviewsMap as any)[pid] : undefined;
 
                 return (
                   <motion.div
