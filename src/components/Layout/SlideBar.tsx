@@ -102,15 +102,15 @@ const SlideBar = memo<SidebarProps>(({ activeTab, setActiveTab, adminData, onLog
           padding:10px 12px; border-radius:10px; border:1px solid transparent;
           color:#cbd5e1; background: transparent; text-align:left; cursor:pointer;
         }
-        .sb-item:hover{ background:#111827; border-color: rgba(148,163,184,.15); color:#fff }
-        .sb-item.active{ background: linear-gradient(135deg,#637bff 0%, #6a45a7 100%); color:#fff; border-color: transparent }
+        .sb-item:hover{ background:#111827; border-color: rgba(255, 255, 255, 1); color:#fff }
+        .sb-item.active{ background: linear-gradient(135deg,#637bff 0%, #fefeffff 100%); color:#fff; border-color: transparent }
         .sb-icon{width:22px; text-align:center}
         .sb-text{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 
         .sb-bottom{margin-top:auto; padding:8px}
         .sb-logout{
           width:100%; display:flex; align-items:center; gap:12px; padding:10px 12px;
-          border-radius:10px; border:1px solid rgba(239,68,68,.25); color:#fecaca;
+          border-radius:10px; border:1px solid rgba(243, 238, 238, 0.25); color:#fecaca;
           background:#1f2937; cursor:pointer;
         }
         .sb-logout:hover{ background:#b91c1c; color:#fff; border-color:transparent }
