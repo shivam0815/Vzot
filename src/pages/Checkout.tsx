@@ -162,21 +162,24 @@ const CheckoutPage: React.FC = () => {
       setter((prev) => ({ ...prev, [field]: value }));
       setErrors((e) => ({ ...e, [field]: '' }));
     };
+    const addrComboLen = (a: Address) =>
+  ((a.addressLine1 || '') + (a.addressLine2 || '')).trim().length;
+const minCombo = 3; // must match server rule
+
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     const regPhone = /^\d{10}$/;
     const regPin = /^\d{6}$/;
     const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-     const minAddr = 7;
+    
 
     if (!shipping.fullName.trim()) e.fullName = 'Full name is required';
     if (!regPhone.test(shipping.phoneNumber.replace(/\D/g, '')))
       e.phoneNumber = 'Please enter a valid 10-digit phone number';
     if (!regEmail.test(shipping.email)) e.email = 'Please enter a valid email address';
-     if (!shipping.addressLine1.trim()) e.addressLine1 = 'Address is required';
-  else if (shipping.addressLine1.replace(/\s/g, '').length < minAddr)
-    e.addressLine1 = `Address must be at least ${minAddr} characters`;
+      if (addrComboLen(shipping) < minCombo)
+   e.addressLine1 = `Address must be at least ${minCombo} characters (line1 + line2)`;
     if (!shipping.city.trim()) e.city = 'City is required';
     if (!shipping.state.trim()) e.state = 'State is required';
     if (!regPin.test(shipping.pincode)) e.pincode = 'Please enter a valid 6-digit pincode';
@@ -207,6 +210,10 @@ const CheckoutPage: React.FC = () => {
 
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
+    if (addrComboLen(shipping) < minCombo && addrComboLen(billing) >= minCombo) {
+  setShipping({ ...billing });
+}
+
     if (!validate()) {
       toast.error('Please correct the errors below');
       return;
@@ -531,7 +538,7 @@ const CheckoutPage: React.FC = () => {
                 </div>
 
                 <Input
-                  field="HouseNo and Floor"
+                  field="addressLine1"
                   label="HouseNo and Floor *"
                   value={shipping.addressLine1}
                   onChange={(v) => handleAddr(setShipping)('addressLine1', v)}
@@ -540,7 +547,7 @@ const CheckoutPage: React.FC = () => {
                   errors={errors}
                 />
                 <Input
-                  field="Area & Colony"
+                  field="addressLine2"
                   label="Area & Colony *"
                   value={shipping.addressLine2}
                   onChange={(v) => handleAddr(setShipping)('addressLine2', v)}
@@ -661,7 +668,7 @@ const CheckoutPage: React.FC = () => {
                   />
 
                   <Input
-                    field="billing_HouseNo and Floor"
+                    field="billing_addressLine1"
                     label="HouseNo and Floor *"
                     value={billing.addressLine1}
                     onChange={(v) => handleAddr(setBilling)('addressLine1', v)}
@@ -670,7 +677,7 @@ const CheckoutPage: React.FC = () => {
                     errors={errors}
                   />
                   <Input
-                    field="Area & Colony"
+                    field="billing_addressLine2"
                     label="Area & Colony *"
                     value={billing.addressLine2}
                     onChange={(v) => handleAddr(setBilling)('addressLine2', v)}

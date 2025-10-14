@@ -24,25 +24,62 @@ const cleanGstin = (s?: any) =>
 
 /* ───────────────── CREATE ORDER (stock deduction, GST & emails) ───────────────── */
 
+// ───────── helpers (keep near top of file) ─────────
+type Addr = {
+  fullName?: string; phoneNumber?: string; email?: string;
+  addressLine1?: string; addressLine2?: string; city?: string;
+  state?: string; pincode?: string; landmark?: string;
+};
+const normAddr = (a: any = {}): Addr => ({
+  fullName: (a?.fullName ?? "").toString().trim(),
+  phoneNumber: (a?.phoneNumber ?? "").toString().trim(),
+  email: (a?.email ?? "").toString().trim(),
+  addressLine1: (a?.addressLine1 ?? "").toString().trim(),
+  addressLine2: (a?.addressLine2 ?? "").toString().trim(),
+  city: (a?.city ?? "").toString().trim(),
+  state: (a?.state ?? "").toString().trim(),
+  pincode: (a?.pincode ?? "").toString().trim(),
+  landmark: (a?.landmark ?? "").toString().trim(),
+});
+const addrLen = (a: Addr) =>
+  ((a.addressLine1 ?? "") + (a.addressLine2 ?? "")).trim().length;
+
+// ───────── createOrder ─────────
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { shippingAddress, paymentMethod, billingAddress, extras, pricing } = req.body;
+    const { shippingAddress, paymentMethod, billingAddress, extras } = req.body;
 
     if (!req.user) {
       res.status(401).json({ message: "User not authenticated" });
       return;
     }
-
-    const user = req.user as AuthenticatedUser;
-    const userId = user.id;
+    const userId = (req.user as AuthenticatedUser).id;
 
     // Load cart
     const cart = await Cart.findOne({ userId }).populate("items.productId");
-    if (!cart || !cart.items || cart.items.length === 0) {
+    if (!cart || !cart.items?.length) {
       res.status(400).json({ message: "Cart is empty" });
       return;
     }
 
+    // Normalize addresses + fallback + validate
+    let ship = normAddr(shippingAddress);
+    let bill = normAddr(billingAddress);
+    if (addrLen(ship) < 3 && addrLen(bill) >= 3) ship = { ...bill };
+    if (addrLen(ship) < 3) {
+      res.status(400).json({
+        ok: false,
+        error: "Validation failed: address1+address2 must be >= 3 chars",
+        debug: {
+          sa1: ship.addressLine1, sa2: ship.addressLine2,
+          ba1: bill.addressLine1, ba2: bill.addressLine2,
+        },
+      });
+      return;
+    }
+    if (addrLen(bill) < 3) bill = { ...ship };
+
+    // Build order items with stock-only clamp
     const orderItems: Array<{
       productId: mongoose.Types.ObjectId;
       name: string;
@@ -52,33 +89,24 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     }> = [];
 
     let subtotal = 0;
-
-    // Build items with stock-only clamping (B2C: no MOQ, no max per line)
     for (const cartItem of cart.items) {
       const product = cartItem.productId as any;
 
       if (!product || !product.isActive || !product.inStock) {
-        res.status(400).json({
-          message: `Product unavailable: ${product?.name || "Unknown"}`,
-        });
+        res.status(400).json({ message: `Product unavailable: ${product?.name || "Unknown"}` });
         return;
       }
 
       const stock = Math.max(0, Number(product.stockQuantity ?? 0));
       const desired = Math.max(1, Number(cartItem.quantity) || 1);
-
       if (stock < 1) {
-        res.status(400).json({
-          message: `Insufficient stock for ${product?.name || "item"}.`,
-        });
+        res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` });
         return;
       }
 
       const qty = Math.min(desired, stock);
       if (qty < 1) {
-        res.status(400).json({
-          message: `Insufficient stock for ${product?.name || "item"}.`,
-        });
+        res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` });
         return;
       }
 
@@ -89,32 +117,30 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
         quantity: qty,
         image: product.images?.[0] || "",
       });
-
       subtotal += cartItem.price * qty;
     }
 
-    // Pricing (server-side). Adjust as needed.
+    // Pricing
     const FREE_SHIPPING_THRESHOLD = 2000;
-const SHIPPING_COST = 150;
-const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST; // free above ₹500
-    const tax = Math.round(subtotal * 0.18);  // 18% GST rounded
+    const SHIPPING_COST = 150;
+    const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
+    const tax = Math.round(subtotal * 0.18); // 18% GST
     const total = subtotal + shipping + tax;
 
     // IDs
-    // IDs
-const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
-const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
+    const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
 
-    // GST block
-    const gstBlock = buildGstBlock(req.body, shippingAddress, { subtotal, tax });
+    // GST
+    const gstBlock = buildGstBlock(req.body, ship, { subtotal, tax });
 
-    // Create and save
+    // Create
     const order = new Order({
       userId: new mongoose.Types.ObjectId(userId),
       orderNumber,
       items: orderItems,
-      shippingAddress,
-      billingAddress: billingAddress || shippingAddress,
+      shippingAddress: ship,
+      billingAddress: bill,
       paymentMethod,
       paymentOrderId,
       subtotal,
@@ -130,7 +156,7 @@ const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined
 
     const savedOrder = await order.save();
 
-    // REAL-TIME STOCK DEDUCTION (based on persisted quantities)
+    // Real-time stock deduction
     try {
       for (const item of savedOrder.items) {
         const updated = await Product.findOneAndUpdate(
@@ -138,12 +164,9 @@ const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined
           { $inc: { stockQuantity: -item.quantity } },
           { new: true }
         ).lean();
-
-        if (!updated) {
-          throw new Error(`Stock changed for an item during order save`);
-        }
+        if (!updated) throw new Error("Stock changed for an item during order save");
       }
-    } catch (stockError) {
+    } catch {
       await Order.findByIdAndDelete(savedOrder._id);
       res.status(409).json({ message: "Stock changed. Please try again." });
       return;
@@ -152,51 +175,31 @@ const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined
     // Clear cart
     await Cart.findOneAndDelete({ userId });
 
-    // EMAIL AUTOMATION (non-blocking error handling)
-    const emailResults = {
-      customerEmailSent: false,
-      adminEmailSent: false,
-      emailError: null as string | null,
-    };
-
+    // Emails (non-blocking errors)
+    const emailResults = { customerEmailSent: false, adminEmailSent: false, emailError: null as string | null };
     try {
-      emailResults.customerEmailSent =
-        await EmailAutomationService.sendOrderConfirmation(
-          savedOrder as any,
-          savedOrder.shippingAddress.email
-        );
-      emailResults.adminEmailSent =
-        await EmailAutomationService.notifyAdminNewOrder(savedOrder as any);
-    } catch (emailError: any) {
-      emailResults.emailError = emailError.message || "Email error";
+      emailResults.customerEmailSent = await EmailAutomationService.sendOrderConfirmation(
+        savedOrder as any,
+        savedOrder.shippingAddress.email
+      );
+      emailResults.adminEmailSent = await EmailAutomationService.notifyAdminNewOrder(savedOrder as any);
+    } catch (e: any) {
+      emailResults.emailError = e?.message || "Email error";
     }
 
     // Socket pushes
     if (req.io) {
-      interface IUserSummary {
-        _id: mongoose.Types.ObjectId;
-        name?: string;
-        email?: string;
-      }
-
+      interface IUserSummary { _id: mongoose.Types.ObjectId; name?: string; email?: string; }
       let userDoc: IUserSummary | null = null;
       try {
-        userDoc = await mongoose
-          .model<IUserSummary>("User")
-          .findById(savedOrder.userId)
-          .select("name email")
-          .lean()
-          .exec();
-      } catch {
-        userDoc = null;
-      }
-
+        userDoc = await mongoose.model<IUserSummary>("User")
+          .findById(savedOrder.userId).select("name email").lean().exec();
+      } catch {}
       const userSummary = {
         _id: savedOrder.userId.toString(),
         name: userDoc?.name || savedOrder.shippingAddress?.fullName,
         email: userDoc?.email || savedOrder.shippingAddress?.email,
       };
-
       req.io.to("admins").emit("orderCreated", {
         _id: (savedOrder._id as mongoose.Types.ObjectId).toString(),
         orderNumber: savedOrder.orderNumber,
@@ -227,12 +230,10 @@ const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined
       },
     });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: error.message || "Server error",
-    });
+    res.status(500).json({ success: false, message: error.message || "Server error" });
   }
 };
+
 
 /* ───────────────── GET USER ORDERS (paginated) ───────────────── */
 
