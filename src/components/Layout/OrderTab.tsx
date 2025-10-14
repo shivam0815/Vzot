@@ -1819,8 +1819,7 @@ const OrdersTab: React.FC = () => {
 
           const { uploadUrl, publicUrl } = await presign(f);
           await putWithProgress(uploadUrl, f, (pct) => {
-            // optional: show pct in UI; for brevity we skip rendering a bar here
-            // console.log(`${f.name}: ${pct}%`);
+         
           });
           newUrls.push(publicUrl);
         }

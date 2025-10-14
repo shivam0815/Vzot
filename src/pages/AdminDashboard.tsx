@@ -14,10 +14,7 @@ import LowStockTab from '../components/Layout/LowStockTab';
 import PendingOrdersTab from '../components/Layout/PendingOrdersTab';
 import AdminNotifications from '../components/Layout/AdminNotifications';
 import AdminHelpSupport from '../components/Layout/AdminHelpSupport';
-import {
-  LayoutDashboard, Package, ClipboardList, RefreshCw, Star, CreditCard,
-  Bell, HelpCircle, Users, NotebookPen, Boxes, LogOut, TrendingUp, AlertTriangle
-} from 'lucide-react';
+
 import { io } from "socket.io-client";
 import Papa from "papaparse";
 

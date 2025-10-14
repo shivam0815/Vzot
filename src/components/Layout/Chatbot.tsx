@@ -4,17 +4,7 @@ import { X, MessageCircle, Send, Sparkles, Loader2, RefreshCw, Minus, Maximize2,
 import type { Product } from "../../types"; // adjust as needed
 import ProductCard from "../UI/ProductCard"; // optional; has graceful fallback below
 
-/**
- * Clara – Nakoda Mobile AI Assistant (client-side widget)
- *
- * Upgrades in this version:
- * 1) CATEGORY-ONLY catalog (as requested) with chips and intent routing
- * 2) Local intent parser: "Show <Category>", price filters (under/between), sort options, keyword search
- * 3) Direct product fetching: GET /api/products?category=&minPrice=&maxPrice=&sort=&q=&limit=
- * 4) Order tracking intent: "Track order NM-2025-000123" → GET /api/orders/status?orderNumber=
- * 5) Dynamic follow‑ups based on response + category-aware suggestions
- * 6) Typing indicator, Stop button, retry/offline guards, focus trap, a11y
- */
+
 
 type Role = "user" | "assistant" | "system";
 
