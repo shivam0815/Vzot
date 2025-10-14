@@ -131,7 +131,8 @@ const Reviews: React.FC<Props> = ({ productId, productName }) => {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 bg-gray-50 text-gray-900">
       {/* Left: summary */}
       <div>
         <div className="p-4 rounded-lg border bg-white">
