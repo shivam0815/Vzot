@@ -471,9 +471,7 @@ app.use('/api/uploads', uploads);
 // src/server.ts
 import sitemapRoutes from "./routes/sitemaps";
 app.use("/", sitemapRoutes);
-import invoiceRoutes from "./routes/invoiceRoutes";
-// ...
-app.use("/api", invoiceRoutes);
+
 
 
 // Shiprocket protected (single mount; no unprotected duplicate)
