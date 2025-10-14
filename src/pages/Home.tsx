@@ -8,6 +8,9 @@ import {
   Smartphone, Cpu, Wrench
 } from 'lucide-react';
 
+import { useFirstVisitCelebration } from '../hooks/useFirstVisitCelebration';
+import { useAuth } from '../hooks/useAuth';
+
 import HeroSlider from '../components/Layout/HeroSlider';
 import PromoSlider from '../components/Layout/PromoSlider';
 import SEO from '../components/Layout/SEO';
@@ -67,6 +70,16 @@ const useCountdown = (intervalHours = 6) => {
 };
 
 const Home: React.FC = () => {
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+const { user, isAuthenticated } = useAuth();
+
+useFirstVisitCelebration({
+  enabled: Boolean(isAuthenticated),          // run after login
+  userId: user?.id || user?.id,              // per-user cooldown
+  cooldownHours: 24,                           // change to 0 for “first login only” if you store a server flag
+  containerRef: overlayRef,                    // render on this overlay
+});
+
   useTranslation();
   const navigate = useNavigate();
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
@@ -363,20 +376,16 @@ useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
     </div>
   );
 
-  return (
-    <div className="min-h-screen">
-      <SEO
-        title="Home"
-        description="Shop mobile accessories—TWS, neckbands, chargers, cables, ICs & more."
-        canonicalPath="/"
-        jsonLd={{
-          '@context': 'https://schema.org',
-          '@type': 'Organization',
-          name: 'Nakoda Mobile',
-          url: 'https://nakodamobile.com',
-          logo: '/favicon-512.png'
-        }}
-      />
+  
+    return (
+  <div className="min-h-screen">
+    <div ref={overlayRef} className="pointer-events-none fixed inset-0 z-[60]" aria-hidden="true" />
+    <SEO
+      title="Home"
+      description="Shop mobile accessories—TWS, neckbands, chargers, cables, ICs & more."
+      canonicalPath="/"
+      jsonLd={{ '@context': 'https://schema.org', '@type': 'Organization', name: 'Nakoda Mobile', url: 'https://nakodamobile.com', logo: '/favicon-512.png' }}
+    />
 
       {/* Hero */}
       <HeroSlider />
