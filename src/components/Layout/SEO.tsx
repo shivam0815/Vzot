@@ -12,7 +12,7 @@ type SEOProps = {
 };
 
 const SITE_NAME = 'Nakoda Mobile';
-const SITE_URL = 'https://nakodamobile.in'; // <-- change to your domain
+const SITE_URL = 'https://nakodamobile.com'; // <-- change to your domain
 const DEFAULT_IMAGE = `${SITE_URL}/og-default.png`; // put a fallback in /public
 
 export default function SEO({

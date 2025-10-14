@@ -1508,7 +1508,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminData, onLogout }) 
 
   // Socket wiring (centralized here)
   useEffect(() => {
-    const socket = io("https://nakodamobile.in", { withCredentials: true });
+    const socket = io("https://nakodamobile.com", { withCredentials: true });
     socket.emit("join", { role: "admin" });
     socket.on("orderCreated", (order) => {
       console.log("📦 New order:", order);
