@@ -1560,6 +1560,8 @@ return (
     background: #ffffff; /* full white page */
     color: #000;
   }
+     @media (min-width:1024px){
+          .admin-main{ margin-left:240px }
   .admin-content {
     flex: 1;
     min-width: 0;
