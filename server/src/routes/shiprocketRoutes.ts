@@ -6,21 +6,19 @@ import { mapOrderToShiprocket, validateShiprocketPayload } from "../constants/sh
 import { authenticate } from "../middleware/auth";
 
 const SHIPROCKET_PICKUP_NICKNAME = (process.env.SHIPROCKET_PICKUP_NICKNAME || "").trim();
-// put this near the other helpers (after pickSRerr)
 
-// return the first non-empty value; if an array is passed, return its first item (if any)
+/* ───────────────── Utils ───────────────── */
 function firstNonEmpty<T = any>(...vals: any[]): T | undefined {
   for (const v of vals) {
     if (Array.isArray(v)) {
       if (v.length) return v[0] as T;
-    } else if (v !== undefined && v !== null && (typeof v !== 'string' || v.trim() !== '')) {
+    } else if (v !== undefined && v !== null && (typeof v !== "string" || v.trim() !== "")) {
       return v as T;
     }
   }
   return undefined;
 }
 
-// Shiprocket responses vary (string vs array; nested under response/data/awb_data[0])
 function extractAwbAndCourier(sr: any): { awb?: string; courier?: string } {
   const awb = firstNonEmpty<string>(
     sr?.awb_code,
@@ -45,7 +43,6 @@ function extractAwbAndCourier(sr: any): { awb?: string; courier?: string } {
   return { awb, courier };
 }
 
-/** ───────────────── Helpers ───────────────── **/
 function isAdmin(req: Request) {
   const role = (req.user as any)?.role;
   return role === "admin" || role === "super_admin";
@@ -58,9 +55,7 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 async function findOrderByIdOrNumber(idOrNumber: string) {
-  if (mongoose.Types.ObjectId.isValid(idOrNumber)) {
-    return Order.findById(idOrNumber);
-  }
+  if (mongoose.Types.ObjectId.isValid(idOrNumber)) return Order.findById(idOrNumber);
   return Order.findOne({ orderNumber: idOrNumber });
 }
 
@@ -87,10 +82,10 @@ const normalizePhone10 = (raw: any) => {
 };
 const isSixDigitPin = (p: any) => /^\d{6}$/.test(String(p || ""));
 
-/** ───────────────── Router ───────────────── **/
+/* ───────────────── Router ───────────────── */
 const r = Router();
 
-/** GET /api/shiprocket/env (debug) */
+/** GET /api/shiprocket/env */
 r.get("/shiprocket/env", (_req, res) => {
   res.json({
     base: (process.env.SHIPROCKET_BASE_URL || "").trim(),
@@ -117,7 +112,7 @@ r.get("/shiprocket/serviceability", async (req, res) => {
       weight,
       cod,
       declared_value: Number(req.query.declared_value ?? 0),
-      mode: (String(req.query.mode || "Surface") as "Air" | "Surface"),
+      mode: String(req.query.mode || "Surface") as "Air" | "Surface",
     });
     res.json({ ok: true, data });
   } catch (e: any) {
@@ -125,7 +120,7 @@ r.get("/shiprocket/serviceability", async (req, res) => {
   }
 });
 
-/** GET /api/shiprocket/payload/:id (debug view of mapped payload) */
+/** GET /api/shiprocket/payload/:id */
 r.get("/shiprocket/payload/:id", async (req, res) => {
   const order = (await findOrderByIdOrNumber(req.params.id)) as IOrder | null;
   if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
@@ -156,73 +151,79 @@ r.post("/orders/:id/shiprocket/create", authenticate, requireAdmin, async (req, 
 
     const payload = mapOrderToShiprocket(order);
     payload.pickup_location = SHIPROCKET_PICKUP_NICKNAME;
-    payload.billing_phone = phone10; // ensure normalized
+    payload.billing_phone = phone10; // normalized
     payload.billing_pincode = onlyDigits(s.pincode);
     payload.sub_total = Number(payload.sub_total ?? 0);
-    (["length","breadth","height","weight"] as const).forEach(k => payload[k] = Number(payload[k] ?? 0));
+    (["length", "breadth", "height", "weight"] as const).forEach(
+      (k) => (payload[k] = Number(payload[k] ?? 0))
+    );
 
+    // -------- address hardening: enforce addr1+addr2 >= 3 chars --------
+    function ensureMinAddress(p: any, a1Keys: string[], a2Keys: string[], fallback: string) {
+      const get = (keys: string[]) =>
+        keys.map((k) => String(p[k] ?? "").trim()).find((v) => v !== "") || "";
+      const set = (keys: string[], val: string) => keys.forEach((k) => { if (k in p) p[k] = val; });
 
-    // ---- sanitize short addresses (Shiprocket requires addr1+addr2 >= 3) ----
-const fixShort = (a1?: string, a2?: string, city?: string) => {
-  const A1 = String(a1 || '').trim();
-  const A2 = String(a2 || '').trim();
-  if ((A1 + A2).length >= 3) return { A1, A2 };
-  // fallback: push something meaningful into line 1
-  const fallback = (A1 || A2 || city || 'Address Missing').toString().trim();
-  return { A1: fallback, A2: A2 };
-};
+      const a1 = get(a1Keys);
+      const a2 = get(a2Keys);
+      const combo = (a1 + a2).trim();
+      if (combo.length >= 3) return;
 
-// payload fields from your mapper
-// Enforce min address for any key variant the mapper might use
-function ensureMinAddress(p: any, a1Keys: string[], a2Keys: string[], fallback: string) {
-  const get = (keys: string[]) => keys.map(k => String(p[k] ?? '').trim()).find(v => v !== '') || '';
-  const set = (keys: string[], val: string) => keys.forEach(k => { if (k in p) p[k] = val; });
+      const fixed = (a1 || a2 || fallback || "Address Missing").trim();
+      set(a1Keys, fixed);
+      if (!a2) set(a2Keys, "");
+    }
 
-  const a1 = get(a1Keys);
-  const a2 = get(a2Keys);
-  const combo = (a1 + a2).trim();
+    const cityShip = String((order.shippingAddress as any)?.city || "");
+    const cityBill = String((order.billingAddress as any)?.city || "");
 
-  if (combo.length >= 3) return;
+    ensureMinAddress(
+      payload,
+      ["shipping_address", "shipping_address_1", "customer_address", "customer_address_1"],
+      ["shipping_address_2", "customer_address_2"],
+      cityShip
+    );
+    ensureMinAddress(
+      payload,
+      ["billing_address", "billing_address_1"],
+      ["billing_address_2"],
+      cityBill
+    );
 
-  const fixed = (a1 || a2 || fallback || 'Address Missing').trim();
-  // write back to all known keys so downstream code can’t undo it
-  set(a1Keys, fixed);
-  if (!a2) set(a2Keys, ''); // keep a2 empty if you want
-}
+    // canonical getters + copy billing->shipping if shipping too short
+    const getFirst = (p: any, keys: string[]) =>
+      keys.map((k) => String(p[k] ?? "").trim()).find((v) => v) || "";
+    const setAll = (p: any, keys: string[], val: string) => { keys.forEach((k) => { p[k] = val; }); };
 
-// after mapping:
-const cityShip = (order.shippingAddress as any)?.city || '';
-const cityBill = (order.billingAddress as any)?.city || '';
+    const S_A1 = ["shipping_address", "shipping_address_1", "customer_address", "customer_address_1"];
+    const S_A2 = ["shipping_address_2", "customer_address_2"];
+    const B_A1 = ["billing_address", "billing_address_1"];
+    const B_A2 = ["billing_address_2"];
 
-// handle common key variants
-ensureMinAddress(
-  payload,
-  ['shipping_address', 'shipping_address_1', 'customer_address', 'customer_address_1'],
-  ['shipping_address_2', 'customer_address_2'],
-  cityShip
-);
-ensureMinAddress(
-  payload,
-  ['billing_address', 'billing_address_1'],
-  ['billing_address_2'],
-  cityBill
-);
+    const s1 = getFirst(payload, S_A1);
+    const s2 = getFirst(payload, S_A2);
+    const b1 = getFirst(payload, B_A1);
+    const b2 = getFirst(payload, B_A2);
 
-// Optional: hard-stop locally instead of hitting SR
-const sa1 = String((payload as any).shipping_address || (payload as any).shipping_address_1 || '');
-const sa2 = String((payload as any).shipping_address_2 || '');
-const ba1 = String((payload as any).billing_address || (payload as any).billing_address_1 || '');
-const ba2 = String((payload as any).billing_address_2 || '');
+    if ((s1 + s2).trim().length < 3 && (b1 + b2).trim().length >= 3) {
+      setAll(payload, S_A1, b1);
+      setAll(payload, S_A2, b2);
+    }
 
-if ((sa1 + sa2).trim().length < 3 || (ba1 + ba2).trim().length < 3) {
-  return res.status(400).json({
-    ok: false,
-    error: 'Validation failed: address1+address2 must be >= 3 chars',
-    debug: { sa1, sa2, ba1, ba2 }
-  });
-}
+    // final guard before hitting Shiprocket
+    const sa1 = getFirst(payload, S_A1);
+    const sa2 = getFirst(payload, S_A2);
+    const ba1 = getFirst(payload, B_A1);
+    const ba2 = getFirst(payload, B_A2);
 
-
+    if ((sa1 + sa2).trim().length < 3 || (ba1 + ba2).trim().length < 3) {
+      return res.status(400).json({
+        ok: false,
+        error: "Validation failed: address1+address2 must be >= 3 chars",
+        debug: { sa1, sa2, ba1, ba2 },
+      });
+    }
+    // -------- end address hardening --------
 
     const errs = validateShiprocketPayload(payload);
     if (errs.length) {
@@ -260,10 +261,8 @@ r.post("/orders/:id/shiprocket/assign-awb", authenticate, requireAdmin, async (r
     try {
       sr = await ShiprocketAPI.assignAwb({ shipment_id: (order as any).shipmentId, courier_id });
     } catch (e: any) {
-      // If Shiprocket demands a courier_id, try to auto-pick a recommended one
       const msg = e?.message || e?.response?.data?.message || "";
       if (!courier_id && /courier/i.test(msg)) {
-        // call serviceability using the order’s pincode + a lightweight weight
         const s = order.shippingAddress as any;
         const data = await ShiprocketAPI.serviceability({
           pickup_postcode: process.env.SHIPROCKET_PICKUP_PINCODE || "",
@@ -288,7 +287,7 @@ r.post("/orders/:id/shiprocket/assign-awb", authenticate, requireAdmin, async (r
             courier_id: Number(firstAvailable),
           });
         } else {
-          throw e; // no fallback possible
+          throw e;
         }
       } else {
         throw e;
@@ -305,12 +304,11 @@ r.post("/orders/:id/shiprocket/assign-awb", authenticate, requireAdmin, async (r
     (order as any).shiprocketStatus = "AWB_ASSIGNED";
     await order.save();
 
-    res.json({ ok: true, awbCode: order.awbCode, courierName: order.courierName || null, shiprocket: sr });
+    res.json({ ok: true, awbCode: (order as any).awbCode, courierName: (order as any).courierName || null, shiprocket: sr });
   } catch (e: any) {
     res.status(400).json({ ok: false, error: pickSRerr(e) });
   }
 });
-
 
 /** POST /api/orders/:id/shiprocket/pickup */
 r.post("/orders/:id/shiprocket/pickup", authenticate, requireAdmin, async (req, res) => {
