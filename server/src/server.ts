@@ -468,6 +468,10 @@ app.use('/api/shipping', shippingRoutes);
 // src/index.ts (or your app bootstrap)
 import uploads from './routes/uploads';
 app.use('/api/uploads', uploads);
+// src/server.ts
+import sitemapRoutes from "./routes/sitemaps";
+app.use("/", sitemapRoutes);
+
 
 // Shiprocket protected (single mount; no unprotected duplicate)
 app.use('/api/shiprocket', authenticate, adminOnly, shiprocketRoutes);
