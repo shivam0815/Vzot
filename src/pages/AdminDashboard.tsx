@@ -1557,8 +1557,18 @@ return (
     />
     <main className="admin-content">{renderActiveComponent()}</main>
     <style>{`
-      .admin-shell{display:flex; min-height:100vh; background:#0b1220}
-      .admin-content{flex:1; min-width:0; padding:16px; background:linear-gradient(180deg,#0b1220 0%, #0e1627 100%)}
+        .admin-shell {
+    display: flex;
+    min-height: 100vh;
+    background: #ffffff; /* full white page */
+    color: #000;
+  }
+  .admin-content {
+    flex: 1;
+    min-width: 0;
+    padding: 24px;
+    background: #ffffff; /* white background for main content */
+  }
     `}</style>
   </div>
 );
