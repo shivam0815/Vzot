@@ -1,4 +1,4 @@
-// src/pages/ProductDetail.tsx — compact B2C detail page (no related rails)
+// src/pages/ProductDetail.tsx — B2C detail page with full SEO
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -57,15 +57,24 @@ const renderSpecValue = (val: unknown) => {
   return <code className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(val, null, 2)}</code>;
 };
 
-/* --------------------- Image helpers --------------------- */
+/* --------------------- Image + URL helpers --------------------- */
 const safeImage = (src?: string | null, w = 400, h = 400) => {
   const resolved = resolveImageUrl(src ?? undefined);
   if (resolved) return resolved;
   return `https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=${w}&h=${h}&fit=crop&crop=center&auto=format&q=60`;
 };
 
+const slugify = (s?: string) =>
+  (s || '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
 
+const productHandle = (p: any) => slugify(p?.slug || p?.name) || (p?._id || p?.id) || '';
 
+const productUrlAbs = (p: any) => `https://nakodamobile.com/product/${productHandle(p)}`;
 
 /* ------------------------------ Component ------------------------------ */
 const ProductDetail: React.FC = () => {
@@ -165,45 +174,41 @@ const ProductDetail: React.FC = () => {
 
   const { addToWishlist: addWish, removeFromWishlist: remWish } = { addToWishlist, removeFromWishlist };
 
-const handleAddToCart = async () => {
-  const isUserLoggedIn = () => {
+  const handleAddToCart = async () => {
+    const isUserLoggedIn = () => {
+      try {
+        const ls = localStorage;
+        const hasToken = ls.getItem('nakoda-token');
+        const hasUser = ls.getItem('nakoda-user');
+        return Boolean(hasToken && hasUser);
+      } catch {
+        return false;
+      }
+    };
+
+    if (!isUserLoggedIn()) {
+      toast.error('Please log in to add items to your cart');
+      navigate('/login', { state: { from: location } });
+      return;
+    }
+
+    if (!product || !maxQty) return;
+
     try {
-      const ls = localStorage;
-      const hasToken = ls.getItem('nakoda-token');
-      const hasUser = ls.getItem('nakoda-user');
-      return Boolean(hasToken && hasUser);
-    } catch {
-      return false;
+      const productId: string = (product as any)._id || (product as any).id;
+      if (!productId) {
+        toast.error('Product ID not found');
+        return;
+      }
+      const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
+      await addToCart(productId, finalQty);
+      toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart!`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add to cart');
     }
   };
 
-  // 🚫 Block unauthenticated users
-  if (!isUserLoggedIn()) {
-    toast.error('Please log in to add items to your cart');
-    navigate('/login', { state: { from: location } });
-    return;
-  }
-
-  if (!product || !maxQty) return;
-
-  try {
-    const productId: string = (product as any)._id || (product as any).id;
-    if (!productId) {
-      toast.error('Product ID not found');
-      return;
-    }
-    const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
-    await addToCart(productId, finalQty);
-    toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart!`);
-  } catch (err: any) {
-    toast.error(err.message || 'Failed to add to cart');
-  }
-};
-
-
   const handleBuyNow = async () => {
-
-
     if (!product || !maxQty) return;
     try {
       const productId: string = (product as any)._id || (product as any).id;
@@ -315,9 +320,77 @@ const handleAddToCart = async () => {
   const currentImage: string | undefined = validImages[selectedImage] || validImages[0];
   const hasMultipleImages = validImages.length > 1;
 
+  /* --------- SEO: canonical, title/desc, Product + Breadcrumb JSON-LD --------- */
+  const canonicalPath = `/product/${productHandle(product)}`;
+  const avgRating =
+    Number((product as any)?.rating) ||
+    Number((product as any)?.averageRating) ||
+    undefined;
+  const reviewCount =
+    Number((product as any)?.reviewsCount) ||
+    Number((product as any)?.reviewCount) ||
+    undefined;
+
+  const seoTitle =
+    `${product.name} Price in India | Buy Online`;
+  const seoDesc =
+    (product.description || '')
+      .replace(/\s+/g, ' ')
+      .slice(0, 155) || `${product.name} available at Nakoda Mobile. Fast delivery. GST invoice.`;
+
+  const productJsonLd: any = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    image: (validImages || []).map((i: string) => safeImage(i)).slice(0, 8),
+    description: product.description || undefined,
+    sku: productId || undefined,
+    mpn: (product as any)?.mpn || undefined,
+    brand: (product as any)?.brand ? { '@type': 'Brand', name: (product as any).brand } : undefined,
+    category: product.category || undefined,
+    url: productUrlAbs(product),
+    offers: {
+      '@type': 'Offer',
+      availability: (product as any).inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+      priceCurrency: 'INR',
+      price: product.price ?? undefined,
+      url: productUrlAbs(product),
+      // optional: add itemCondition or seller if you have
+      // itemCondition: 'https://schema.org/NewCondition',
+      // seller: { '@type': 'Organization', name: 'Nakoda Mobile' },
+    },
+  };
+  if (avgRating && reviewCount) {
+    productJsonLd.aggregateRating = {
+      '@type': 'AggregateRating',
+      ratingValue: String(avgRating),
+      reviewCount: String(reviewCount),
+    };
+  }
+
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://nakodamobile.com/' },
+      { '@type': 'ListItem', position: 2, name: 'Products', item: 'https://nakodamobile.com/products' },
+      { '@type': 'ListItem', position: 3, name: product.name, item: `https://nakodamobile.com${canonicalPath}` },
+    ],
+  };
+
   /* -------------------------------- Render -------------------------------- */
   return (
     <div className="min-h-screen bg-gray-50 pb-24 sm:pb-10">
+      {/* SEO head */}
+      <SEO
+        title={seoTitle}
+        description={seoDesc}
+        canonicalPath={canonicalPath}
+        robots="index,follow"
+        image={validImages[0] ? safeImage(validImages[0], 1200, 630) : undefined}
+        jsonLd={[productJsonLd, breadcrumbJsonLd]}
+      />
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         {/* Breadcrumb */}
         <Breadcrumbs
@@ -374,7 +447,7 @@ const handleAddToCart = async () => {
             {/* Product Info */}
             <div className="space-y-4 sm:space-y-6">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
+                <h1 className="text-2xl sm:3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
                   <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{product.category}</span>
                   {(product as any).brand && (
@@ -395,8 +468,6 @@ const handleAddToCart = async () => {
                   </>
                 )}
               </div>
-
-              
 
               {/* Quantity */}
               {(product as any).inStock && (
@@ -642,29 +713,6 @@ const handleAddToCart = async () => {
         </div>
 
         {/* No related rails rendered */}
-        {/* Structured data */}
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org/',
-              '@type': 'Product',
-              name: product.name,
-              image: (normalizedImages || []).map((i: string) => safeImage(i)).slice(0, 6),
-              description: product.description,
-              sku: productId,
-              brand: (product as any).brand ? { '@type': 'Brand', name: (product as any).brand } : undefined,
-              category: product.category,
-              offers: {
-                '@type': 'Offer',
-                availability: (product as any).inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-                priceCurrency: 'INR',
-                price: product.price ?? undefined,
-                url: typeof window !== 'undefined' ? window.location.href : undefined,
-              },
-            }),
-          }}
-        />
       </div>
 
       {/* Sticky mobile checkout bar */}
@@ -678,7 +726,8 @@ const handleAddToCart = async () => {
             onClick={handleAddToCart}
             disabled={!(product as any).inStock || isLoading}
             className={`h-10 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 ${
-              (product as any).inStock && !isLoading ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
+              (product as any).inStock && !isLoading ? 'bg-blue-600 text-white'
+ : 'bg-gray-300 text-gray-500'
             }`}
           >
             <ShoppingCart className="h-4 w-4" /> Add
