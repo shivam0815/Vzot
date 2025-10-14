@@ -82,14 +82,14 @@ const SlideBar = memo<SidebarProps>(({ activeTab, setActiveTab, adminData, onLog
       <style>{`
         .sidebar{
           position: sticky; top: 0; height: 100vh;
-          background: #0f172a; color: #e2e8f0; flex: 0 0 auto;
+          background: #f9f9faff; color: #e2e8f0; flex: 0 0 auto;
           transition: width .2s ease; border-right: 1px solid rgba(148,163,184,.15);
           display: flex; flex-direction: column; gap: 8px;
         }
         .sb-top{display:flex; align-items:center; gap:10px; padding:12px}
         .sb-toggle{
           width:40px; height:40px; border-radius:10px; border:1px solid rgba(148,163,184,.2);
-          background: #111827; color:#e5e7eb; cursor:pointer;
+          background: #dadadaff; color:#e5e7eb; cursor:pointer;
         }
         .sb-brand{display:flex; align-items:center; gap:10px}
         .sb-logo{width:36px; height:36px; display:grid; place-items:center; background:#111827; border-radius:10px}
