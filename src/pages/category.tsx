@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, createSearchParams } from 'react-router-dom';
 import CategoriesCinematic, { CategoryItem } from '../components/Layout/CategoriesCinematic';
-import CategoriesCarousel from '../components/Layout/CategoriesCarousel'; // ← adjust if your file lives elsewhere
+import CategoriesCarousel from '../components/Layout/CategoriesCarousel';
 import { productService } from '../services/productService';
 import type { Product } from '../types';
 import { motion } from 'framer-motion';
@@ -36,7 +36,7 @@ function buildCategoryItems(categoryNames: string[], products: Product[]): Categ
 
     const counts = new Map<string, number>();
     inCat.forEach((p) => {
-      const key = p.brand || 'Others';
+      const key = (p as any).brand || 'Others';
       counts.set(key, (counts.get(key) || 0) + 1);
     });
 
@@ -50,7 +50,7 @@ function buildCategoryItems(categoryNames: string[], products: Product[]): Categ
         slug: slugify(brand),
       }));
 
-    const previewImage = inCat.find((p) => Array.isArray(p.images) && p.images[0])?.images?.[0];
+    const previewImage = (inCat.find((p) => Array.isArray((p as any).images) && (p as any).images[0]) as any)?.images?.[0];
 
     return {
       id: slugify(name),
@@ -78,7 +78,7 @@ const CategoriesPage: React.FC = () => {
         setErr('');
         const prodsResp = await productService.getProducts({ limit: 1000 });
         if (!alive) return;
-        const built = buildCategoryItems([], prodsResp.products || []);
+        const built = buildCategoryItems([], (prodsResp as any).products || (prodsResp as any).data || []);
         setItems(built);
       } catch (e: any) {
         if (!alive) return;
@@ -88,10 +88,11 @@ const CategoriesPage: React.FC = () => {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  // ✅ Navigate with SLUGS in URL
   const onSelectCategory = (cat: CategoryItem) => {
     navigate({
       pathname: '/products',
@@ -102,25 +103,20 @@ const CategoriesPage: React.FC = () => {
   const onSelectSubcategory = (cat: CategoryItem, sub: { name: string }) => {
     navigate({
       pathname: '/products',
-      search: `?${createSearchParams({
-        category: slugify(cat.name),
-        brand: slugify(sub.name),
-      })}`,
+      search: `?${createSearchParams({ category: slugify(cat.name), brand: slugify(sub.name) })}`,
     });
   };
 
   const countAll = useMemo(
     () =>
       items.reduce(
-        (acc, c) =>
-          acc +
-          (c.subcategories?.reduce((s, sc) => s + (sc.productCount || 0), 0) || 0),
+        (acc, c) => acc + (c.subcategories?.reduce((s, sc) => s + (sc.productCount || 0), 0) || 0),
         0
       ),
     [items]
   );
 
-  // Loading state
+  // Loading
   if (loading) {
     return (
       <div className="min-h-screen bg-white text-gray-800 flex items-center justify-center">
@@ -128,6 +124,7 @@ const CategoriesPage: React.FC = () => {
           title="Browse Categories"
           description="Explore categories like TWS, neckbands, chargers, cables, ICs, and more."
           canonicalPath="/categories"
+          robots="index,follow"
           jsonLd={{
             '@context': 'https://schema.org',
             '@type': 'CollectionPage',
@@ -143,10 +140,11 @@ const CategoriesPage: React.FC = () => {
     );
   }
 
-  // Error state
+  // Error
   if (err) {
     return (
       <div className="min-h-screen bg-white text-gray-800 flex items-center justify-center">
+        <SEO title="Browse Categories" description="Explore categories" canonicalPath="/categories" robots="noindex,follow" />
         <div className="text-center">
           <div className="text-red-600 font-medium mb-3">⚠️ {err}</div>
           <button
@@ -160,9 +158,52 @@ const CategoriesPage: React.FC = () => {
     );
   }
 
-  // ✅ Render BOTH: carousel + cinematic list
+  // SEO blocks for normal view
+  const canonicalPath = '/categories';
+  const robots = 'index,follow';
+
+  const categoryListJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListOrder: 'http://schema.org/ItemListOrderAscending',
+    numberOfItems: items.length,
+    url: `https://nakodamobile.com${canonicalPath}`,
+    itemListElement: items.map((c, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: `https://nakodamobile.com/products?category=${encodeURIComponent(slugify(c.name))}`,
+      name: c.name,
+      image: c.image || undefined,
+    })),
+  };
+
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://nakodamobile.com/' },
+      { '@type': 'ListItem', position: 2, name: 'Categories', item: `https://nakodamobile.com${canonicalPath}` },
+    ],
+  };
+
+  const collectionJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'Categories',
+    url: `https://nakodamobile.com${canonicalPath}`,
+  };
+
+  // View
   return (
     <div className="min-h-screen bg-white">
+      <SEO
+        title="Browse Categories"
+        description="Explore categories like TWS, neckbands, chargers, cables, ICs, and more."
+        canonicalPath={canonicalPath}
+        robots={robots}
+        jsonLd={[breadcrumbJsonLd, collectionJsonLd, categoryListJsonLd]}
+      />
+
       <CategoriesCarousel
         items={items}
         onSelectCategory={onSelectCategory}
