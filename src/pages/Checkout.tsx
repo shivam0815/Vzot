@@ -167,163 +167,124 @@ const CheckoutPage: React.FC = () => {
 const minCombo = 3; // must match server rule
 
 
-  const validate = (): boolean => {
-    const e: Record<string, string> = {};
-    const regPhone = /^\d{10}$/;
-    const regPin = /^\d{6}$/;
-    const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    
+  const withFallback = (ship: Address, bill: Address) => {
+  const s = addrComboLen(ship) < minCombo && addrComboLen(bill) >= minCombo ? { ...bill } : ship;
+  const b = addrComboLen(bill) < minCombo ? { ...s } : bill;
+  return { s, b };
+};
 
-    if (!shipping.fullName.trim()) e.fullName = 'Full name is required';
-    if (!regPhone.test(shipping.phoneNumber.replace(/\D/g, '')))
-      e.phoneNumber = 'Please enter a valid 10-digit phone number';
-    if (!regEmail.test(shipping.email)) e.email = 'Please enter a valid email address';
-      if (addrComboLen(shipping) < minCombo)
-   e.addressLine1 = `Address must be at least ${minCombo} characters (line1 + line2)`;
-    if (!shipping.city.trim()) e.city = 'City is required';
-    if (!shipping.state.trim()) e.state = 'State is required';
-    if (!regPin.test(shipping.pincode)) e.pincode = 'Please enter a valid 6-digit pincode';
+const validateFor = (s: Address, b: Address, same: boolean): boolean => {
+  const e: Record<string, string> = {};
+  const regPhone = /^\d{10}$/;
+  const regPin = /^\d{6}$/;
+  const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!sameAsShipping) {
-      if (!billing.fullName.trim()) e.billing_fullName = 'Billing name required';
-      if (!regPhone.test(billing.phoneNumber.replace(/\D/g, '')))
-        e.billing_phoneNumber = 'Valid 10-digit phone required';
-      if (!regEmail.test(billing.email)) e.billing_email = 'Valid email required';
-      if (!billing.addressLine1.trim()) e.billing_addressLine1 = 'Billing address required';
-      if (!billing.city.trim()) e.billing_city = 'Billing city required';
-      if (!billing.state.trim()) e.billing_state = 'Billing state required';
-      if (!regPin.test(billing.pincode)) e.billing_pincode = 'Valid 6-digit pincode required';
-    }
+  if (!s.fullName.trim()) e.fullName = 'Full name is required';
+  if (!regPhone.test(s.phoneNumber.replace(/\D/g, ''))) e.phoneNumber = 'Please enter a valid 10-digit phone number';
+  if (!regEmail.test(s.email)) e.email = 'Please enter a valid email address';
+  if (addrComboLen(s) < minCombo) e.addressLine1 = `Address must be at least ${minCombo} characters (line1 + line2)`;
+  if (!s.city.trim()) e.city = 'City is required';
+  if (!s.state.trim()) e.state = 'State is required';
+  if (!regPin.test(s.pincode)) e.pincode = 'Please enter a valid 6-digit pincode';
 
-    if (wantGSTInvoice) {
-      const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
-      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim()))
-        e.gst_gstin = 'Please enter a valid 15-character GSTIN';
-      if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name is required';
-      if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply (state) is required';
-      if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email)) e.gst_email = 'Enter a valid email';
-    }
+  if (!same) {
+    if (!b.fullName.trim()) e.billing_fullName = 'Billing name required';
+    if (!regPhone.test(b.phoneNumber.replace(/\D/g, ''))) e.billing_phoneNumber = 'Valid 10-digit phone required';
+    if (!regEmail.test(b.email)) e.billing_email = 'Valid email required';
+    if (addrComboLen(b) < minCombo)
+      e.billing_addressLine1 = `Billing address must be at least ${minCombo} characters (line1 + line2)`;
+    if (!b.city.trim()) e.billing_city = 'Billing city required';
+    if (!b.state.trim()) e.billing_state = 'Billing state required';
+    if (!regPin.test(b.pincode)) e.billing_pincode = 'Valid 6-digit pincode required';
+  }
 
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
+  if (wantGSTInvoice) {
+    const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
+    if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) e.gst_gstin = 'Please enter a valid 15-character GSTIN';
+    if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name is required';
+    if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply (state) is required';
+    if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email)) e.gst_email = 'Enter a valid email';
+  }
+
+  setErrors(e);
+  return Object.keys(e).length === 0;
+};
 
   const onSubmit = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    if (addrComboLen(shipping) < minCombo && addrComboLen(billing) >= minCombo) {
-  setShipping({ ...billing });
-}
+  ev.preventDefault();
 
-    if (!validate()) {
-      toast.error('Please correct the errors below');
-      return;
-    }
+  const { s: ship2, b: bill2 } = withFallback(shipping, billing);
 
-    try {
-      localStorage.setItem('checkout:shipping', JSON.stringify(shipping));
+  if (!validateFor(ship2, bill2, sameAsShipping)) {
+    toast.error('Please correct the errors below');
+    return;
+  }
 
-      const orderData = {
-        items: cartItems.map((item: any) => ({
-          productId: item.productId || item.id,
-          name: item.name,
-          image: item.image || item.img,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-        // @ts-ignore
-        shippingAddress: shipping,
-        // @ts-ignore
-        billingAddress: sameAsShipping ? shipping : billing,
-        extras: {
-          orderNotes: orderNotes.trim() || undefined,
-          wantGSTInvoice,
-          gst: wantGSTInvoice
-            ? {
-                gstin: gst.gstin.trim(),
-                legalName: gst.legalName.trim(),
-                placeOfSupply: gst.placeOfSupply,
-                email: gst.email?.trim() || undefined,
-                requestedAt: new Date().toISOString(),
-              }
-            : undefined,
-          giftWrap,
-        },
-        pricing: {
-          rawSubtotal,
-          discount: monetaryDiscount,
-          discountLabel: discountLabel || undefined,
-          coupon: appliedCoupon?.code || undefined,
-          couponFreeShipping: appliedCoupon?.freeShipping || false,
-          effectiveSubtotal,
-          tax,
-          shippingFee,
-          shippingAddedPostPack, // false
-          codCharges,
-          giftWrapFee,
+  try {
+    localStorage.setItem('checkout:shipping', JSON.stringify(ship2));
 
-          convenienceFee,
-          convenienceFeeGst,
-          convenienceFeeRate: ONLINE_FEE_RATE,
-          convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
+    const orderData = {
+      items: cartItems.map((item: any) => ({
+        productId: item.productId || item.id,
+        name: item.name,
+        image: item.image || item.img,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+      shippingAddress: ship2,
+      billingAddress: sameAsShipping ? ship2 : bill2,
+      extras: {
+        orderNotes: orderNotes.trim() || undefined,
+        wantGSTInvoice,
+        gst: wantGSTInvoice
+          ? {
+              gstin: gst.gstin.trim(),
+              legalName: gst.legalName.trim(),
+              placeOfSupply: gst.placeOfSupply,
+              email: gst.email?.trim() || undefined,
+              requestedAt: new Date().toISOString(),
+            }
+          : undefined,
+        giftWrap,
+      },
+      pricing: { /* unchanged */ 
+        rawSubtotal, discount: monetaryDiscount, discountLabel: discountLabel || undefined,
+        coupon: appliedCoupon?.code || undefined, couponFreeShipping: appliedCoupon?.freeShipping || false,
+        effectiveSubtotal, tax, shippingFee, shippingAddedPostPack, codCharges, giftWrapFee,
+        convenienceFee, convenienceFeeGst, convenienceFeeRate: ONLINE_FEE_RATE, convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
+        gstSummary: { requested: wantGSTInvoice, rate: 0.18, taxableValue: effectiveSubtotal, gstAmount: tax },
+        total,
+      },
+    };
 
-          gstSummary: {
-            requested: wantGSTInvoice,
-            rate: 0.18,
-            taxableValue: effectiveSubtotal,
-            gstAmount: tax,
-          },
+    const userDetails = { name: ship2.fullName, email: ship2.email, phone: ship2.phoneNumber };
+    const result = (await processPayment(total, method, orderData, userDetails)) as PaymentResult;
 
-          total,
-        },
-      };
+    if (!result?.success || result.redirected) return;
 
-      const userDetails = {
-        name: shipping.fullName,
-        email: shipping.email,
-        phone: shipping.phoneNumber,
-      };
+    clearCart();
+    const ord = result.order || {};
+    const orderId = ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
 
-      const result = (await processPayment(total, method, orderData, userDetails)) as PaymentResult;
+    const successState = { orderId, order: ord, paymentMethod: result.method, paymentId: result.paymentId ?? null };
+    const snapshot = {
+      orderNumber: ord.orderNumber ?? orderId ?? undefined,
+      _id: ord._id ?? orderId ?? undefined,
+      total: ord.total ?? ord.amount ?? total,
+      createdAt: ord.createdAt ?? new Date().toISOString(),
+      items: Array.isArray(ord.items) && ord.items.length ? ord.items : orderData.items,
+      shippingAddress: ord.shippingAddress ?? ship2,
+    };
 
-      if (!result?.success) return;
-      if (result.redirected) return;
+    localStorage.setItem('lastOrderSuccess', JSON.stringify({ ...successState, snapshot }));
+    const qs = orderId ? `?id=${encodeURIComponent(orderId)}` : '';
+    navigate(`/order-success${qs}`, { state: successState, replace: true });
+  } catch (error: any) {
+    console.error('Checkout error:', error);
+    toast.error(error?.message || 'Checkout failed. Please try again.');
+  }
+};
 
-      clearCart();
-
-      const ord = result.order || {};
-      const orderId = ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
-
-      const successState = {
-        orderId,
-        order: ord,
-        paymentMethod: result.method,
-        paymentId: result.paymentId ?? null,
-      };
-
-      const snapshot = {
-        orderNumber: ord.orderNumber ?? orderId ?? undefined,
-        _id: ord._id ?? orderId ?? undefined,
-        total: ord.total ?? ord.amount ?? total,
-        createdAt: ord.createdAt ?? new Date().toISOString(),
-        items: Array.isArray(ord.items) && ord.items.length ? ord.items : orderData.items,
-        shippingAddress: ord.shippingAddress ?? shipping,
-      };
-
-      localStorage.setItem(
-        'lastOrderSuccess',
-        JSON.stringify({
-          ...successState,
-          snapshot,
-        })
-      );
-
-      const qs = orderId ? `?id=${encodeURIComponent(orderId)}` : '';
-      navigate(`/order-success${qs}`, { state: successState, replace: true });
-    } catch (error: any) {
-      console.error('Checkout error:', error);
-      toast.error(error?.message || 'Checkout failed. Please try again.');
-    }
-  };
 
   if (cartLoading) {
     return (
