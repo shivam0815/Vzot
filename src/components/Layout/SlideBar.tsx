@@ -80,41 +80,42 @@ const SlideBar = memo<SidebarProps>(({ activeTab, setActiveTab, adminData, onLog
       </div>
 
       <style>{`
-        .sidebar{
-          position: sticky; top: 0; height: 100vh;
-          background: #f9f9faff; color: #e2e8f0; flex: 0 0 auto;
-          transition: width .2s ease; border-right: 1px solid rgba(148,163,184,.15);
-          display: flex; flex-direction: column; gap: 8px;
-        }
-        .sb-top{display:flex; align-items:center; gap:10px; padding:12px}
-        .sb-toggle{
-          width:40px; height:40px; border-radius:10px; border:1px solid rgba(148,163,184,.2);
-          background: #dadadaff; color:#e5e7eb; cursor:pointer;
-        }
-        .sb-brand{display:flex; align-items:center; gap:10px}
-        .sb-logo{width:36px; height:36px; display:grid; place-items:center; background:#111827; border-radius:10px}
-        .sb-meta .sb-title{font-weight:700; line-height:1}
-        .sb-meta .sb-sub{font-size:12px; color:#94a3b8}
+  .sidebar{
+    position: sticky; top: 0; height: 100vh;
+    background: #ffffff; color: #000000; flex: 0 0 auto;
+    transition: width .2s ease; border-right: 1px solid rgba(0,0,0,0.1);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .sb-top{display:flex; align-items:center; gap:10px; padding:12px}
+  .sb-toggle{
+    width:40px; height:40px; border-radius:10px; border:1px solid rgba(0,0,0,0.2);
+    background: #ffffff; color:#000000; cursor:pointer;
+  }
+  .sb-brand{display:flex; align-items:center; gap:10px}
+  .sb-logo{width:36px; height:36px; display:grid; place-items:center; background:#f1f1f1; border-radius:10px}
+  .sb-meta .sb-title{font-weight:700; line-height:1; color:#111}
+  .sb-meta .sb-sub{font-size:12px; color:#555}
 
-        .sb-nav{display:flex; flex-direction:column; gap:6px; padding:8px}
-        .sb-item{
-          display:flex; align-items:center; gap:12px;
-          padding:10px 12px; border-radius:10px; border:1px solid transparent;
-          color:#cbd5e1; background: transparent; text-align:left; cursor:pointer;
-        }
-        .sb-item:hover{ background:#111827; border-color: rgba(255, 255, 255, 1); color:#fff }
-        .sb-item.active{ background: linear-gradient(135deg,#637bff 0%, #fefeffff 100%); color:#fff; border-color: transparent }
-        .sb-icon{width:22px; text-align:center}
-        .sb-text{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .sb-nav{display:flex; flex-direction:column; gap:6px; padding:8px}
+  .sb-item{
+    display:flex; align-items:center; gap:12px;
+    padding:10px 12px; border-radius:10px; border:1px solid transparent;
+    color:#111; background: transparent; text-align:left; cursor:pointer;
+  }
+  .sb-item:hover{ background:#f3f3f3; border-color:#ccc; color:#000 }
+  .sb-item.active{ background: linear-gradient(135deg,#637bff 0%, #6a45a7 100%); color:#fff; border-color: transparent }
+  .sb-icon{width:22px; text-align:center}
+  .sb-text{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 
-        .sb-bottom{margin-top:auto; padding:8px}
-        .sb-logout{
-          width:100%; display:flex; align-items:center; gap:12px; padding:10px 12px;
-          border-radius:10px; border:1px solid rgba(243, 238, 238, 0.25); color:#fecaca;
-          background:#1f2937; cursor:pointer;
-        }
-        .sb-logout:hover{ background:#b91c1c; color:#fff; border-color:transparent }
-      `}</style>
+  .sb-bottom{margin-top:auto; padding:8px}
+  .sb-logout{
+    width:100%; display:flex; align-items:center; gap:12px; padding:10px 12px;
+    border-radius:10px; border:1px solid #ccc; color:#000;
+    background:#fff; cursor:pointer;
+  }
+  .sb-logout:hover{ background:#b91c1c; color:#fff; border-color:transparent }
+`}</style>
+
     </aside>
   );
 });
