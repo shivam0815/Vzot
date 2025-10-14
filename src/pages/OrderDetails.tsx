@@ -460,69 +460,47 @@ const invoiceUrl = `/api/orders/${order._id}/invoice.pdf`;
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-  <a
-    href={`${invoiceUrl}?disposition=inline`}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50"
-    title="View invoice"
-  >
-    <PrinterIcon className="w-4 h-4" />
-    <span className="text-sm font-medium">View invoice</span>
-  </a>
+              <button onClick={onPrint} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
+                <PrinterIcon className="w-4 h-4" />
+                <span className="text-sm font-medium">Print</span>
+              </button>
 
-  <a
-    href={invoiceUrl}
-    download
-    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-black"
-    title="Download invoice"
-  >
-    <PrinterIcon className="w-4 h-4" />
-    <span className="text-sm font-medium">Download</span>
-  </a>
+              <button
+                onClick={() => navigate('/profile?tab=support')}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-black"
+              >
+                <ChatBubbleLeftIcon className="w-4 h-4" />
+                <span className="text-sm font-medium">Support</span>
+              </button>
 
-  <button onClick={onPrint} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
-    <PrinterIcon className="w-4 h-4" />
-    <span className="text-sm font-medium">Print</span>
-  </button>
+              <button
+                onClick={handleTrack}
+                disabled={busy || !canTrack}
+                className={clsx(
+                  'inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm',
+                  canTrack ? 'border-gray-200 hover:bg-gray-50' : 'border-gray-200 opacity-50 cursor-not-allowed'
+                )}
+                title={canTrack ? 'Track order' : 'Tracking not available yet'}
+              >
+                <TruckIcon className="w-4 h-4" />
+                Track
+              </button>
 
-  <button
-    onClick={() => navigate('/profile?tab=support')}
-    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-black"
-  >
-    <ChatBubbleLeftIcon className="w-4 h-4" />
-    <span className="text-sm font-medium">Support</span>
-  </button>
-
-  <button
-    onClick={handleTrack}
-    disabled={busy || !canTrack}
-    className={clsx(
-      'inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm',
-      canTrack ? 'border-gray-200 hover:bg-gray-50' : 'border-gray-200 opacity-50 cursor-not-allowed'
-    )}
-    title={canTrack ? 'Track order' : 'Tracking not available yet'}
-  >
-    <TruckIcon className="w-4 h-4" />
-    Track
-  </button>
-
-  <button
-    onClick={handleCancel}
-    disabled={busy || !canCancel}
-    className={clsx(
-      'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
-      canCancel
-        ? 'bg-rose-600 text-white hover:bg-rose-700'
-        : 'bg-rose-600 text-white opacity-50 cursor-not-allowed'
-    )}
-    title={canCancel ? 'Cancel this order' : 'Order can no longer be cancelled'}
-  >
-    <XCircleIcon className="w-4 h-4" />
-    Cancel
-  </button>
-</div>
-
+              <button
+                onClick={handleCancel}
+                disabled={busy || !canCancel}
+                className={clsx(
+                  'inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm',
+                  canCancel
+                    ? 'bg-rose-600 text-white hover:bg-rose-700'
+                    : 'bg-rose-600 text-white opacity-50 cursor-not-allowed'
+                )}
+                title={canCancel ? 'Cancel this order' : 'Order can no longer be cancelled'}
+              >
+                <XCircleIcon className="w-4 h-4" />
+                Cancel
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
