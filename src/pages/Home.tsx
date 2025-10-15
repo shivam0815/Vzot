@@ -115,6 +115,8 @@ const categories = [
   { id: 'Car Chargers', name: 'Car Charger', icon: '🚗', gradient: 'from-gray-600 to-gray-800', description: 'On-the-go charging solutions', color: 'bg-gray-600' },
   { id: 'ICs', name: 'Mobile IC', icon: '🔧', gradient: 'from-red-500 to-rose-500', description: 'Integrated circuits & semiconductors', color: 'bg-red-500' },
   { id: 'Mobile Repairing Tools', name: 'Mobile Repairing Tools', icon: '🛠️', gradient: 'from-indigo-500 to-blue-500', description: 'Professional repair toolkit', color: 'bg-indigo-500' },
+  { id: 'Power Banks', name: 'Power Banks', icon: '📱', gradient: 'from-black-400 to-black-600', description: 'Explore more Power banks', color: 'bg-black-400' },
+
 ];
 
 
