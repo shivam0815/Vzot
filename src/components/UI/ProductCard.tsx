@@ -281,7 +281,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             {product.name}
           </h3>
 
-          {(sku || color) && (
+          {/* {(sku || color) && (
             <div className="flex items-center gap-2 mb-2 text-xs text-gray-600">
               {sku && (
                 <span className="inline-flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded">
@@ -295,7 +295,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 </span>
               )}
             </div>
-          )}
+          )} */}
 
           {/* Rating */}
           <div className="flex items-center mb-2" aria-label={`Rating ${roundedAvg} out of 5`}>
