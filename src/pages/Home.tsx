@@ -574,44 +574,7 @@ const toImg = (u: string): string => {
         </div>
       </section>
 
-      {/* MOBILE IC SECTION - NEW */}
-      <section className="py-14 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-red-50 border border-red-200 flex items-center justify-center">
-                <Cpu className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Mobile IC</h2>
-                <p className="text-gray-500">Integrated circuits & semiconductors</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link to="/products?category=ICs" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">View all →</Link>
-
-              <button onClick={mobileICRef.scrollLeft} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Prev">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <button onClick={mobileICRef.scrollRight} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Next">
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {loadingMobileIC && mobileIC.length === 0 ? (
-            <SkeletonScrollGrid count={8} />
-          ) : mobileIC.length === 0 ? (
-            <div className="text-sm text-gray-600">Mobile IC products will appear here soon.</div>
-          ) : (
-            <div ref={mobileICRef.ref} className="flex gap-4 overflow-x-auto scroll-smooth no-scrollbar py-1">
-              {mobileIC.slice(0, 12).map((p) => (
-                <Card key={p._id} p={p} compact />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
+     
 
       {/* NEW ARRIVALS */}
       <section className="py-14 bg-white">
