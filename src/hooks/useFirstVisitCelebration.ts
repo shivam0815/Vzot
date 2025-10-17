@@ -7,7 +7,7 @@ type Opts = {
   containerRef?: MutableRefObject<HTMLElement | null>;
 };
 
-const keyFor = (uid?: string) => `celebrated_v1_${uid ?? 'anon'}`;
+const keyFor = (uid?: string) => `celebrated_v2_firecracker_${uid ?? 'anon'}`;
 
 export function useFirstVisitCelebration({
   enabled,
@@ -40,40 +40,98 @@ export function useFirstVisitCelebration({
 
       const fire = confetti.create(canvas, { resize: true, useWorker: true });
 
-      const burst = (x: number, y: number, scalar = 1) =>
-        fire({
-          particleCount: Math.floor(180 * scalar),
-          spread: 70,
-          startVelocity: 55,
-          decay: 0.9,
-          gravity: 1.1,
-          ticks: 200,
-          origin: { x, y },
-          scalar,
-        });
+      const timeouts: number[] = [];
+      const intervals: number[] = [];
 
-      const comet = (fromLeft = true) =>
-        fire({
-          particleCount: 120,
-          spread: 60,
-          startVelocity: 70,
-          gravity: 0.9,
-          drift: fromLeft ? 0.6 : -0.6,
-          origin: { x: fromLeft ? 0 : 1, y: 0.2 },
-          ticks: 180,
-        });
+      // --- Firecracker effect ---
+      // 1) Launch "rocket" trail from bottom to a random top point
+      // 2) Explode with multi-burst star
+      const launchFirecracker = (fromLeft: boolean, delay = 0) => {
+        const tid = window.setTimeout(() => {
+          const xStart = fromLeft ? 0.05 : 0.95;
+          const xTarget = fromLeft ? Math.random() * 0.4 + 0.25 : Math.random() * 0.4 + 0.35;
+          const yStart = 0.95;
+          const yTarget = Math.random() * 0.35 + 0.1; // explode near top
+          const steps = 18;
+          let step = 0;
 
-      // sequence
-      burst(0.25, 0.6, 0.9);
-      burst(0.75, 0.6, 0.9);
-      setTimeout(() => comet(true), 350);
-      setTimeout(() => comet(false), 650);
-      setTimeout(() => burst(0.5, 0.4, 1.2), 900);
+          const trailId = window.setInterval(() => {
+            step++;
+            const t = step / steps;
+            const x = xStart + (xTarget - xStart) * t;
+            const y = yStart + (yTarget - yStart) * t;
+
+            // trail sparks (thin, fast, upward)
+            fire({
+              particleCount: 12,
+              startVelocity: 55,
+              spread: 15,
+              gravity: 1.2,
+              ticks: 60,
+              origin: { x, y },
+              scalar: 0.6,
+              drift: fromLeft ? 0.2 : -0.2,
+            });
+
+            if (step >= steps) {
+              clearInterval(trailId);
+              // Explosion core
+              fire({
+                particleCount: 140,
+                startVelocity: 60,
+                spread: 360,
+                gravity: 0.9,
+                ticks: 180,
+                origin: { x: xTarget, y: yTarget },
+                scalar: 1.1,
+              });
+              // Ring and crackle (staggered mini-bursts)
+              window.setTimeout(() => {
+                fire({
+                  particleCount: 80,
+                  startVelocity: 40,
+                  spread: 55,
+                  gravity: 1.0,
+                  ticks: 140,
+                  origin: { x: xTarget, y: yTarget + 0.02 },
+                  scalar: 0.9,
+                });
+              }, 120);
+              window.setTimeout(() => {
+                fire({
+                  particleCount: 60,
+                  startVelocity: 45,
+                  spread: 75,
+                  gravity: 1.05,
+                  ticks: 150,
+                  origin: { x: xTarget, y: yTarget - 0.015 },
+                  scalar: 0.8,
+                });
+              }, 220);
+            }
+          }, 28);
+
+          intervals.push(trailId);
+        }, delay);
+        timeouts.push(tid);
+      };
+
+      // Show: stagger 5–6 firecrackers from both sides
+      launchFirecracker(true, 0);
+      launchFirecracker(false, 220);
+      launchFirecracker(true, 440);
+      launchFirecracker(false, 660);
+      launchFirecracker(Math.random() > 0.5, 880);
+      launchFirecracker(Math.random() > 0.5, 1100);
 
       localStorage.setItem(k, String(now));
 
       cleanup = () => {
-        try { fire.reset(); } catch {}
+        try {
+          fire.reset();
+        } catch {}
+        timeouts.forEach((id) => clearTimeout(id));
+        intervals.forEach((id) => clearInterval(id));
         canvas.remove();
       };
     })();
