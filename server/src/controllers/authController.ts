@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import User from '../models/User';
 import { emailService } from '../services/emailService';
 import { RequestHandler } from 'express';
+import { toIST } from '../config/time';
 
 // Interfaces
 interface AuthenticatedUser {
@@ -213,17 +214,20 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     console.log('✅ Login successful for:', email);
 
     res.json({
-      success: true,
-      message: 'Login successful',
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isVerified: user.isVerified
-      }
-    });
+  success: true,
+  message: 'Login successful',
+  token,
+  user: {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isVerified: user.isVerified,
+    createdAtIST: toIST(user.createdAt),
+    updatedAtIST: toIST(user.updatedAt),
+    ...(user.lastLogin ? { lastLoginIST: toIST(user.lastLogin) } : {}),
+  }
+});
 
   } catch (error: any) {
     console.error('Login error:', error);
@@ -550,20 +554,23 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    res.json({
-      success: true,
-      user: {
-        id: userDetails.id,
-        name: userDetails.name,
-        email: userDetails.email,
-        phone: userDetails.phone,
-        role: userDetails.role,
-        isVerified: userDetails.isVerified,
-        isActive: userDetails.isActive,
-        createdAt: userDetails.createdAt,
-        updatedAt: userDetails.updatedAt
-      }
-    });
+    // ...
+const u = userDetails;
+res.json({
+  success: true,
+  user: {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    phone: u.phone,
+    role: u.role,
+    isVerified: u.isVerified,
+    isActive: u.isActive,
+    createdAtIST: toIST(u.createdAt),
+    updatedAtIST: toIST(u.updatedAt),
+    ...(u.lastLogin ? { lastLoginIST: toIST(u.lastLogin) } : {}),
+  }
+});
 
   } catch (error: any) {
     console.error('Get profile error:', error);
