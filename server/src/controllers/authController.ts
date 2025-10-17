@@ -6,8 +6,6 @@ import crypto from 'crypto';
 import User from '../models/User';
 import { emailService } from '../services/emailService';
 import { RequestHandler } from 'express';
-import { toIST } from '../config/time';
-
 
 // Interfaces
 interface AuthenticatedUser {
@@ -214,24 +212,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const token = generateToken(user.id.toString(), user.role);
     console.log('✅ Login successful for:', email);
 
-res.json({
-  success: true,
-  message: 'Login successful',
-  token,
-  user: {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    isVerified: user.isVerified,
-    lastLoginIST: toIST(user.lastLogin),
-    createdAtIST: toIST(user.createdAt),
-    updatedAtIST: toIST(user.updatedAt)
-  }
-});
-
-
-
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified
+      }
+    });
 
   } catch (error: any) {
     console.error('Login error:', error);
@@ -557,24 +549,21 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
       });
       return;
     }
-res.json({
-  success: true,
-  user: {
-    id: userDetails.id,
-    name: userDetails.name,
-    email: userDetails.email,
-    phone: userDetails.phone,
-    role: userDetails.role,
-    isVerified: userDetails.isVerified,
-    isActive: userDetails.isActive,
-    createdAtIST: toIST(userDetails.createdAt),
-    updatedAtIST: toIST(userDetails.updatedAt),
-   lastLoginIST: userDetails.lastLogin ? toIST(userDetails.lastLogin) : null
 
-  }
-});
-
-
+    res.json({
+      success: true,
+      user: {
+        id: userDetails.id,
+        name: userDetails.name,
+        email: userDetails.email,
+        phone: userDetails.phone,
+        role: userDetails.role,
+        isVerified: userDetails.isVerified,
+        isActive: userDetails.isActive,
+        createdAt: userDetails.createdAt,
+        updatedAt: userDetails.updatedAt
+      }
+    });
 
   } catch (error: any) {
     console.error('Get profile error:', error);
