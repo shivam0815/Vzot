@@ -16,7 +16,7 @@ export function useFirstVisitCelebration({
   userId,
   cooldownHours = 24,
   containerRef,
-  message = '🎉 Welcome to Nakoda Mobile!',
+  message = '🎉 Welcome to Nakoda Mobile! ',
 }: Opts) {
   useEffect(() => {
     if (!enabled) return;
@@ -53,7 +53,7 @@ export function useFirstVisitCelebration({
       const playPop = () => {
         try {
           // Put a small file at: /public/sfx/firecracker.mp3
-          new Audio('/sfx/firecracker.mp3').play().catch(() => {});
+          new Audio('/firecracker.mp3').play().catch(() => {});
         } catch {}
       };
 
