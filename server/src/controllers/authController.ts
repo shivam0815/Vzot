@@ -214,7 +214,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const token = generateToken(user.id.toString(), user.role);
     console.log('✅ Login successful for:', email);
 
-   res.json({
+res.json({
   success: true,
   message: 'Login successful',
   token,
@@ -229,6 +229,8 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     updatedAtIST: toIST(user.updatedAt)
   }
 });
+
+
 
 
   } catch (error: any) {
@@ -567,9 +569,11 @@ res.json({
     isActive: userDetails.isActive,
     createdAtIST: toIST(userDetails.createdAt),
     updatedAtIST: toIST(userDetails.updatedAt),
- 
+   lastLoginIST: userDetails.lastLogin ? toIST(userDetails.lastLogin) : null
+
   }
 });
+
 
 
   } catch (error: any) {
