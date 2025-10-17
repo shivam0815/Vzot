@@ -3,12 +3,10 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Eye, EyeOff, Mail, Lock, User, Phone as PhoneIcon, Smartphone,
-  CheckCircle, AlertCircle, Chrome, X
+  Eye, EyeOff, Mail, Lock, User, Phone as PhoneIcon, Chrome, AlertCircle, CheckCircle, X
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
-import { sendPhoneOtp, verifyPhoneOtp } from '../config/api'; // NEW: OTP API
 
 interface RegisterFormData {
   name: string;
@@ -45,7 +43,7 @@ const Register: React.FC = () => {
   const { signup } = useAuth();
   const navigate = useNavigate();
 
-  // -------- Password strength (unchanged) ----------
+  // -------- Password strength ----------
   const checkPasswordStrength = (password: string): PasswordStrength => {
     let score = 0;
     const feedback: string[] = [];
@@ -72,28 +70,15 @@ const Register: React.FC = () => {
   };
   const passwordStrength = checkPasswordStrength(formData.password);
 
-  // -------- OTP state (NEW) ----------
-  const [otpOpen, setOtpOpen] = useState(false);
-  const [otpPhone, setOtpPhone] = useState('');      // local input for OTP flow
-  const [otpSentTo, setOtpSentTo] = useState('');    // frozen once sent
-  const [otp, setOtp] = useState('');
-  const [otpSending, setOtpSending] = useState(false);
-  const [otpVerifying, setOtpVerifying] = useState(false);
-  const [otpTimer, setOtpTimer] = useState<number>(0);
-
-  // simple E.164-ish validator defaulting to India (+91)
-  const normalizedPhone = useMemo(() => {
-    let p = (otpPhone || '').replace(/\s+/g, '');
-    if (!p) return '';
-    if (!p.startsWith('+')) p = '+91' + p;
-    return p;
-  }, [otpPhone]);
-
-  const isValidPhone = useMemo(() => /^\+\d{9,15}$/.test(normalizedPhone), [normalizedPhone]);
-
   // -------- Handlers ----------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const cleanedPhone = (formData.phone || '').replace(/\D/g, '');
+    if (cleanedPhone.length < 7 || cleanedPhone.length > 15) {
+      toast.error('Enter a valid phone number');
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match');
@@ -116,12 +101,11 @@ const Register: React.FC = () => {
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        phone: formData.phone
+        phone: cleanedPhone
       });
       toast.success('Account created! Please check your email to verify your account.');
       navigate('/verify-email-sent', { state: { email: formData.email } });
     } catch (error: any) {
-      console.error('Registration error:', error);
       if (error.response?.status === 400 && error.response?.data?.message?.includes('already exists')) {
         setEmailExists(true);
         toast.error('An account with this email already exists');
@@ -134,7 +118,6 @@ const Register: React.FC = () => {
   };
 
   const handleSocialLogin = (provider: string) => {
-    // We keep Google redirect; for Phone we open OTP modal instead (see below)
     setSocialLoading(provider);
     const apiBase = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
     const backendOrigin = apiBase.replace(/\/?api\/?$/, '');
@@ -147,60 +130,8 @@ const Register: React.FC = () => {
     if (name === 'email' && emailExists) setEmailExists(false);
   };
 
-  // -------- OTP actions (NEW) ----------
-  const openOtpModal = () => {
-    setOtpOpen(true);
-    setOtpPhone(formData.phone || ''); // prefill from form if present
-    setOtp('');
-    setOtpSentTo('');
-    setOtpTimer(0);
-  };
-
-  const sendOtp = async () => {
-    if (!isValidPhone) {
-      toast.error('Enter a valid phone (e.g., 9876543210 or +919876543210)');
-      return;
-    }
-    try {
-      setOtpSending(true);
-      const res = await sendPhoneOtp(normalizedPhone);
-      // 2Factor often returns TTL; we just set a 30s resend timer UX
-      setOtpSentTo(normalizedPhone);
-      setOtpTimer(30);
-      toast.success('OTP sent');
-      // countdown
-      const tick = () => setOtpTimer(prev => (prev > 0 ? prev - 1 : 0));
-      const id = setInterval(tick, 1000);
-      setTimeout(() => clearInterval(id), 31_000);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Failed to send OTP');
-    } finally {
-      setOtpSending(false);
-    }
-  };
-
-  const verifyOtp = async () => {
-    if (!otp || otp.length < 4) {
-      toast.error('Enter the OTP');
-      return;
-    }
-    try {
-      setOtpVerifying(true);
-      const res = await verifyPhoneOtp(otpSentTo || normalizedPhone, otp);
-      toast.success('Phone verified!');
-      // Put verified phone back into the main form
-      setFormData(prev => ({ ...prev, phone: (otpSentTo || normalizedPhone).replace(/^\+91/, '') }));
-      setOtpOpen(false);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Invalid OTP');
-    } finally {
-      setOtpVerifying(false);
-    }
-  };
-
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* FULL-PAGE IMAGE BACKGROUND */}
       <img
         src="/home.webp"
         alt="E-commerce hero"
@@ -208,7 +139,6 @@ const Register: React.FC = () => {
       />
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-transparent via-white/10 to-white/80" />
 
-      {/* Brand bar */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
         <div className="rounded-t-2xl bg-white/95 backdrop-blur-sm shadow-sm ring-1 ring-black/5 py-3">
           <div className="flex items-center justify-center gap-3">
@@ -218,7 +148,6 @@ const Register: React.FC = () => {
         </div>
       </div>
 
-      {/* Content */}
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex min-h-[calc(100vh-130px)] items-center lg:justify-end justify-center">
           <motion.div
@@ -227,7 +156,6 @@ const Register: React.FC = () => {
             transition={{ duration: 0.5 }}
             className="w-full max-w-md rounded-[28px] bg-white/95 backdrop-blur-sm shadow-[0_20px_60px_rgba(2,6,23,0.18)] ring-1 ring-black/5 p-6 md:p-8"
           >
-            {/* Header */}
             <div className="text-center mb-2">
               <div className="mx-auto h-14 w-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-4">
                 <User className="h-7 w-7 text-white" />
@@ -236,8 +164,8 @@ const Register: React.FC = () => {
               <p className="text-sm text-gray-600 mt-1">Join thousands of satisfied customers</p>
             </div>
 
-            {/* Social first */}
-            <div className="mt-6 space-y-3">
+            {/* Google only. Phone OTP removed */}
+            <div className="mt-6">
               <button
                 type="button"
                 onClick={() => handleSocialLogin('google')}
@@ -250,19 +178,8 @@ const Register: React.FC = () => {
                 }
                 <span className="text-gray-800 font-medium">Sign up with Google</span>
               </button>
-
-              {/* Phone OTP trigger NOW opens modal (NEW) */}
-              <button
-                type="button"
-                onClick={openOtpModal}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <Smartphone className="h-5 w-5 text-gray-700" />
-                <span className="text-gray-800 font-medium">Continue with Phone (OTP)</span>
-              </button>
             </div>
 
-            {/* Divider */}
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-gray-200" />
@@ -272,9 +189,7 @@ const Register: React.FC = () => {
               </div>
             </div>
 
-            {/* Registration Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Name */}
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-gray-800 mb-1.5">Full Name *</label>
                 <div className="relative">
@@ -289,7 +204,6 @@ const Register: React.FC = () => {
                 </div>
               </div>
 
-              {/* Email */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-800 mb-1.5">Email Address *</label>
                 <div className="relative">
@@ -318,25 +232,28 @@ const Register: React.FC = () => {
                 )}
               </div>
 
-              {/* Phone (optional but now fillable via OTP modal) */}
+              {/* Phone is now required */}
               <div>
                 <label htmlFor="phone" className="block text-sm font-medium text-gray-800 mb-1.5">
-                  Phone Number (Optional)
+                  Phone Number *
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <PhoneIcon className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="phone" name="phone" type="tel" autoComplete="tel"
+                    id="phone" name="phone" type="tel" autoComplete="tel" required
                     value={formData.phone} onChange={handleChange}
-                    placeholder="Verified via OTP is preferred"
+                    placeholder="Enter your phone number"
+                    inputMode="numeric"
+                    maxLength={15}
+                    pattern="^[0-9]{7,15}$"
+                    title="Enter 7 to 15 digits"
                     className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                   />
                 </div>
               </div>
 
-              {/* Password */}
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-800 mb-1.5">Password *</label>
                 <div className="relative">
@@ -354,7 +271,6 @@ const Register: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Password strength */}
                 {formData.password && (
                   <div className="mt-2">
                     <div className="flex items-center justify-between mb-1">
@@ -385,7 +301,6 @@ const Register: React.FC = () => {
                 )}
               </div>
 
-              {/* Confirm Password */}
               <div>
                 <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-800 mb-1.5">Confirm Password *</label>
                 <div className="relative">
@@ -418,7 +333,6 @@ const Register: React.FC = () => {
                 )}
               </div>
 
-              {/* Terms */}
               <div className="flex items-start">
                 <input
                   id="agreeToTerms" name="agreeToTerms" type="checkbox"
@@ -433,7 +347,6 @@ const Register: React.FC = () => {
                 </label>
               </div>
 
-              {/* Submit */}
               <motion.button
                 whileHover={{ scale: 1.005 }} whileTap={{ scale: 0.99 }}
                 type="submit"
@@ -444,7 +357,6 @@ const Register: React.FC = () => {
               </motion.button>
             </form>
 
-            {/* Sign in link */}
             <div className="mt-5 text-center text-sm text-gray-700">
               Already have an account?{' '}
               <Link to="/login" className="font-medium text-emerald-600 hover:text-emerald-500">Sign in</Link>
@@ -452,76 +364,6 @@ const Register: React.FC = () => {
           </motion.div>
         </div>
       </div>
-
-      {/* -------- OTP MODAL (NEW) -------- */}
-      {otpOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4" onClick={() => setOtpOpen(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl ring-1 ring-black/10" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-gray-900">Verify your phone</h3>
-              <button onClick={() => setOtpOpen(false)} className="p-1 rounded hover:bg-gray-100"><X className="h-5 w-5 text-gray-600" /></button>
-            </div>
-
-            {!otpSentTo ? (
-              <>
-                <label className="block text-sm font-medium text-gray-800 mb-1.5">Phone Number</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <PhoneIcon className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    value={otpPhone}
-                    onChange={(e) => setOtpPhone(e.target.value)}
-                    placeholder="e.g. 9876543210 or +919876543210"
-                    className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  />
-                </div>
-                <button
-                  onClick={sendOtp}
-                  disabled={otpSending || !isValidPhone}
-                  className="mt-4 w-full rounded-xl bg-emerald-600 text-white py-3 font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {otpSending ? 'Sending…' : 'Send OTP'}
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-gray-600 mb-2">We sent an OTP to <span className="font-medium">{otpSentTo}</span></p>
-                <input
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="Enter 6-digit OTP"
-                  className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                />
-                <div className="mt-3 flex items-center justify-between">
-                  <button
-                    onClick={() => { setOtpSentTo(''); setOtp(''); setOtpTimer(0); }}
-                    className="text-sm text-gray-600 hover:text-gray-800"
-                  >
-                    Change number
-                  </button>
-                  <button
-                    onClick={sendOtp}
-                    disabled={otpTimer > 0 || otpSending}
-                    className="text-sm text-emerald-600 disabled:text-gray-400"
-                  >
-                    {otpTimer > 0 ? `Resend in ${otpTimer}s` : 'Resend OTP'}
-                  </button>
-                </div>
-                <button
-                  onClick={verifyOtp}
-                  disabled={otpVerifying || !otp}
-                  className="mt-4 w-full rounded-xl bg-emerald-600 text-white py-3 font-semibold hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {otpVerifying ? 'Verifying…' : 'Verify & Use this number'}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
