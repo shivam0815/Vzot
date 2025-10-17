@@ -7,7 +7,7 @@ export const CATEGORY_NAMES = [
   'Integrated Circuits & Chips',
   'Mobile Repairing Tools',
   'Electronics',
-  'Accessories',
+  'Mobile Accessories',
   'Car Chargers',
   'Bluetooth Speakers',
   'Power Banks',

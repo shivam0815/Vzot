@@ -68,11 +68,11 @@ const Footer: React.FC = () => {
             <h3 className="text-lg font-semibold mb-4">Categories</h3>
             <ul className="space-y-2">
               <li><Link to="/products?category=tws" className="text-gray-300 hover:text-white transition-colors">TWS Earbuds</Link></li>
-              <li><Link to="/products?category=neckbands" className="text-gray-300 hover:text-white transition-colors">Bluetooth Neckbands</Link></li>
-              <li><Link to="/products?category=cables" className="text-gray-300 hover:text-white transition-colors">Data Cables</Link></li>
-              <li><Link to="/products?category=chargers" className="text-gray-300 hover:text-white transition-colors">Mobile Chargers</Link></li>
+              <li><Link to="/products?category=Bluetooth Neckbands" className="text-gray-300 hover:text-white transition-colors">Bluetooth Neckbands</Link></li>
+              <li><Link to="/products?category=Data Cable" className="text-gray-300 hover:text-white transition-colors">Data Cables</Link></li>
+              <li><Link to="/products?category=Mobile Chargers" className="text-gray-300 hover:text-white transition-colors">Mobile Chargers</Link></li>
               <li><Link to="/products?category=ics" className="text-gray-300 hover:text-white transition-colors">Mobile ICs</Link></li>
-              <li><Link to="/products?category=tools" className="text-gray-300 hover:text-white transition-colors">Repair Tools</Link></li>
+              <li><Link to="/products?category=Mobile Repairing Tools" className="text-gray-300 hover:text-white transition-colors">Repair Tools</Link></li>
             </ul>
           </div>
 
