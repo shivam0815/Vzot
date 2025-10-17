@@ -111,21 +111,23 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     // Generate token for response
     const token = generateToken(user.id.toString(), user.role);
+res.status(201).json({
+  success: true,
+  message: 'Registration successful. Please check your email for verification code.',
+  token,
+  user: {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    isVerified: user.isVerified,
+    createdAtIST: toIST(user.createdAt),
+    updatedAtIST: toIST(user.updatedAt)
+  },
+  requiresEmailVerification: true
+});
 
-    res.status(201).json({
-      success: true,
-      message: 'Registration successful. Please check your email for verification code.',
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        isVerified: user.isVerified
-      },
-      requiresEmailVerification: true
-    });
 
   } catch (error: any) {
     console.error('💥 Registration error:', error);
