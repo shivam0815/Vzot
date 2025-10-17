@@ -222,6 +222,7 @@ export interface IReturn extends Document {
   imageUrl?: string;
   createdAt: Date;
   updatedAt: Date;
+  gateway?: 'razorpay' | 'stripe'; 
 }
 
 export interface IReviewModel extends Document {

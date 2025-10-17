@@ -67,7 +67,7 @@ export function useFirstVisitCelebration({
       msg.style.fontSize = '2rem';
       msg.style.fontWeight = '700';
       msg.style.color = '#fff';
-      msg.style.textShadow = '0 2px 12px rgba(0,0,0,0.6)';
+      msg.style.textShadow = '0 2px 12px rgba(0,0,0,0.6)';                                                                          
       msg.style.zIndex = '10000';
       msg.style.opacity = '0';
       msg.style.animation = 'celeFade 3.6s ease 0.3s forwards';

@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import Order from '../models/Order';
 import ReturnRequest from '../models/ReturnRequest';
 import { v2 as cloudinary } from 'cloudinary';
+import razorpay from '../config/razorpay';
 
 const RETURN_WINDOW_DAYS = Number(process.env.RETURN_WINDOW_DAYS || 7);
 
@@ -292,7 +293,7 @@ export const adminMarkReceived = async (req: any, res: Response) => {
 export const adminRefund = async (req: any, res: Response) => {
   try {
     const { id } = req.params;
-    const { method, reference } = req.body as { method: 'original' | 'wallet' | 'manual'; reference?: string };
+    const { method, reference } = req.body as { method: 'original'|'wallet'|'manual'; reference?: string };
 
     const r = await ReturnRequest.findById(id);
     if (!r) return res.status(404).json({ success: false, message: 'Not found' });
@@ -302,16 +303,37 @@ export const adminRefund = async (req: any, res: Response) => {
     const order = await Order.findById(r.order).lean();
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    // Neutral refund info (Razorpay removed)
-    const refundInfo: any = { method, reference, note: 'Refund recorded by admin' };
+    const refundAmountPaise = Math.round(Number(r.refundAmount) * 100);
+    if (refundAmountPaise <= 0) return res.status(400).json({ success: false, message: 'Invalid refund amount' });
 
-    // If you later integrate PhonePe refunds or a wallet system, implement here.
-    // For now, we simply mark refund completed with the provided reference.
+    if (method === 'original' && order. paymentMethod === 'razorpay' && order.paymentId) {
+      // 1) mark initiated
+      r.status = 'refund_initiated';
+      r.history.push({ at: new Date(), by: req.user._id, action: 'refund_initiated' });
+      await r.save();
+      req.io?.emit?.('returnUpdated', { _id: r._id, status: r.status });
+
+      // 2) call Razorpay Refunds API
+      const refund = await razorpay.payments.refund(order.paymentId, {
+        amount: refundAmountPaise, // paise
+        speed: 'optimum',          // or 'normal','instant' if eligible
+        notes: { returnId: String(r._id) },
+        receipt: `ret_${r._id}_${Date.now()}`, // idempotency helper
+      });
+
+      // 3) persist refund token; final status via webhook
+r.refund = { method: 'original', reference: refund.id, at: new Date() }; // no gateway
+// optional: r.set('refund.gateway', 'razorpay', { strict: false });
+      await r.save();
+
+      return res.json({ success: true, returnRequest: r, refund });
+    }
+
+    // Wallet/manual fallback (no gateway call)
     r.status = 'refund_completed';
-    r.refund = { ...refundInfo, at: new Date() };
+    r.refund = { method, reference, at: new Date() };
     r.history.push({ at: new Date(), by: req.user._id, action: 'refund_completed', note: reference });
     await r.save();
-
     req.io?.emit?.('returnUpdated', { _id: r._id, status: r.status });
     return res.json({ success: true, returnRequest: r });
   } catch (e: any) {
