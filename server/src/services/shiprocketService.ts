@@ -5,7 +5,7 @@ const SR_BASE = process.env.SHIPROCKET_BASE_URL || "https://apiv2.shiprocket.in/
 const SR_TOKEN = process.env.SHIPROCKET_TOKEN;            // use your saved token
 const SR_CHANNEL_ID = process.env.SHIPROCKET_CHANNEL_ID;  // “Custom (5903066)” etc.
 
-if (!SR_TOKEN) throw new Error("SHIPROCKET_TOKEN not set");
+
 
 const client = axios.create({
   baseURL: SR_BASE,
