@@ -121,12 +121,32 @@ r.get("/shiprocket/serviceability", async (req, res) => {
 });
 
 /** GET /api/shiprocket/payload/:id */
+/** GET /api/shiprocket/payload/:id */
 r.get("/shiprocket/payload/:id", async (req, res) => {
-  const order = (await findOrderByIdOrNumber(req.params.id)) as IOrder | null;
-  if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
+  const idOrNumber = req.params.id;
+
+  // pick by ObjectId or orderNumber, then populate needed product fields
+  const query = mongoose.Types.ObjectId.isValid(idOrNumber)
+    ? Order.findById(idOrNumber)
+    : Order.findOne({ orderNumber: idOrNumber });
+
+  const order = await query
+    .populate("items.productId", "sku hsn taxPercent")
+    .lean<IOrder>();
+
+  if (!order) {
+    return res.status(404).json({ ok: false, error: "Order not found" });
+  }
+
+  // default shipping if missing
+  if (!order.shipping || order.shipping === 0) {
+    order.shipping = 150;
+  }
+
   const payload = mapOrderToShiprocket(order);
   res.json({ ok: true, payload });
 });
+
 
 /** POST /api/orders/:id/shiprocket/create */
 r.post("/orders/:id/shiprocket/create", authenticate, requireAdmin, async (req, res) => {
