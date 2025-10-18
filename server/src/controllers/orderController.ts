@@ -161,20 +161,28 @@ const total = subtotal + shipping + tax;
 
     const savedOrder = await order.save();
     // Push to Shiprocket so GST, shipping, COD show correctly
+// Push to Shiprocket so GST, shipping, COD show correctly
 try {
   const srPayload = buildSrPayload(savedOrder);
   const srRes = await createShiprocketOrder(srPayload);
 
   await Order.findByIdAndUpdate(savedOrder._id, {
     $set: {
-      shiprocketOrderId: srRes?.order_id,
-      shiprocketChannelId: srRes?.channel_id,
-      shiprocketResponse: srRes || null,
+      // built-in fields
+      shipmentId: srRes?.shipment_id ?? undefined,
+      shiprocketStatus: "ORDER_CREATED",
+
+      // your custom audit fields
+      shiprocketOrderId: srRes?.order_id ?? srRes?.orderId ?? undefined,
+      shiprocketChannelId: srRes?.channel_id ?? process.env.SHIPROCKET_CHANNEL_ID ?? undefined,
+      shiprocketResponse: srRes ?? null,
     },
   });
 } catch (e: any) {
   console.error("Shiprocket order create failed:", e?.response?.data || e?.message);
+  // continue without blocking order creation
 }
+
 
 
     // Real-time stock deduction
