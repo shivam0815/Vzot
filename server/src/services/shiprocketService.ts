@@ -133,9 +133,26 @@ export function buildSrPayload(order: any) {
 }
 
 /* -------- Public API -------- */
+// in shiprocketService.ts
 export async function createShiprocketOrder(payload: any) {
-  // Endpoint: /orders/create/adhoc
-  return srPost("/orders/create/adhoc", payload);
+  // sanity: show the numbers Shiprocket will see
+  const totals = {
+    sub_total: payload.sub_total,
+    tax: payload.tax,
+    shipping_charges: payload.shipping_charges,
+    cod_charges: payload.cod_charges,
+    total: payload.total,
+    items_tax_fields: payload.order_items.map((x: any) => ({ sku: x.sku, tax: x.tax })),
+  };
+  console.log("[SR] create payload:", JSON.stringify(payload, null, 2));
+  console.log("[SR] totals:", totals);
+
+  const token = await getShiprocketToken();
+  const { data } = await axios.post(`${SR_BASE}/orders/create/adhoc`, payload, {
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+  });
+  console.log("[SR] create response:", JSON.stringify(data, null, 2));
+  return data;
 }
 
 /* Optional helpers (uncomment if needed)
