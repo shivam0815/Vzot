@@ -120,32 +120,78 @@ r.get("/shiprocket/serviceability", async (req, res) => {
   }
 });
 
-/** GET /api/shiprocket/payload/:id */
+
 /** GET /api/shiprocket/payload/:id */
 r.get("/shiprocket/payload/:id", async (req, res) => {
-  const idOrNumber = req.params.id;
+  try {
+    const id = req.params.id;
+    const order = await Order.findById(id)
+      .populate({ path: "items.productId", select: "sku hsn taxPercent" })
+      .lean();
 
-  // pick by ObjectId or orderNumber, then populate needed product fields
-  const query = mongoose.Types.ObjectId.isValid(idOrNumber)
-    ? Order.findById(idOrNumber)
-    : Order.findOne({ orderNumber: idOrNumber });
+    if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
 
-  const order = await query
-    .populate("items.productId", "sku hsn taxPercent")
-    .lean<IOrder>();
+    const items = Array.isArray(order.items) ? order.items : [];
+    const firstProd: any = items[0]?.productId || {};
+    const gstPercent = Number(firstProd.taxPercent ?? 18);
 
-  if (!order) {
-    return res.status(404).json({ ok: false, error: "Order not found" });
+    const shippingFee = 150;
+    const isCOD = order.paymentMethod === "cod";
+    const codCharge = isCOD ? 25 : 0;
+
+    const base = Number(order.subtotal || 100);
+    const taxAmount = +(base * (gstPercent / 100)).toFixed(2);
+    const total = +(base + taxAmount + shippingFee + codCharge).toFixed(2);
+
+    const payload = {
+      order_id: order.orderNumber,
+      order_date: new Date(order.createdAt).toISOString().slice(0, 16).replace("T", " "),
+      pickup_location: "Sales Office",
+      billing_customer_name: order.shippingAddress?.fullName?.split(" ")[0] || "Customer",
+      billing_last_name: order.shippingAddress?.fullName?.split(" ").slice(1).join(" ") || "",
+      billing_address: order.shippingAddress?.addressLine1 || "",
+      billing_city: order.shippingAddress?.city || "",
+      billing_pincode: order.shippingAddress?.pincode || "",
+      billing_state: order.shippingAddress?.state || "",
+      billing_country: "India",
+      billing_email: order.shippingAddress?.email || "",
+      billing_phone: order.shippingAddress?.phoneNumber || "",
+      shipping_is_billing: true,
+      order_items: items.map((it: any) => {
+        const prod: any = it.productId || {};
+        return {
+          name: it.name || "Item",
+          sku: prod.sku || "",
+          units: it.quantity || 1,
+          selling_price: base,
+          discount: 0,
+          hsn: prod.hsn || "851762",
+          tax: gstPercent
+        };
+      }),
+      payment_method: isCOD ? "COD" : "Prepaid",
+      sub_total: base,
+      tax: taxAmount,
+      shipping_charges: shippingFee,
+      discount: 0,
+      cod_charges: codCharge,
+      total,
+      collectable_amount: total,
+      declared_value: +(base + taxAmount).toFixed(2),
+      length: 12,
+      breadth: 10,
+      height: 4,
+      weight: 0.25
+    };
+
+    return res.json({ ok: true, payload });
+  } catch (e) {
+    console.error("Shiprocket payload error:", e);
+    return res.status(500).json({ ok: false, error: "Internal server error" });
   }
-
-  // default shipping if missing
-  if (!order.shipping || order.shipping === 0) {
-    order.shipping = 150;
-  }
-
-  const payload = mapOrderToShiprocket(order);
-  res.json({ ok: true, payload });
 });
+
+
 
 
 /** POST /api/orders/:id/shiprocket/create */

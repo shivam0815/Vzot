@@ -28,13 +28,21 @@ export function mapOrderToShiprocket(order: IOrder) {
 
   // ----- items with HSN + per-unit GST -----
   const order_items = items.map((it: any) => {
-    const prod = it?.productId || {};
-    const hsn = String(it?.hsn || prod?.hsn || "851762");              // fallback HSN
-    const gstPct = Number(it?.taxPercent ?? prod?.taxPercent ?? 18);   // fallback 18%
+  // inside order_items map
+const prod: any =
+  (it as any)?.productId && typeof (it as any).productId === "object"
+    ? (it as any).productId
+    : {};
+
+const hsn = String(it?.hsn ?? prod?.hsn ?? "851762");
+const gstPct = Number(it?.taxPercent ?? prod?.taxPercent ?? 18);
+  // fallback 18%
 
     const units = Math.max(1, num(it?.quantity));
     const selling_price = Math.max(1, num(it?.price));                 // unit price excluding GST
     const tax = +(selling_price * (gstPct / 100)).toFixed(2);          // GST per unit
+const isCOD = String(order.paymentMethod).toLowerCase() === "cod";
+const cod_charges = +(isCOD ? 25 : 0).toFixed(2);
 
     const skuRaw = String(it?.sku ?? prod?.sku ?? it?.name ?? it?.productId ?? "").trim();
 
