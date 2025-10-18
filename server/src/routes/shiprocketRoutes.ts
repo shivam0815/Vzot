@@ -126,150 +126,87 @@ r.get("/shiprocket/serviceability", async (req, res) => {
 
 /** GET /api/shiprocket/payload/:id */
 r.get("/shiprocket/payload/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const q = mongoose.Types.ObjectId.isValid(id)
-      ? Order.findById(id)
-      : Order.findOne({ orderNumber: id });
+  const id = req.params.id;
 
-    // populate the fields the mapper expects
-    const order = await q
-      .populate("items.productId", "sku hsn taxPercent")
-      .lean();
+  // populate to access product.sku/hsn/taxPercent
+  const order = await Order.findById(id)
+    .populate("items.productId", "sku hsn taxPercent")
+    .lean();
 
-    if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
+  if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
 
-    // optional: force a shipping fee when 0/undefined
-    if (!order.shipping || Number(order.shipping) === 0) {
-      order.shipping = 150;
-    }
+  // default shipping if missing
+  if (!order.shipping || order.shipping === 0) (order as any).shipping = 150;
 
-    const payload = mapOrderToShiprocket(order as any);
-    return res.json({ ok: true, payload });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "Internal server error" });
-  }
+  const payload = mapOrderToShiprocket(order as any);
+  return res.json({ ok: true, payload });
 });
-
-
-
 
 
 /** POST /api/orders/:id/shiprocket/create */
 r.post("/orders/:id/shiprocket/create", authenticate, requireAdmin, async (req, res) => {
   try {
-    const order = (await findOrderByIdOrNumber(req.params.id)) as IOrder | null;
-    if (!order) return res.status(404).json({ ok: false, error: "Order not found" });
-    if (order.orderStatus === "cancelled") {
+    const id = req.params.id;
+
+    // populate to access product.sku/hsn/taxPercent
+    const orderDoc = await Order.findById(id).populate("items.productId", "sku hsn taxPercent");
+    if (!orderDoc) return res.status(404).json({ ok: false, error: "Order not found" });
+    if (orderDoc.orderStatus === "cancelled")
       return res.status(400).json({ ok: false, error: "Order is cancelled" });
-    }
-    if (!SHIPROCKET_PICKUP_NICKNAME) {
+    if (!SHIPROCKET_PICKUP_NICKNAME)
       return res.status(500).json({ ok: false, error: "Pickup nickname not configured. Set SHIPROCKET_PICKUP_NICKNAME in .env" });
-    }
 
-    const s = order.shippingAddress as any;
+    // phone + pincode checks
+    const s: any = orderDoc.shippingAddress || {};
     const phone10 = normalizePhone10(s?.phoneNumber);
-    if (!/^\d{10}$/.test(phone10)) {
+    if (!/^\d{10}$/.test(phone10))
       return res.status(400).json({ ok: false, error: "Invalid shipping phone (10 digits, no +91)" });
-    }
-    if (!isSixDigitPin(s?.pincode)) {
+    if (!isSixDigitPin(s?.pincode))
       return res.status(400).json({ ok: false, error: "Invalid shipping pincode (must be 6 digits)" });
-    }
 
-    const payload = mapOrderToShiprocket(order);
+    // ensure shipping default before mapping
+    const lean = orderDoc.toObject() as any;
+    if (!lean.shipping || lean.shipping === 0) lean.shipping = 150;
+
+    const payload = mapOrderToShiprocket(lean);
     payload.pickup_location = SHIPROCKET_PICKUP_NICKNAME;
-    payload.billing_phone = phone10; // normalized
+    payload.billing_phone = phone10;
     payload.billing_pincode = onlyDigits(s.pincode);
-    payload.sub_total = Number(payload.sub_total ?? 0);
-    (["length", "breadth", "height", "weight"] as const).forEach(
-      (k) => (payload[k] = Number(payload[k] ?? 0))
-    );
 
-    // -------- address hardening: enforce addr1+addr2 >= 3 chars --------
-    function ensureMinAddress(p: any, a1Keys: string[], a2Keys: string[], fallback: string) {
-      const get = (keys: string[]) =>
-        keys.map((k) => String(p[k] ?? "").trim()).find((v) => v !== "") || "";
-      const set = (keys: string[], val: string) => keys.forEach((k) => { if (k in p) p[k] = val; });
+    // minimal address hardening
+    const addrOK = (a: string = "", b: string = "") => (a + b).trim().length >= 3;
+    const s1 = String((payload as any).shipping_address || (payload as any).shipping_address_1 || "");
+    const s2 = String((payload as any).shipping_address_2 || "");
+    const b1 = String((payload as any).billing_address || (payload as any).billing_address_1 || "");
+    const b2 = String((payload as any).billing_address_2 || "");
 
-      const a1 = get(a1Keys);
-      const a2 = get(a2Keys);
-      const combo = (a1 + a2).trim();
-      if (combo.length >= 3) return;
-
-      const fixed = (a1 || a2 || fallback || "Address Missing").trim();
-      set(a1Keys, fixed);
-      if (!a2) set(a2Keys, "");
+    if (!addrOK(s1, s2) && addrOK(b1, b2)) {
+      (payload as any).shipping_address = b1;
+      (payload as any).shipping_address_1 = b1;
+      (payload as any).shipping_address_2 = b2;
+      (payload as any).customer_address = b1;
+      (payload as any).customer_address_1 = b1;
+      (payload as any).customer_address_2 = b2;
     }
-
-    const cityShip = String((order.shippingAddress as any)?.city || "");
-    const cityBill = String((order.billingAddress as any)?.city || "");
-
-    ensureMinAddress(
-      payload,
-      ["shipping_address", "shipping_address_1", "customer_address", "customer_address_1"],
-      ["shipping_address_2", "customer_address_2"],
-      cityShip
-    );
-    ensureMinAddress(
-      payload,
-      ["billing_address", "billing_address_1"],
-      ["billing_address_2"],
-      cityBill
-    );
-
-    // canonical getters + copy billing->shipping if shipping too short
-    const getFirst = (p: any, keys: string[]) =>
-      keys.map((k) => String(p[k] ?? "").trim()).find((v) => v) || "";
-    const setAll = (p: any, keys: string[], val: string) => { keys.forEach((k) => { p[k] = val; }); };
-
-    const S_A1 = ["shipping_address", "shipping_address_1", "customer_address", "customer_address_1"];
-    const S_A2 = ["shipping_address_2", "customer_address_2"];
-    const B_A1 = ["billing_address", "billing_address_1"];
-    const B_A2 = ["billing_address_2"];
-
-    const s1 = getFirst(payload, S_A1);
-    const s2 = getFirst(payload, S_A2);
-    const b1 = getFirst(payload, B_A1);
-    const b2 = getFirst(payload, B_A2);
-
-    if ((s1 + s2).trim().length < 3 && (b1 + b2).trim().length >= 3) {
-      setAll(payload, S_A1, b1);
-      setAll(payload, S_A2, b2);
-    }
-
-    // final guard before hitting Shiprocket
-    const sa1 = getFirst(payload, S_A1);
-    const sa2 = getFirst(payload, S_A2);
-    const ba1 = getFirst(payload, B_A1);
-    const ba2 = getFirst(payload, B_A2);
-
-    if ((sa1 + sa2).trim().length < 3 || (ba1 + ba2).trim().length < 3) {
-      return res.status(400).json({
-        ok: false,
-        error: "Validation failed: address1+address2 must be >= 3 chars",
-        debug: { sa1, sa2, ba1, ba2 },
-      });
-    }
-    // -------- end address hardening --------
+    if (!addrOK(b1, b2))
+      return res.status(400).json({ ok: false, error: "Validation failed: address1+address2 must be >= 3 chars" });
 
     const errs = validateShiprocketPayload(payload);
-    if (errs.length) {
-      return res.status(400).json({ ok: false, error: "Validation failed", errors: errs, payload });
-    }
+    if (errs.length) return res.status(400).json({ ok: false, error: "Validation failed", errors: errs, payload });
 
     const sr = await ShiprocketAPI.createAdhocOrder(payload);
     const shipmentId = sr?.shipment_id ?? sr?.response?.shipment_id ?? sr?.data?.shipment_id;
-    if (!shipmentId) {
+    if (!shipmentId)
       return res.status(400).json({ ok: false, error: "Shiprocket did not return shipment_id", shiprocket: sr });
-    }
 
-    (order as any).shipmentId = shipmentId;
-    await order.save();
+    orderDoc.shipmentId = shipmentId;
+    await orderDoc.save();
     res.json({ ok: true, shipmentId, shiprocket: sr });
   } catch (e: any) {
     res.status(400).json({ ok: false, error: pickSRerr(e) });
   }
 });
+
 
 /** POST /api/orders/:id/shiprocket/assign-awb */
 r.post("/orders/:id/shiprocket/assign-awb", authenticate, requireAdmin, async (req, res) => {
