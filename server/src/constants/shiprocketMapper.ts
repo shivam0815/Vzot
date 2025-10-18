@@ -26,31 +26,32 @@ export function mapOrderToShiprocket(order: IOrder) {
   const fullName = String(addr.fullName || "").trim();
   const [first, ...lastParts] = fullName.split(/\s+/);
 
-  // ----- items with HSN + per-unit GST -----
+  // ── lines with HSN + per-unit GST (price is pre-GST) ─────────────────────
   const order_items = items.map((it: any) => {
-  // inside order_items map
-const prod: any =
-  (it as any)?.productId && typeof (it as any).productId === "object"
-    ? (it as any).productId
-    : {};
+    const prod: any =
+      it?.productId && typeof it.productId === "object" ? it.productId : {};
 
-const hsn = String(it?.hsn ?? prod?.hsn ?? "851762");
-const gstPct = Number(it?.taxPercent ?? prod?.taxPercent ?? 18);
-  // fallback 18%
+    const hsn = String(it?.hsn ?? prod?.hsn ?? "851762");
+    const gstPct = Number(it?.taxPercent ?? prod?.taxPercent ?? 18);
 
     const units = Math.max(1, num(it?.quantity));
-    const selling_price = Math.max(1, num(it?.price));                 // unit price excluding GST
-    const tax = +(selling_price * (gstPct / 100)).toFixed(2);          // GST per unit
-const isCOD = String(order.paymentMethod).toLowerCase() === "cod";
-const cod_charges = +(isCOD ? 25 : 0).toFixed(2);
+    const selling_price = Math.max(1, num(it?.price));            // pre-GST
+    const tax = +(selling_price * (gstPct / 100)).toFixed(2);      // GST / unit
 
     const skuRaw = String(it?.sku ?? prod?.sku ?? it?.name ?? it?.productId ?? "").trim();
 
-    return { name: it?.name || "Item", sku: skuRaw || `SKU-${String(it?.productId || "N/A")}`,
-             units, selling_price, discount: 0, hsn, tax };
+    return {
+      name: it?.name || "Item",
+      sku: skuRaw || `SKU-${String(it?.productId || "N/A")}`,
+      units,
+      selling_price,
+      discount: 0,
+      hsn,
+      tax,
+    };
   });
 
-  // ----- totals -----
+  // ── totals ───────────────────────────────────────────────────────────────
   const sub_total = +order_items.reduce((s, it) => s + it.selling_price * it.units, 0).toFixed(2);
   const taxFromItems = +order_items.reduce((s, it) => s + it.tax * it.units, 0).toFixed(2);
 
@@ -58,11 +59,16 @@ const cod_charges = +(isCOD ? 25 : 0).toFixed(2);
   const shipping_charges = +num((order as any).shipping).toFixed(2);
 
   const isCOD = String(order.paymentMethod).toLowerCase() === "cod";
-  const cod_charges = +(isCOD ? num((order as any).charges?.codCharge ?? 0) : 0).toFixed(2);
+  // default COD fee = 25 when COD and not provided
+  const cod_charges = +(
+    isCOD ? (num((order as any).charges?.codCharge) || 25) : 0
+  ).toFixed(2);
 
-  const total = +( (num((order as any).total) || (sub_total + tax + shipping_charges + cod_charges)) ).toFixed(2);
+  const computedTotal = +(sub_total + tax + shipping_charges + cod_charges).toFixed(2);
+  const total = +(num((order as any).total) || computedTotal).toFixed(2);
+
   const collectable_amount = +(isCOD ? total : 0).toFixed(2);
-  const declared_value = +(sub_total + tax).toFixed(2);                // goods value incl. GST, excl. shipping/COD
+  const declared_value = +(sub_total + tax).toFixed(2); // goods value incl. GST
 
   return {
     order_id: String(order.orderNumber || order._id),
@@ -94,9 +100,13 @@ const cod_charges = +(isCOD ? 25 : 0).toFixed(2);
     collectable_amount,
     declared_value,
 
-    length: 12, breadth: 10, height: 4, weight: Math.max(0.25, 0.25 * totalUnits),
+    length: 12,
+    breadth: 10,
+    height: 4,
+    weight: Math.max(0.25, 0.25 * totalUnits),
   };
 }
+
 
 export function validateShiprocketPayload(p: any): string[] {
   const errs: string[] = [];
