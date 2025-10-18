@@ -161,7 +161,9 @@ export interface IOrder extends Document {
   // NEW
   shippingPackage?: IShippingPackage;
   shippingPayment?: IShippingPayment;
-
+  shiprocketOrderId?: string;
+  shiprocketChannelId?: string;
+  shiprocketResponse?: any;
   // Auto timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -370,6 +372,10 @@ const OrderSchema = new Schema<IOrder, IOrderModel, IOrderMethods>(
         "TRACKING_UPDATED",
       ],
     },
+    // Shiprocket order identifiers
+shiprocketOrderId:   { type: String, index: true },
+shiprocketChannelId: { type: String },
+shiprocketResponse:  { type: Schema.Types.Mixed },
 
     // Package & shipping payment
     shippingPackage: {

@@ -8,6 +8,8 @@ import Cart from "../models/Cart";
 import Product from "../models/Product";
 import EmailAutomationService from "../config/emailService";
 import type {} from "../types/express";
+import { buildSrPayload, createShiprocketOrder } from "../services/shiprocketService";
+
 
 /* ───────────────── Types ───────────────── */
 interface AuthenticatedUser {
@@ -121,11 +123,14 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     }
 
     // Pricing
-    const FREE_SHIPPING_THRESHOLD = 2000;
-    const SHIPPING_COST = 150;
-    const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-    const tax = Math.round(subtotal * 0.18); // 18% GST
-    const total = subtotal + shipping + tax;
+    // Pricing — free shipping ≥ ₹2000 else ₹150
+const FREE_SHIPPING_THRESHOLD = 2000;
+const SHIPPING_COST = 150;
+
+const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
+const tax = Math.round(subtotal * 0.18); // GST on pre-tax subtotal
+const total = subtotal + shipping + tax;
+
 
     // IDs
     const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -155,6 +160,22 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     });
 
     const savedOrder = await order.save();
+    // Push to Shiprocket so GST, shipping, COD show correctly
+try {
+  const srPayload = buildSrPayload(savedOrder);
+  const srRes = await createShiprocketOrder(srPayload);
+
+  await Order.findByIdAndUpdate(savedOrder._id, {
+    $set: {
+      shiprocketOrderId: srRes?.order_id,
+      shiprocketChannelId: srRes?.channel_id,
+      shiprocketResponse: srRes || null,
+    },
+  });
+} catch (e: any) {
+  console.error("Shiprocket order create failed:", e?.response?.data || e?.message);
+}
+
 
     // Real-time stock deduction
     try {
