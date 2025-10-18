@@ -36,6 +36,7 @@ interface Address {
   pincode: string;
   landmark?: string;
 }
+type Charges = { codCharge?: number; onlineFee?: number; onlineFeeGst?: number; };
 interface OrderDetails {
   _id: string;
   orderNumber: string;
@@ -48,6 +49,7 @@ interface OrderDetails {
   paymentId?: string;
   paymentSignature?: string;
   subtotal: number | string;
+    charges?: Charges;
   tax: number | string;
   shipping: number | string;
   total: number | string;
@@ -87,6 +89,7 @@ type TimelineItem = {
   description: string;
 };
 
+
 const fade = {
   hidden: { opacity: 0, y: 14 },
   visible: { opacity: 1, y: 0 },
@@ -116,39 +119,48 @@ const inr = (n: number) =>
  *  IMPORTANT: If both shipping & tax are 0 but total > subtotal, we treat the
  *  remainder as TAX (because shipping is added later after packing). */
 function deriveBreakdown(o: OrderDetails) {
-  const itemsSubtotal = (o.items || []).reduce((sum, it) => {
-    const q = toNum(it.quantity);
-    const p = toNum(it.price);
-    return sum + q * p;
-  }, 0);
-
+  const itemsSubtotal = (o.items || []).reduce((s, it) => s + toNum(it.quantity) * toNum(it.price), 0);
   const subtotal = toNum(o.subtotal) || itemsSubtotal;
 
-  let taxKnown =
+  // tax
+  let tax =
     toNum((o as any).tax) ||
     toNum((o as any).taxes) ||
     toNum((o as any).gst) ||
     toNum((o as any).vat);
-
   const pct = toNum((o as any).gstPercent) || toNum((o as any).taxRate) || 0;
-  if (taxKnown === 0 && pct > 0) taxKnown = +(subtotal * (pct / 100)).toFixed(2);
-
-  // Force shipping rule: ₹150 if subtotal < 2000, else FREE
-  const freeEligible = subtotal >= FREE_SHIP_THRESHOLD;
-  const shipping = freeEligible ? 0 : SHIPPING_FLAT;
-
-  const total = Math.max(0, +(subtotal + taxKnown + shipping).toFixed(2));
+  if (tax === 0 && pct > 0) tax = +(subtotal * (pct / 100)).toFixed(2);
   const taxLabel = pct > 0 ? `Tax (GST ${pct}%)` : 'Tax';
 
+  // shipping: prefer backend value; else rule
+  const shipProvided =
+    toNum((o as any).shipping) ||
+    toNum((o as any).shippingFee) ||
+    toNum((o as any).shippingCost) ||
+    toNum((o as any).deliveryCharge);
+  const freeEligible = subtotal >= FREE_SHIP_THRESHOLD;
+  const shipping = shipProvided > 0 ? shipProvided : freeEligible ? 0 : SHIPPING_FLAT;
+
+  // extra charges
+  const codCharge = toNum(o.charges?.codCharge);
+  const onlineFee = toNum(o.charges?.onlineFee);
+  const onlineFeeGst = toNum(o.charges?.onlineFeeGst);
+
+  const total = Math.max(0, +(subtotal + tax + shipping + codCharge + onlineFee + onlineFeeGst).toFixed(2));
+
   return {
-    subtotal: Math.max(0, +subtotal.toFixed(2)),
-    tax: Math.max(0, +taxKnown.toFixed(2)),
+    subtotal: +subtotal.toFixed(2),
+    tax: +tax.toFixed(2),
+    taxLabel,
     shipping,
     freeEligible,
+    codCharge,
+    onlineFee,
+    onlineFeeGst,
     total,
-    taxLabel,
   };
 }
+
 
 
 const niceDate = (s?: string) => {
@@ -566,34 +578,47 @@ const invoiceUrl = `/api/orders/${order._id}/invoice.pdf`;
           </div>
 
           {/* Summary */}
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-gray-600">
-                <span>Subtotal</span>
-                <span>{inr(breakdown.subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>{breakdown.taxLabel}</span>
-                <span>{inr(breakdown.tax)}</span>
-              </div>
+         <div className="mt-6 pt-4 border-t border-gray-100">
+  <div className="space-y-2 text-sm">
+    <div className="flex justify-between text-gray-600">
+      <span>Subtotal</span>
+      <span>{inr(breakdown.subtotal)}</span>
+    </div>
+    <div className="flex justify-between text-gray-600">
+      <span>{breakdown.taxLabel}</span>
+      <span>{inr(breakdown.tax)}</span>
+    </div>
+    <div className="flex justify-between text-gray-600">
+      <span>Shipping (Flat ₹150; Free ≥ ₹2,000)</span>
+      <span>{breakdown.freeEligible ? 'FREE' : inr(breakdown.shipping)}</span>
+    </div>
 
-              {/* 🚚 Shipping note instead of amount */}
-              <div className="flex justify-between text-gray-600">
-  <span>Shipping (Flat ₹150; Free ≥ ₹2,000)</span>
-  <span>
-    {breakdown.freeEligible
-      ? 'FREE'
-      : inr(breakdown.shipping || 150)}
-  </span>
+    {!!breakdown.codCharge && (
+      <div className="flex justify-between text-gray-600">
+        <span>COD charge</span>
+        <span>{inr(breakdown.codCharge)}</span>
+      </div>
+    )}
+    {!!breakdown.onlineFee && (
+      <div className="flex justify-between text-gray-600">
+        <span>Payment processing fee</span>
+        <span>{inr(breakdown.onlineFee)}</span>
+      </div>
+    )}
+    {!!breakdown.onlineFeeGst && (
+      <div className="flex justify-between text-gray-600">
+        <span>Processing fee GST</span>
+        <span>{inr(breakdown.onlineFeeGst)}</span>
+      </div>
+    )}
+
+    <div className="flex justify-between text-base font-semibold text-gray-900 pt-2 border-t border-gray-100">
+      <span>Total</span>
+      <span>{inr(breakdown.total)}</span>
+    </div>
+  </div>
 </div>
 
-
-              <div className="flex justify-between text-base font-semibold text-gray-900 pt-2 border-t border-gray-100">
-                <span>Total</span>
-                <span>{inr(breakdown.total)}</span>
-              </div>
-            </div>
-          </div>
         </motion.div>
 
         {/* Addresses & Payment */}
