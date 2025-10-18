@@ -26,41 +26,35 @@ export function mapOrderToShiprocket(order: IOrder) {
   const fullName = String(addr.fullName || "").trim();
   const [first, ...lastParts] = fullName.split(/\s+/);
 
-  // per-item map with HSN and per-unit GST amount
+  // ----- items with HSN + per-unit GST -----
   const order_items = items.map((it: any) => {
-    // in src/constants/shiprocketMapper.ts, inside order_items map
-const prod = it?.productId || {};
-const hsn = String(it?.hsn || prod?.hsn || "851762");
-const gstPct = Number(
-  it?.taxPercent ?? prod?.taxPercent ?? 18
-);
+    const prod = it?.productId || {};
+    const hsn = String(it?.hsn || prod?.hsn || "851762");              // fallback HSN
+    const gstPct = Number(it?.taxPercent ?? prod?.taxPercent ?? 18);   // fallback 18%
 
-    const selling_price = Math.max(1, num(it?.price));         // unit price
     const units = Math.max(1, num(it?.quantity));
-    const taxPerUnit = +(selling_price * (gstPct / 100)).toFixed(2);
+    const selling_price = Math.max(1, num(it?.price));                 // unit price excluding GST
+    const tax = +(selling_price * (gstPct / 100)).toFixed(2);          // GST per unit
 
     const skuRaw = String(it?.sku ?? prod?.sku ?? it?.name ?? it?.productId ?? "").trim();
-    return {
-      name: it?.name || "Item",
-      sku: skuRaw || `SKU-${String(it?.productId || "N/A")}`,
-      units,
-      selling_price,
-      discount: 0,
-      hsn,
-      tax: taxPerUnit,
-    };
+
+    return { name: it?.name || "Item", sku: skuRaw || `SKU-${String(it?.productId || "N/A")}`,
+             units, selling_price, discount: 0, hsn, tax };
   });
 
-  // totals
-  const subtotal = +order_items.reduce((s, it) => s + it.selling_price * it.units, 0).toFixed(2);
+  // ----- totals -----
+  const sub_total = +order_items.reduce((s, it) => s + it.selling_price * it.units, 0).toFixed(2);
   const taxFromItems = +order_items.reduce((s, it) => s + it.tax * it.units, 0).toFixed(2);
+
   const tax = +(num((order as any).tax) || taxFromItems).toFixed(2);
   const shipping_charges = +num((order as any).shipping).toFixed(2);
+
   const isCOD = String(order.paymentMethod).toLowerCase() === "cod";
-  const cod_charges = +(isCOD ? num((order as any).charges?.codCharge ?? 25) : 0).toFixed(2);
-  const total = +(num((order as any).total) || subtotal + tax + shipping_charges + cod_charges).toFixed(2);
+  const cod_charges = +(isCOD ? num((order as any).charges?.codCharge ?? 0) : 0).toFixed(2);
+
+  const total = +( (num((order as any).total) || (sub_total + tax + shipping_charges + cod_charges)) ).toFixed(2);
   const collectable_amount = +(isCOD ? total : 0).toFixed(2);
-  const declared_value = +(subtotal + tax).toFixed(2);          // goods value incl. GST
+  const declared_value = +(sub_total + tax).toFixed(2);                // goods value incl. GST, excl. shipping/COD
 
   return {
     order_id: String(order.orderNumber || order._id),
@@ -82,7 +76,7 @@ const gstPct = Number(
     order_items,
     payment_method: isCOD ? "COD" : "Prepaid",
 
-    sub_total: subtotal,
+    sub_total,
     tax,
     shipping_charges,
     discount: 0,
@@ -92,10 +86,7 @@ const gstPct = Number(
     collectable_amount,
     declared_value,
 
-    length: 12,
-    breadth: 10,
-    height: 4,
-    weight: Math.max(0.25, 0.25 * totalUnits),
+    length: 12, breadth: 10, height: 4, weight: Math.max(0.25, 0.25 * totalUnits),
   };
 }
 
@@ -107,9 +98,13 @@ export function validateShiprocketPayload(p: any): string[] {
     "billing_pincode","payment_method","sub_total","tax","shipping_charges","total",
     "declared_value","collectable_amount","length","breadth","height","weight"
   ];
-  req.forEach((k) => { const v = p?.[k]; if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) errs.push(`Missing/empty: ${k}`); });
+  req.forEach((k) => {
+    const v = p?.[k];
+    if (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) errs.push(`Missing/empty: ${k}`);
+  });
   if (!/^\d{6}$/.test(String(p?.billing_pincode || ""))) errs.push("Invalid billing_pincode");
   if (!/^\d{10}$/.test(String(p?.billing_phone || ""))) errs.push("Invalid billing_phone");
+
   if (!Array.isArray(p?.order_items) || p.order_items.length === 0) errs.push("order_items empty");
   p?.order_items?.forEach((it: any, i: number) => {
     if (!String(it?.sku || "").trim()) errs.push(`order_items[${i}].sku missing`);
@@ -117,6 +112,7 @@ export function validateShiprocketPayload(p: any): string[] {
     if (!(typeof it?.selling_price === "number" && it.selling_price > 0)) errs.push(`order_items[${i}].selling_price invalid`);
     if (!String(it?.hsn || "").trim()) errs.push(`order_items[${i}].hsn missing`);
   });
+
   if (p.payment_method === "COD" && !(p.collectable_amount > 0)) errs.push("collectable_amount must be > 0 for COD");
   return errs;
 }

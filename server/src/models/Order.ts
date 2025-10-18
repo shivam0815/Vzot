@@ -67,6 +67,9 @@ export interface IOrderItem {
   price: number;
   name?: string;
   image?: string;
+    sku?: string;
+  hsn?: string;          // 6/8 digit HSN
+  taxPercent?: number;  
     
 }
 
@@ -124,7 +127,7 @@ export interface IOrder extends Document {
   discount?: number;
 
   gst?: IGstDetails;
-
+  hsn:number;
   status: OrderStatus;
   orderStatus: OrderStatus;
 
@@ -216,6 +219,10 @@ const OrderItemSchema = new Schema<IOrderItem>(
     price: { type: Number, required: true, min: 0 },
     name: { type: String },
     image: { type: String },
+    sku: { type: String, trim: true },
+    hsn: { type: String, trim: true },          // no regex here; SR accepts 6/8 digits
+    taxPercent: { type: Number, min: 0 },  
+
   },
   { _id: false }
 );
