@@ -25,23 +25,25 @@ export function buildSrPayload(order: any) {
     name: it.name,
     sku: (it.productId?.sku || it.sku || it.name).slice(0, 30),
     units: it.quantity,
-    selling_price: Number(it.price), // pre-tax unit price
+    selling_price: Number(it.price),
     discount: 0,
-    tax: 0, // per-item not used; we pass total tax below
+    tax: 0,
   }));
 
   const cod = order.paymentMethod === "cod";
-  const codFeePct = Number(process.env.SHIPROCKET_COD_PCT || 0);   // e.g. 1.5
-  const codFeeMin = Number(process.env.SHIPROCKET_COD_MIN || 0);   // e.g. 30
-  const codCharges = cod
-    ? Math.max(codFeeMin, Math.round((order.total) * codFeePct / 100))
-    : 0;
+  const codCharges = cod ? Number(order.charges?.codCharge ?? 25) : 0;
+
+  const subtotal = Number(order.subtotal || 0);
+  const shipping = Number(order.shipping || 0);
+  const tax = Number(order.tax || 0);
+  const total = Number(order.total || subtotal + shipping + tax + codCharges);
 
   return {
     order_id: order.orderNumber,
     order_date: new Date(order.createdAt || Date.now()).toISOString(),
-    pickup_location: process.env.SHIPROCKET_PICKUP || "Sales Office",
-    channel_id: SR_CHANNEL_ID,
+    pickup_location: process.env.SHIPROCKET_PICKUP_NICKNAME || "Sales Office",
+    channel_id: process.env.SHIPROCKET_CHANNEL_ID,
+
     billing_customer_name: addr.fullName || "Customer",
     billing_last_name: "",
     billing_address: (addr.addressLine1 || "") + (addr.addressLine2 ? `, ${addr.addressLine2}` : ""),
@@ -54,17 +56,17 @@ export function buildSrPayload(order: any) {
     shipping_is_billing: true,
 
     order_items: items,
-
     payment_method: cod ? "COD" : "Prepaid",
 
-    sub_total: Number(order.subtotal),             // ₹870
-    shipping_charges: Number(order.shipping || 150), // ₹0 or actual
-    tax: Number(order.tax || 0),                   // ₹157 → shows as GST
-    discount: Number(order.discount || 0),
-    cod_charges: codCharges,                       // shows “Cash charge”
-    total: Number(order.subtotal + order.shipping + order.tax + codCharges), // ₹1202 (+COD if any)
+    sub_total: subtotal,
+    shipping_charges: shipping,
+    tax,
+    discount: 0,
+    cod_charges: codCharges,     // shows as “Cash charge”
+    total,                       // SR details page shows this
 
-    length: 12, breadth: 10, height: 4, weight: 0.5, // default; override if you store per-order
+    length: 12, breadth: 10, height: 4, weight: 0.5,
     comment: order.customerNotes || "",
   };
 }
+

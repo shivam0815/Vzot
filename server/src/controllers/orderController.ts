@@ -50,96 +50,67 @@ const addrLen = (a: Addr) =>
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   try {
     const { shippingAddress, paymentMethod, billingAddress, extras } = req.body;
-
-    if (!req.user) {
-      res.status(401).json({ message: "User not authenticated" });
-      return;
-    }
+    if (!req.user) { res.status(401).json({ message: "User not authenticated" }); return; }
     const userId = (req.user as AuthenticatedUser).id;
 
     // Load cart
     const cart = await Cart.findOne({ userId }).populate("items.productId");
-    if (!cart || !cart.items?.length) {
-      res.status(400).json({ message: "Cart is empty" });
-      return;
-    }
+    if (!cart || !cart.items?.length) { res.status(400).json({ message: "Cart is empty" }); return; }
 
-    // Normalize addresses + fallback + validate
+    // Addresses
     let ship = normAddr(shippingAddress);
     let bill = normAddr(billingAddress);
     if (addrLen(ship) < 3 && addrLen(bill) >= 3) ship = { ...bill };
     if (addrLen(ship) < 3) {
-      res.status(400).json({
-        ok: false,
-        error: "Validation failed: address1+address2 must be >= 3 chars",
-        debug: {
-          sa1: ship.addressLine1, sa2: ship.addressLine2,
-          ba1: bill.addressLine1, ba2: bill.addressLine2,
-        },
-      });
+      res.status(400).json({ ok: false, error: "Validation failed: address1+address2 must be >= 3 chars",
+        debug: { sa1: ship.addressLine1, sa2: ship.addressLine2, ba1: bill.addressLine1, ba2: bill.addressLine2 } });
       return;
     }
     if (addrLen(bill) < 3) bill = { ...ship };
 
-    // Build order items with stock-only clamp
-    const orderItems: Array<{
-      productId: mongoose.Types.ObjectId;
-      name: string;
-      price: number;
-      quantity: number;
-      image: string;
-    }> = [];
-
+    // Items
+    const orderItems: Array<{ productId: mongoose.Types.ObjectId; name: string; price: number; quantity: number; image: string; }> = [];
     let subtotal = 0;
     for (const cartItem of cart.items) {
       const product = cartItem.productId as any;
-
-      if (!product || !product.isActive || !product.inStock) {
-        res.status(400).json({ message: `Product unavailable: ${product?.name || "Unknown"}` });
-        return;
-      }
-
+      if (!product || !product.isActive || !product.inStock) { res.status(400).json({ message: `Product unavailable: ${product?.name || "Unknown"}` }); return; }
       const stock = Math.max(0, Number(product.stockQuantity ?? 0));
       const desired = Math.max(1, Number(cartItem.quantity) || 1);
-      if (stock < 1) {
-        res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` });
-        return;
-      }
-
+      if (stock < 1) { res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` }); return; }
       const qty = Math.min(desired, stock);
-      if (qty < 1) {
-        res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` });
-        return;
-      }
+      if (qty < 1) { res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` }); return; }
 
-      orderItems.push({
-        productId: product._id,
-        name: product.name,
-        price: cartItem.price,
-        quantity: qty,
-        image: product.images?.[0] || "",
-      });
+      orderItems.push({ productId: product._id, name: product.name, price: cartItem.price, quantity: qty, image: product.images?.[0] || "" });
       subtotal += cartItem.price * qty;
     }
 
     // Pricing
-    // Pricing — free shipping ≥ ₹2000 else ₹150
-const FREE_SHIPPING_THRESHOLD = 2000;
-const SHIPPING_COST = 150;
+    const FREE_SHIPPING_THRESHOLD = 2000;
+    const SHIPPING_COST = 150;
+    const COD_FEE = 25;
+    const ONLINE_FEE_RATE = 0.02;     // 2%
+    const ONLINE_FEE_GST_RATE = 0.18; // 18% on the fee
 
-const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-const tax = Math.round(subtotal * 0.18); // GST on pre-tax subtotal
-const total = subtotal + shipping + tax;
+    const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
+    const tax = Math.round(subtotal * 0.18);
 
+    const isCOD = paymentMethod === "cod";
+    const baseBeforeOnlineFee = subtotal + tax + shipping;
+
+    const onlineFee = isCOD ? 0 : Math.round(baseBeforeOnlineFee * ONLINE_FEE_RATE);
+    const onlineFeeGst = isCOD ? 0 : Math.round(onlineFee * ONLINE_FEE_GST_RATE);
+    const codCharge = isCOD ? COD_FEE : 0;
+
+    const total = baseBeforeOnlineFee + codCharge + onlineFee + onlineFeeGst;
 
     // IDs
     const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
-    const paymentOrderId = paymentMethod === "cod" ? `cod_${Date.now()}` : undefined;
+    const paymentOrderId = isCOD ? `cod_${Date.now()}` : undefined;
 
-    // GST
+    // GST block
     const gstBlock = buildGstBlock(req.body, ship, { subtotal, tax });
 
-    // Create
+    // Create order
     const order = new Order({
       userId: new mongoose.Types.ObjectId(userId),
       orderNumber,
@@ -152,40 +123,34 @@ const total = subtotal + shipping + tax;
       tax,
       shipping,
       total,
+      charges: { codCharge, onlineFee, onlineFeeGst }, // <-- breakdown kept
       status: "pending",
       orderStatus: "pending",
-      paymentStatus: paymentMethod === "cod" ? "cod_pending" : "awaiting_payment",
+      paymentStatus: isCOD ? "cod_pending" : "awaiting_payment",
       gst: gstBlock,
       customerNotes: (extras?.orderNotes || "").toString().trim() || undefined,
     });
 
     const savedOrder = await order.save();
-    // Push to Shiprocket so GST, shipping, COD show correctly
-// Push to Shiprocket so GST, shipping, COD show correctly
-try {
-  const srPayload = buildSrPayload(savedOrder);
-  const srRes = await createShiprocketOrder(srPayload);
 
-  await Order.findByIdAndUpdate(savedOrder._id, {
-    $set: {
-      // built-in fields
-      shipmentId: srRes?.shipment_id ?? undefined,
-      shiprocketStatus: "ORDER_CREATED",
+    // Shiprocket create (non-blocking)
+    try {
+      const srPayload = buildSrPayload(savedOrder); // uses charges.codCharge and total
+      const srRes = await createShiprocketOrder(srPayload);
+      await Order.findByIdAndUpdate(savedOrder._id, {
+        $set: {
+          shipmentId: srRes?.shipment_id ?? undefined,
+          shiprocketStatus: "ORDER_CREATED",
+          shiprocketOrderId: srRes?.order_id ?? srRes?.orderId ?? undefined,
+          shiprocketChannelId: srRes?.channel_id ?? process.env.SHIPROCKET_CHANNEL_ID ?? undefined,
+          shiprocketResponse: srRes ?? null,
+        },
+      });
+    } catch (e: any) {
+      console.error("Shiprocket order create failed:", e?.response?.data || e?.message);
+    }
 
-      // your custom audit fields
-      shiprocketOrderId: srRes?.order_id ?? srRes?.orderId ?? undefined,
-      shiprocketChannelId: srRes?.channel_id ?? process.env.SHIPROCKET_CHANNEL_ID ?? undefined,
-      shiprocketResponse: srRes ?? null,
-    },
-  });
-} catch (e: any) {
-  console.error("Shiprocket order create failed:", e?.response?.data || e?.message);
-  // continue without blocking order creation
-}
-
-
-
-    // Real-time stock deduction
+    // Stock deduction
     try {
       for (const item of savedOrder.items) {
         const updated = await Product.findOneAndUpdate(
@@ -204,26 +169,18 @@ try {
     // Clear cart
     await Cart.findOneAndDelete({ userId });
 
-    // Emails (non-blocking errors)
+    // Emails
     const emailResults = { customerEmailSent: false, adminEmailSent: false, emailError: null as string | null };
     try {
-      emailResults.customerEmailSent = await EmailAutomationService.sendOrderConfirmation(
-        savedOrder as any,
-        savedOrder.shippingAddress.email
-      );
+      emailResults.customerEmailSent = await EmailAutomationService.sendOrderConfirmation(savedOrder as any, savedOrder.shippingAddress.email);
       emailResults.adminEmailSent = await EmailAutomationService.notifyAdminNewOrder(savedOrder as any);
-    } catch (e: any) {
-      emailResults.emailError = e?.message || "Email error";
-    }
+    } catch (e: any) { emailResults.emailError = e?.message || "Email error"; }
 
-    // Socket pushes
+    // Sockets
     if (req.io) {
       interface IUserSummary { _id: mongoose.Types.ObjectId; name?: string; email?: string; }
       let userDoc: IUserSummary | null = null;
-      try {
-        userDoc = await mongoose.model<IUserSummary>("User")
-          .findById(savedOrder.userId).select("name email").lean().exec();
-      } catch {}
+      try { userDoc = await mongoose.model<IUserSummary>("User").findById(savedOrder.userId).select("name email").lean().exec(); } catch {}
       const userSummary = {
         _id: savedOrder.userId.toString(),
         name: userDoc?.name || savedOrder.shippingAddress?.fullName,
@@ -255,6 +212,7 @@ try {
         paymentStatus: savedOrder.paymentStatus,
         items: orderItems,
         gst: savedOrder.gst,
+        charges: (savedOrder as any).charges,
         emailStatus: emailResults,
       },
     });
@@ -262,6 +220,7 @@ try {
     res.status(500).json({ success: false, message: error.message || "Server error" });
   }
 };
+
 
 
 /* ───────────────── GET USER ORDERS (paginated) ───────────────── */
