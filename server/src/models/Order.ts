@@ -319,7 +319,8 @@ const OrderSchema = new Schema<IOrder, IOrderModel, IOrderMethods>(
 
     subtotal: { type: Number, required: true, min: 0 },
     tax: { type: Number, required: true, min: 0, default: 0 },
-    shipping: { type: Number, required: true, min: 0, default: 0 },
+    shipping: { type: Number, required: true, min: 0, default: 0, immutable: true },
+
     total: { type: Number, required: true, min: 0 },
     discount: { type: Number, min: 0, default: 0 },
 
@@ -692,6 +693,15 @@ OrderSchema.statics.getUserOrders = function (this: IOrderModel, userId: string,
 /* ------------------------------------------------------------------ */
 /* Export                                                              */
 /* ------------------------------------------------------------------ */
+// ---- prevent accidental overwrite of shipping ----
+function stripShippingFromUpdate(this: any) {
+  const u = this.getUpdate?.() || {};
+  if (u.$set && 'shipping' in u.$set) delete u.$set.shipping;
+  if ('shipping' in u) delete u.shipping;
+}
+OrderSchema.pre('updateOne', stripShippingFromUpdate);
+OrderSchema.pre('findOneAndUpdate', stripShippingFromUpdate);
+OrderSchema.pre('updateMany', stripShippingFromUpdate);
 
 const Order =
   (mongoose.models.Order as IOrderModel) ||
