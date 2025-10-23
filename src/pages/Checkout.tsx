@@ -233,6 +233,11 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
       })),
       shippingAddress: ship2,
       billingAddress: sameAsShipping ? ship2 : bill2,
+      // PaymentOrderData requires these top-level numeric fields
+      subtotal: rawSubtotal,
+      tax: tax,
+      shipping: shippingFee,
+      total: total,
       extras: {
         orderNotes: orderNotes.trim() || undefined,
         wantGSTInvoice,

@@ -50,7 +50,7 @@ export function mapOrderToShiprocket(order: IOrder) {
     billing_address: [addr.addressLine1 || "", addr.addressLine2 || ""].filter(Boolean).join(", "),
     billing_city: String(addr.city || ""),
     billing_pincode: digits(addr.pincode),
-    billing_state: String(addr.state || ""),
+    billing_state: String(addr.state || ""),   
     billing_country: "India",
     billing_email: String(addr.email || "no-reply@example.com"),
     billing_phone: String(addr.phoneNumber || "").replace(/\D+/g, "").replace(/^91(?=\d{10}$)/,""),
@@ -61,12 +61,11 @@ export function mapOrderToShiprocket(order: IOrder) {
     payment_method: isCOD ? "COD" : "Prepaid",
 
     sub_total,
-    tax,                          // informational for you
-    shipping_charges,             // ✅ shows as “Shipping” in SR invoice
+    tax,                          
+    shipping_charges,             
     discount: 0,
-    cod_charges,                  // shows as “Transaction”
+    cod_charges,                 
     total,
-
     collectable_amount,
     declared_value,
 

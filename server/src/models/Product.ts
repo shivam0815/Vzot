@@ -155,7 +155,8 @@ const productSchema = new Schema<IProduct, IProductModel>(
 
     // admin-only
     gst: { type: Number, min: 0, max: 100, select: false },
-    hsnCode: { type: String, trim: true, select: false },
+    hsnCode: { type: String, trim: true, uppercase: true },
+
     netWeight: { type: Number, min: 0, select: false },
 
     // NEW: signals/statistics
