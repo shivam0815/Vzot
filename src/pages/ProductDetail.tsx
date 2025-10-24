@@ -726,53 +726,46 @@ const highlightImages = useMemo<string[]>(() => {
           </div>
         </div>
 
-        {/* Vertical Highlights: mobile full-bleed, desktop centered */}
+        
+{/* Product Highlight Section — full-height vertical scroll for mobile + desktop */}
 {highlightImages.length > 0 && (
-  <section id="highlights" className="border-t bg-white">
-    <div className="max-w-6xl mx-auto sm:px-6 py-2 sm:py-6">
+  <section id="highlights" className="border-t bg-white mt-6 sm:mt-10">
+    <div className="max-w-[1280px] mx-auto sm:px-6 py-4 sm:py-8">
       <h2 className="sr-only">Product Highlights</h2>
 
-      {/* Desktop helper: keep price/actions visible while scrolling images */}
-      <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-8">
-        {/* Long image column */}
-        <div className="flex flex-col">
+      {/* Desktop grid with image column and sticky buy section */}
+      <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-10">
+        {/* Vertical image list */}
+        <div className="flex flex-col space-y-6">
           {highlightImages.map((img, i) => (
-            <figure key={i} className="-mx-4 sm:mx-0">
+            <figure
+              key={i}
+              className="bg-white flex items-center justify-center rounded-xl overflow-hidden shadow-sm"
+            >
               <img
                 src={safeImage(img, 1200, 1600)}
                 alt={`${product.name} highlight ${i + 1}`}
                 loading="lazy"
                 decoding="async"
-                className="w-full h-auto select-none pointer-events-none sm:rounded-xl sm:shadow"
+                className="w-full h-auto max-h-[90vh] object-contain bg-white"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = safeImage(undefined, 1200, 1600);
                 }}
-                srcSet={[
-                  `${safeImage(img, 640, 900)} 640w`,
-                  `${safeImage(img, 828, 1200)} 828w`,
-                  `${safeImage(img, 1080, 1500)} 1080w`,
-                  `${safeImage(img, 1440, 2000)} 1440w`,
-                ].join(', ')}
-                sizes="(max-width: 640px) 100vw, 960px"
               />
             </figure>
           ))}
         </div>
 
-        {/* Desktop-only sticky buy card */}
-        <aside className="hidden lg:block">
-          <div className="sticky top-20 border rounded-xl p-4 shadow-sm">
-            <div className="text-2xl font-semibold">₹{product.price?.toLocaleString('en-IN')}</div>
-            
-          </div>
-        </aside>
+        {/* Right column sticky buy card for desktop */}
+       
       </div>
     </div>
   </section>
 )}
 
 
-        {/* No related rails rendered */}
+
+       
       </div>
 
       {/* Sticky mobile checkout bar */}
