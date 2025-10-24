@@ -147,6 +147,7 @@ const Products: React.FC = () => {
     'ICs',
     'Mobile ICs',
     'Mobile accessories',
+    'Stencil',
   ]);
 
   const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';

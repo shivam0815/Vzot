@@ -6,7 +6,7 @@ const SR_BASE: string =
   process.env.SHIPROCKET_BASE_URL || "https://apiv2.shiprocket.in/v1/external";
 const SR_EMAIL: string = process.env.SHIPROCKET_EMAIL || "";
 const SR_PASSWORD: string = process.env.SHIPROCKET_PASSWORD || "";
-const SR_CHANNEL_ID: string = process.env.SHIPROCKET_CHANNEL_ID || ""; // optional
+const SR_CHANNEL_ID: string = process.env.SHIPROCKET_CHANNEL_ID || ""; 
 const SR_PICKUP_NICKNAME: string =
   process.env.SHIPROCKET_PICKUP_NICKNAME || "Sales Office";
 
@@ -44,22 +44,7 @@ async function srPost<T = any>(path: string, body: any): Promise<T> {
   return data;
 }
 
-/* -------- Payload builder -------- */
-/**
- * Expects `order` to contain:
- * - orderNumber, createdAt
- * - paymentMethod ('cod' | 'razorpay')
- * - subtotal, shipping, tax (or gst.taxAmount)
- * - charges.codCharge (optional)
- * - shippingAddress { fullName, addressLine1, addressLine2, city, state, pincode, email, phoneNumber }
- * - items[] { name, price, quantity, image?, productId?{ hsn, taxPercent, sku } | hsn?, taxPercent?, sku? }
- *
- * Rules:
- * - Each item.tax must be a PERCENT (e.g., 18), not an amount.
- * - Top-level `tax` is the TOTAL GST amount.
- * - COD charge goes in `cod_charges`.
- * - `total = subtotal + tax + shipping + cod_charges`.
- */
+
 export function buildSrPayload(order: any) {
   const addr = order.shippingAddress || {};
 

@@ -111,7 +111,8 @@ const productSchema = new Schema<IProduct, IProductModel>(
           'Others',
           'ICs',
           'Mobile Accessories',
-          'Mobile ICs'
+          'Mobile ICs',
+          'Stencil',
         ],
         message: '{VALUE} is not a valid category',
       },

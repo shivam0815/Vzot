@@ -5,7 +5,7 @@ import {
   ArrowRight, Star, ShoppingBag, Users, Award,
   Shield, Truck, Headphones, ChevronLeft, ChevronRight, Quote,
   Instagram, Twitter, Facebook, Sparkles, Banknote, BadgePercent, BadgeCheck,
-  Smartphone, Cpu, Wrench
+  Smartphone, Wrench
 } from 'lucide-react';
 
 import { useFirstVisitCelebration } from '../hooks/useFirstVisitCelebration';
@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next';
 const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(e.trim());
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'https://nakodamobile.com/api';
 
-type Product = {
+type Product = {  
   _id: string;
   name: string;
   slug?: string;
@@ -74,10 +74,10 @@ const Home: React.FC = () => {
 const { user, isAuthenticated } = useAuth();
 
 useFirstVisitCelebration({
-  enabled: Boolean(isAuthenticated),          // run after login
-  userId: user?.id || user?.id,              // per-user cooldown
-  cooldownHours: 24,                           // change to 0 for “first login only” if you store a server flag
-  containerRef: overlayRef,                    // render on this overlay
+  enabled: Boolean(isAuthenticated),        
+  userId: user?.id || user?.id,             
+  cooldownHours: 24,                           
+  containerRef: overlayRef,                    
 });
 
   useTranslation();

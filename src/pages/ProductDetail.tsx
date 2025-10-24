@@ -1,5 +1,5 @@
-// src/pages/ProductDetail.tsx — B2C detail page with full SEO
-import React, { useState, useEffect, useMemo } from 'react';
+// src/pages/ProductDetail.tsx — B2C detail page with full SEO + bottom image strip
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -14,6 +14,7 @@ import {
   RotateCcw,
   MessageCircle,
   CreditCard,
+  X,
 } from 'lucide-react';
 import { productService } from '../services/productService';
 import type { Product } from '../types';
@@ -239,7 +240,29 @@ const ProductDetail: React.FC = () => {
   const productId = useMemo<string | undefined>(() => (product ? ((product as any)._id || (product as any).id) : undefined), [product]);
   const inWishlist = productId ? isInWishlist(productId) : false;
 
-  /* ---------------------------- Render guards ---------------------------- */
+  /* ---------------- Bottom image strip: state + sentinel + observer ---------------- */
+  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
+  const [showBottomStrip, setShowBottomStrip] = useState(false);
+
+  const validImages: string[] = normalizedImages;
+  const currentImage: string | undefined = validImages[selectedImage] || validImages[0];
+  const hasMultipleImages = validImages.length > 1;
+
+  useEffect(() => {
+    const el = bottomSentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((e) => e.isIntersecting);
+        setShowBottomStrip(visible && validImages.length > 0);
+      },
+      { root: null, rootMargin: '0px', threshold: 0.1 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [validImages.length]);
+
+  /* --------- SEO: canonical, title/desc, Product + Breadcrumb JSON-LD --------- */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -316,11 +339,6 @@ const ProductDetail: React.FC = () => {
     );
   }
 
-  const validImages: string[] = normalizedImages;
-  const currentImage: string | undefined = validImages[selectedImage] || validImages[0];
-  const hasMultipleImages = validImages.length > 1;
-
-  /* --------- SEO: canonical, title/desc, Product + Breadcrumb JSON-LD --------- */
   const canonicalPath = `/product/${productHandle(product)}`;
   const avgRating =
     Number((product as any)?.rating) ||
@@ -331,8 +349,7 @@ const ProductDetail: React.FC = () => {
     Number((product as any)?.reviewCount) ||
     undefined;
 
-  const seoTitle =
-    `${product.name} Price in India | Buy Online`;
+  const seoTitle = `${product.name} Price in India | Buy Online`;
   const seoDesc =
     (product.description || '')
       .replace(/\s+/g, ' ')
@@ -355,9 +372,6 @@ const ProductDetail: React.FC = () => {
       priceCurrency: 'INR',
       price: product.price ?? undefined,
       url: productUrlAbs(product),
-      // optional: add itemCondition or seller if you have
-      // itemCondition: 'https://schema.org/NewCondition',
-      // seller: { '@type': 'Organization', name: 'Nakoda Mobile' },
     },
   };
   if (avgRating && reviewCount) {
@@ -712,8 +726,49 @@ const ProductDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* No related rails rendered */}
+        {/* Spacer to ensure sentinel enters viewport cleanly */}
+        <div ref={bottomSentinelRef} className="h-24" />
+
       </div>
+
+      {/* Fixed bottom image strip */}
+      {showBottomStrip && hasMultipleImages && (
+        <div className="fixed inset-x-0 bottom-0 z-50">
+          <div className="absolute inset-0 bg-gradient-to-t from-white/95 via-white/80 to-transparent pointer-events-none" />
+          <div className="relative mx-auto max-w-7xl px-3 sm:px-6 pb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs sm:text-sm text-gray-700">More images</div>
+              <button
+                onClick={() => setShowBottomStrip(false)}
+                className="inline-flex items-center justify-center p-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+                aria-label="Close image strip"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [-ms-overflow-style:none]">
+              {validImages.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedImage(idx)}
+                  className={`relative flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all
+                              ${selectedImage === idx ? 'border-blue-600 shadow' : 'border-gray-200 hover:border-gray-300'}`}
+                  aria-label={`Open image ${idx + 1}`}
+                  style={{ width: 220, height: 220 }}
+                >
+                  <img
+                    src={safeImage(img, 440, 440)}
+                    alt={`${product.name} preview ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).src = safeImage(undefined, 440, 440); }}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sticky mobile checkout bar */}
       <div className="fixed inset-x-0 bottom-0 sm:hidden border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 z-40">
@@ -726,8 +781,7 @@ const ProductDetail: React.FC = () => {
             onClick={handleAddToCart}
             disabled={!(product as any).inStock || isLoading}
             className={`h-10 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 ${
-              (product as any).inStock && !isLoading ? 'bg-blue-600 text-white'
- : 'bg-gray-300 text-gray-500'
+              (product as any).inStock && !isLoading ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
             }`}
           >
             <ShoppingCart className="h-4 w-4" /> Add
