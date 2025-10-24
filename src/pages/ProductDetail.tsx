@@ -248,7 +248,16 @@ const currentImage: string | undefined =
   validImages[selectedImage] || validImages[0];
 const hasMultipleImages = validImages.length > 1;
 
-
+useEffect(() => {
+  const el = bottomSentinelRef.current;
+  if (!el) return;
+  const io = new IntersectionObserver(
+    (ents) => setShowBottomStrip(ents.some(e => e.isIntersecting) && hasMultipleImages),
+    { threshold: 0.1 }
+  );
+  io.observe(el);
+  return () => io.disconnect();
+}, [hasMultipleImages]);
 
 
   /* ---------------------------- Render guards ---------------------------- */
@@ -330,16 +339,6 @@ const hasMultipleImages = validImages.length > 1;
 
  
 
-  useEffect(() => {
-  const el = bottomSentinelRef.current;
-  if (!el) return;
-  const io = new IntersectionObserver(
-    (ents) => setShowBottomStrip(ents.some(e => e.isIntersecting) && hasMultipleImages),
-    { threshold: 0.1 }
-  );
-  io.observe(el);
-  return () => io.disconnect();
-}, [hasMultipleImages]);
 
 
   /* --------- SEO: canonical, title/desc, Product + Breadcrumb JSON-LD --------- */
