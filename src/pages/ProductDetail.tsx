@@ -107,6 +107,19 @@ const ProductDetail: React.FC = () => {
       })
       .filter((s: string) => typeof s === 'string' && s.trim() !== '' && s !== 'undefined' && s !== 'null');
   }, [product]);
+  // prefer product.highlightImages; fallback to all images
+const highlightImages = useMemo<string[]>(() => {
+  const raw = (product as any)?.highlightImages;
+  const arr = Array.isArray(raw) ? raw : normalizedImages;
+  const seen = new Set<string>();
+  return arr.filter((u) => {
+    if (typeof u !== 'string' || !u) return false;
+    if (seen.has(u)) return false;
+    seen.add(u);
+    return true;
+  });
+}, [product, normalizedImages]);
+
 
   /* Fetch product */
   useEffect(() => {
@@ -623,6 +636,68 @@ const ProductDetail: React.FC = () => {
               </div>
             </div>
           </div>
+          {/* Vertical Highlights: mobile full-bleed, desktop centered */}
+{highlightImages.length > 0 && (
+  <section id="highlights" className="border-t bg-white">
+    <div className="max-w-6xl mx-auto sm:px-6 py-2 sm:py-6">
+      <h2 className="sr-only">Product Highlights</h2>
+
+      {/* Desktop helper: keep price/actions visible while scrolling images */}
+      <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-8">
+        {/* Long image column */}
+        <div className="flex flex-col">
+          {highlightImages.map((img, i) => (
+            <figure key={i} className="-mx-4 sm:mx-0">
+              <img
+                src={safeImage(img, 1200, 1600)}
+                alt={`${product.name} highlight ${i + 1}`}
+                loading="lazy"
+                decoding="async"
+                className="w-full h-auto select-none pointer-events-none sm:rounded-xl sm:shadow"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = safeImage(undefined, 1200, 1600);
+                }}
+                srcSet={[
+                  `${safeImage(img, 640, 900)} 640w`,
+                  `${safeImage(img, 828, 1200)} 828w`,
+                  `${safeImage(img, 1080, 1500)} 1080w`,
+                  `${safeImage(img, 1440, 2000)} 1440w`,
+                ].join(', ')}
+                sizes="(max-width: 640px) 100vw, 960px"
+              />
+            </figure>
+          ))}
+        </div>
+
+        {/* Desktop-only sticky buy card */}
+        <aside className="hidden lg:block">
+          <div className="sticky top-20 border rounded-xl p-4 shadow-sm">
+            <div className="text-2xl font-semibold">₹{product.price?.toLocaleString('en-IN')}</div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={handleAddToCart}
+                disabled={!(product as any).inStock || isLoading}
+                className={`h-10 rounded-lg font-medium ${
+                  (product as any).inStock && !isLoading ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
+                }`}
+              >
+                Add to Cart
+              </button>
+              <button
+                onClick={handleBuyNow}
+                disabled={!(product as any).inStock || isLoading}
+                className="h-10 rounded-lg font-medium bg-gray-900 text-white"
+              >
+                Buy Now
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+)}
+
 
           {/* Tabs */}
           <div className="border-t">
