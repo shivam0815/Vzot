@@ -242,6 +242,14 @@ const [showBottomStrip, setShowBottomStrip] = useState(false);
 
   const productId = useMemo<string | undefined>(() => (product ? ((product as any)._id || (product as any).id) : undefined), [product]);
   const inWishlist = productId ? isInWishlist(productId) : false;
+  // derive images BEFORE any early returns
+const validImages: string[] = normalizedImages;
+const currentImage: string | undefined =
+  validImages[selectedImage] || validImages[0];
+const hasMultipleImages = validImages.length > 1;
+
+
+
 
   /* ---------------------------- Render guards ---------------------------- */
   if (loading) {
@@ -320,9 +328,7 @@ const [showBottomStrip, setShowBottomStrip] = useState(false);
     );
   }
 
-  const validImages: string[] = normalizedImages;
-  const currentImage: string | undefined = validImages[selectedImage] || validImages[0];
-  const hasMultipleImages = validImages.length > 1;
+ 
 
   useEffect(() => {
   const el = bottomSentinelRef.current;
@@ -463,7 +469,7 @@ const [showBottomStrip, setShowBottomStrip] = useState(false);
             {/* Product Info */}
             <div className="space-y-4 sm:space-y-6">
               <div>
-                <h1 className="text-2xl sm:3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
                   <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{product.category}</span>
                   {(product as any).brand && (
