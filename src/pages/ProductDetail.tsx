@@ -163,18 +163,18 @@ const [showBottomStrip, setShowBottomStrip] = useState(false);
     return final;
   };
 
-  /* If URL has #reviews, open tab and focus */
-  useEffect(() => {
-    if (window.location.hash === '#reviews') {
-      setActiveTab('reviews');
-      setTimeout(() => {
-        const el = document.getElementById('review-textarea') as HTMLTextAreaElement | null;
-        if (el) el.focus();
-      }, 300);
-    }
-  }, []);
 
-  const [activeTab, setActiveTab] = useState<'description' | 'specifications' | 'reviews'>('description');
+  const [activeTab, setActiveTab] =
+  useState<'description' | 'specifications' | 'reviews'>('description');
+
+ useEffect(() => {
+   if (window.location.hash === '#reviews') {
+     setActiveTab('reviews');
+     setTimeout(() => {
+       const el = document.getElementById('review-textarea') as HTMLTextAreaElement | null;
+       if (el) el.focus();      }, 300);    }  }, []);
+
+ 
 
   const { addToWishlist: addWish, removeFromWishlist: remWish } = { addToWishlist, removeFromWishlist };
 
