@@ -44,7 +44,8 @@ const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   if (typeof raw === 'object') return raw as Record<string, unknown>;
   return {};
 };
-
+const fullImage = (src?: string | null) =>
+  resolveImageUrl(src ?? undefined) || (src ?? '');
 const prettyKey = (k: string) =>
   k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -730,34 +731,29 @@ const highlightImages = useMemo<string[]>(() => {
 {/* Product Highlight Section — full-height vertical scroll for mobile + desktop */}
 {highlightImages.length > 0 && (
   <section id="highlights" className="border-t bg-white mt-6 sm:mt-10">
-    <div className="max-w-[1280px] mx-auto sm:px-6 py-4 sm:py-8">
+    <div className="max-w-[1280px] mx-auto sm:px-6 py-0">
       <h2 className="sr-only">Product Highlights</h2>
 
-      {/* Desktop grid with image column and sticky buy section */}
       <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-10">
-        {/* Vertical image list */}
-        <div className="flex flex-col space-y-6">
+        {/* full-width vertical images */}
+        <div className="flex flex-col space-y-0">
           {highlightImages.map((img, i) => (
-            <figure
-              key={i}
-              className="bg-white flex items-center justify-center rounded-xl overflow-hidden shadow-sm"
-            >
+            <figure key={i} className="-mx-4 sm:-mx-6 lg:mx-0">
               <img
-                src={safeImage(img, 1200, 1600)}
+                src={fullImage(img)}
                 alt={`${product.name} highlight ${i + 1}`}
                 loading="lazy"
                 decoding="async"
-                className="w-full h-auto max-h-[90vh] object-contain bg-white"
+                className="block w-full h-auto"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = safeImage(undefined, 1200, 1600);
+                  (e.target as HTMLImageElement).src = fullImage(undefined);
                 }}
               />
             </figure>
           ))}
         </div>
 
-        {/* Right column sticky buy card for desktop */}
-       
+    
       </div>
     </div>
   </section>
