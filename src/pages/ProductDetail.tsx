@@ -728,15 +728,14 @@ const [showBottomStrip, setShowBottomStrip] = useState(false);
           </div>
         </div>
 
-        {/* No related rails rendered */}
-        {/* No related rails rendered */}
+        
         <div className="h-20 sm:h-6" />
 <div ref={bottomSentinelRef} className="h-20" />
 
       </div>
 
   {showBottomStrip && hasMultipleImages && (
-  // sits ABOVE the mobile checkout bar; full bottom on >=sm
+  
   <div className="fixed inset-x-0 bottom-16 sm:bottom-0 z-50">
     <div className="absolute inset-0 bg-gradient-to-t from-white/95 via-white/80 to-transparent pointer-events-none" />
     <div className="relative mx-auto max-w-7xl px-3 sm:px-6 pb-3">
