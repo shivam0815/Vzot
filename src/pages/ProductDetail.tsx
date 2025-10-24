@@ -25,7 +25,7 @@ import SEO from '../components/Layout/SEO';
 import Reviews from '../components/Layout/Reviews';
 import Breadcrumbs from './Breadcrumbs';
 
-/* ------------------------- Helpers for specs ------------------------- */
+/* ------------------------- Helpers ------------------------- */
 const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   if (!raw) return {};
   if (raw instanceof Map) return Object.fromEntries(raw as Map<string, unknown>);
@@ -44,8 +44,16 @@ const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   if (typeof raw === 'object') return raw as Record<string, unknown>;
   return {};
 };
+
 const fullImage = (src?: string | null) =>
   resolveImageUrl(src ?? undefined) || (src ?? '');
+
+const safeImage = (src?: string | null, w = 400, h = 400) => {
+  const resolved = resolveImageUrl(src ?? undefined);
+  if (resolved) return resolved;
+  return `https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=${w}&h=${h}&fit=crop&crop=center&auto=format&q=60`;
+};
+
 const prettyKey = (k: string) =>
   k.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -58,13 +66,6 @@ const renderSpecValue = (val: unknown) => {
   return <code className="text-xs whitespace-pre-wrap break-words">{JSON.stringify(val, null, 2)}</code>;
 };
 
-/* --------------------- Image + URL helpers --------------------- */
-const safeImage = (src?: string | null, w = 400, h = 400) => {
-  const resolved = resolveImageUrl(src ?? undefined);
-  if (resolved) return resolved;
-  return `https://images.unsplash.com/photo-1586953208448-b95a79798f07?w=${w}&h=${h}&fit=crop&crop=center&auto=format&q=60`;
-};
-
 const slugify = (s?: string) =>
   (s || '')
     .toString()
@@ -74,7 +75,6 @@ const slugify = (s?: string) =>
     .replace(/[^a-z0-9-]/g, '');
 
 const productHandle = (p: any) => slugify(p?.slug || p?.name) || (p?._id || p?.id) || '';
-
 const productUrlAbs = (p: any) => `https://nakodamobile.com/product/${productHandle(p)}`;
 
 /* ------------------------------ Component ------------------------------ */
@@ -86,14 +86,13 @@ const ProductDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<number>(0);
 
-  // quantity (raw typing + committed value)
   const [quantity, setQuantity] = useState<number>(1);
   const [rawQty, setRawQty] = useState<string>('1');
 
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
 
-  /* Normalize images (string URLs or object {secure_url}) → string[] */
+  /* Normalize images */
   const normalizedImages = useMemo<string[]>(() => {
     const raw = (product as any)?.images;
     const arr: unknown[] = Array.isArray(raw) ? raw : [];
@@ -108,19 +107,18 @@ const ProductDetail: React.FC = () => {
       })
       .filter((s: string) => typeof s === 'string' && s.trim() !== '' && s !== 'undefined' && s !== 'null');
   }, [product]);
-  // prefer product.highlightImages; fallback to all images
-const highlightImages = useMemo<string[]>(() => {
-  const raw = (product as any)?.highlightImages;
-  const arr = Array.isArray(raw) ? raw : normalizedImages;
-  const seen = new Set<string>();
-  return arr.filter((u) => {
-    if (typeof u !== 'string' || !u) return false;
-    if (seen.has(u)) return false;
-    seen.add(u);
-    return true;
-  });
-}, [product, normalizedImages]);
 
+  const highlightImages = useMemo<string[]>(() => {
+    const raw = (product as any)?.highlightImages;
+    const arr = Array.isArray(raw) ? raw : normalizedImages;
+    const seen = new Set<string>();
+    return arr.filter((u) => {
+      if (typeof u !== 'string' || !u) return false;
+      if (seen.has(u)) return false;
+      seen.add(u);
+      return true;
+    });
+  }, [product, normalizedImages]);
 
   /* Fetch product */
   useEffect(() => {
@@ -145,19 +143,14 @@ const highlightImages = useMemo<string[]>(() => {
     fetchProduct();
   }, [id]);
 
-  /* Clamp helper for qty */
+  /* Qty helpers */
   const clampQty = (raw: unknown, max: number) => {
     const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
     if (!Number.isFinite(n) || n <= 0) return 1;
     return Math.max(1, Math.min(max, n));
   };
+  const maxQty = (product as any)?.inStock ? Math.max(1, Number((product as any).stockQuantity) || 99) : 0;
 
-  // Stock cap: 1..stock (fallback 99 if stock unknown). When out of stock → 0
-  const maxQty = (product as any)?.inStock
-    ? Math.max(1, Number((product as any).stockQuantity) || 99)
-    : 0;
-
-  // sync when product/maxQty changes
   useEffect(() => {
     if (!product) return;
     const init = clampQty(quantity, maxQty || 1);
@@ -165,7 +158,6 @@ const highlightImages = useMemo<string[]>(() => {
     setRawQty(String(init));
   }, [product, maxQty]);
 
-  // commit helper used by +/- / blur / enter / actions
   const commitQty = (v: string | number) => {
     const final = clampQty(v, maxQty || 1);
     setQuantity(final);
@@ -173,7 +165,7 @@ const highlightImages = useMemo<string[]>(() => {
     return final;
   };
 
-  /* If URL has #reviews, open tab and focus */
+  /* Reviews deep-link */
   useEffect(() => {
     if (window.location.hash === '#reviews') {
       setActiveTab('reviews');
@@ -188,6 +180,7 @@ const highlightImages = useMemo<string[]>(() => {
 
   const { addToWishlist: addWish, removeFromWishlist: remWish } = { addToWishlist, removeFromWishlist };
 
+  /* Actions */
   const handleAddToCart = async () => {
     const isUserLoggedIn = () => {
       try {
@@ -199,24 +192,19 @@ const highlightImages = useMemo<string[]>(() => {
         return false;
       }
     };
-
     if (!isUserLoggedIn()) {
       toast.error('Please log in to add items to your cart');
       navigate('/login', { state: { from: location } });
       return;
     }
-
     if (!product || !maxQty) return;
 
     try {
       const productId: string = (product as any)._id || (product as any).id;
-      if (!productId) {
-        toast.error('Product ID not found');
-        return;
-      }
+      if (!productId) { toast.error('Product ID not found'); return; }
       const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
       await addToCart(productId, finalQty);
-      toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart!`);
+      toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to add to cart');
     }
@@ -253,13 +241,13 @@ const highlightImages = useMemo<string[]>(() => {
   const productId = useMemo<string | undefined>(() => (product ? ((product as any)._id || (product as any).id) : undefined), [product]);
   const inWishlist = productId ? isInWishlist(productId) : false;
 
-  /* ---------------------------- Render guards ---------------------------- */
+  /* Guards */
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading product details...</p>
+          <p className="text-gray-600">Loading product details</p>
         </div>
       </div>
     );
@@ -296,16 +284,10 @@ const highlightImages = useMemo<string[]>(() => {
             </div>
           )}
           <div className="space-y-3">
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
+            <button onClick={() => window.location.reload()} className="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
               Try Again
             </button>
-            <Link
-              to="/products"
-              className="block w-full bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 transition-colors text-center"
-            >
+            <Link to="/products" className="block w-full bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 text-center">
               Back to Products
             </Link>
           </div>
@@ -321,7 +303,7 @@ const highlightImages = useMemo<string[]>(() => {
           <div className="text-6xl mb-4">🔍</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Product Not Found</h2>
           <p className="text-gray-600 mb-6">The product you're looking for doesn't exist or has been removed.</p>
-          <Link to="/products" className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+          <Link to="/products" className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
             <ChevronLeft className="h-4 w-4 mr-2" />
             Back to Products
           </Link>
@@ -334,23 +316,14 @@ const highlightImages = useMemo<string[]>(() => {
   const currentImage: string | undefined = validImages[selectedImage] || validImages[0];
   const hasMultipleImages = validImages.length > 1;
 
-  /* --------- SEO: canonical, title/desc, Product + Breadcrumb JSON-LD --------- */
+  /* SEO data */
   const canonicalPath = `/product/${productHandle(product)}`;
-  const avgRating =
-    Number((product as any)?.rating) ||
-    Number((product as any)?.averageRating) ||
-    undefined;
-  const reviewCount =
-    Number((product as any)?.reviewsCount) ||
-    Number((product as any)?.reviewCount) ||
-    undefined;
+  const avgRating = Number((product as any)?.rating) || Number((product as any)?.averageRating) || undefined;
+  const reviewCount = Number((product as any)?.reviewsCount) || Number((product as any)?.reviewCount) || undefined;
 
-  const seoTitle =
-    `${product.name} Price in India | Buy Online`;
-  const seoDesc =
-    (product.description || '')
-      .replace(/\s+/g, ' ')
-      .slice(0, 155) || `${product.name} available at Nakoda Mobile. Fast delivery. GST invoice.`;
+  const seoTitle = `${product.name} Price in India | Buy Online`;
+  const seoDesc = (product.description || '').replace(/\s+/g, ' ').slice(0, 155) ||
+    `${product.name} available at Nakoda Mobile. Fast delivery. GST invoice.`;
 
   const productJsonLd: any = {
     '@context': 'https://schema.org',
@@ -369,19 +342,11 @@ const highlightImages = useMemo<string[]>(() => {
       priceCurrency: 'INR',
       price: product.price ?? undefined,
       url: productUrlAbs(product),
-      // optional: add itemCondition or seller if you have
-      // itemCondition: 'https://schema.org/NewCondition',
-      // seller: { '@type': 'Organization', name: 'Nakoda Mobile' },
     },
   };
   if (avgRating && reviewCount) {
-    productJsonLd.aggregateRating = {
-      '@type': 'AggregateRating',
-      ratingValue: String(avgRating),
-      reviewCount: String(reviewCount),
-    };
+    productJsonLd.aggregateRating = { '@type': 'AggregateRating', ratingValue: String(avgRating), reviewCount: String(reviewCount) };
   }
-
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -395,7 +360,6 @@ const highlightImages = useMemo<string[]>(() => {
   /* -------------------------------- Render -------------------------------- */
   return (
     <div className="min-h-screen bg-gray-50 pb-24 sm:pb-10">
-      {/* SEO head */}
       <SEO
         title={seoTitle}
         description={seoDesc}
@@ -406,18 +370,11 @@ const highlightImages = useMemo<string[]>(() => {
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        {/* Breadcrumb */}
-        <Breadcrumbs
-          items={[
-            { label: 'Home', to: '/' },
-            { label: 'Products', to: '/products' },
-            { label: product.name },
-          ]}
-        />
+        <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Products', to: '/products' }, { label: product.name }]} />
 
         <div className="bg-white rounded-xl shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
-            {/* Image Gallery */}
+            {/* Gallery */}
             <div className="space-y-3 sm:space-y-4">
               <div className="aspect-[4/4] sm:aspect-square bg-gray-100 rounded-xl overflow-hidden relative">
                 {currentImage ? (
@@ -458,19 +415,16 @@ const highlightImages = useMemo<string[]>(() => {
               )}
             </div>
 
-            {/* Product Info */}
+            {/* Info */}
             <div className="space-y-4 sm:space-y-6">
               <div>
-                <h1 className="text-2xl sm:3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
                   <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{product.category}</span>
-                  {(product as any).brand && (
-                    <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">{(product as any).brand}</span>
-                  )}
+                  {(product as any).brand && <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">{(product as any).brand}</span>}
                 </div>
               </div>
 
-              {/* Price */}
               <div className="flex items-center flex-wrap gap-2 sm:gap-4">
                 <span className="text-2xl sm:text-3xl font-bold text-gray-900">₹{product.price?.toLocaleString('en-IN')}</span>
                 {(product as any).originalPrice && (product as any).originalPrice > (product.price ?? 0) && (
@@ -483,7 +437,6 @@ const highlightImages = useMemo<string[]>(() => {
                 )}
               </div>
 
-              {/* Quantity */}
               {(product as any).inStock && (
                 <div className="flex items-center gap-3 sm:gap-4">
                   <label className="text-gray-700 text-sm sm:text-base font-medium">Qty</label>
@@ -533,18 +486,15 @@ const highlightImages = useMemo<string[]>(() => {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="grid grid-cols-2 gap-2 sm:flex sm:items-stretch sm:gap-3">
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleAddToCart}
                   disabled={!(product as any).inStock || isLoading}
-                  className={`col-span-2 sm:col-auto h-11 px-4 rounded-lg font-medium
-                    inline-flex items-center justify-center gap-2 transition-all
-                    ${(product as any).inStock && !isLoading
-                      ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                  className={`col-span-2 sm:col-auto h-11 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-all ${
+                    (product as any).inStock && !isLoading ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
                   aria-label="Add to Cart"
                 >
                   <ShoppingCart className="h-5 w-5" />
@@ -556,9 +506,7 @@ const highlightImages = useMemo<string[]>(() => {
                   whileTap={{ scale: 0.95 }}
                   onClick={handleBuyNow}
                   disabled={!(product as any).inStock || isLoading}
-                  className="col-span-2 sm:col-auto h-11 px-4 rounded-lg font-medium
-                             inline-flex items-center justify-center gap-2 bg-gray-900 text-white hover:bg-black
-                             disabled:opacity-60"
+                  className="col-span-2 sm:col-auto h-11 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 bg-gray-900 text-white hover:bg-black disabled:opacity-60"
                   aria-label="Buy Now"
                 >
                   <CreditCard className="h-5 w-5" />
@@ -571,8 +519,9 @@ const highlightImages = useMemo<string[]>(() => {
                     whileTap={{ scale: 0.95 }}
                     onClick={handleWishlistToggle}
                     disabled={wishlistLoading}
-                    className={`w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center p-0 border rounded-lg
-                      ${inWishlist ? 'border-red-300 bg-red-50 text-red-600 hover:bg-red-100' : 'border-gray-300 hover:bg-gray-50'}`}
+                    className={`w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center p-0 border rounded-lg ${
+                      inWishlist ? 'border-red-300 bg-red-50 text-red-600 hover:bg-red-100' : 'border-gray-300 hover:bg-gray-50'
+                    }`}
                     title={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
                     aria-label={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
                   >
@@ -589,11 +538,11 @@ const highlightImages = useMemo<string[]>(() => {
                       if ((navigator as any).share) {
                         (navigator as any).share({ title: product.name, text, url }).catch(() => {
                           navigator.clipboard.writeText(url);
-                          toast.success('Product link copied to clipboard!');
+                          toast.success('Product link copied to clipboard');
                         });
                       } else {
                         navigator.clipboard.writeText(url);
-                        toast.success('Product link copied to clipboard!');
+                        toast.success('Product link copied to clipboard');
                       }
                     }}
                     title="Share"
@@ -615,7 +564,6 @@ const highlightImages = useMemo<string[]>(() => {
                 </div>
               </div>
 
-              {/* Trust Badges */}
               <div className="border-t pt-4 sm:pt-6">
                 <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
                   <div className="flex flex-col items-center space-y-1.5 sm:space-y-2">
@@ -637,7 +585,6 @@ const highlightImages = useMemo<string[]>(() => {
               </div>
             </div>
           </div>
-          
 
           {/* Tabs */}
           <div className="border-t">
@@ -727,41 +674,30 @@ const highlightImages = useMemo<string[]>(() => {
           </div>
         </div>
 
-        
-{/* Product Highlight Section — full-height vertical scroll for mobile + desktop */}
-{highlightImages.length > 0 && (
-  <section id="highlights" className="border-t bg-white mt-6 sm:mt-10">
-    <div className="max-w-[1280px] mx-auto sm:px-6 py-0">
-      <h2 className="sr-only">Product Highlights</h2>
-
-      <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-10">
-        {/* full-width vertical images */}
-        <div className="flex flex-col space-y-0">
-          {highlightImages.map((img, i) => (
-            <figure key={i} className="-mx-4 sm:-mx-6 lg:mx-0">
-              <img
-                src={fullImage(img)}
-                alt={`${product.name} highlight ${i + 1}`}
-                loading="lazy"
-                decoding="async"
-                className="block w-full h-auto"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = fullImage(undefined);
-                }}
-              />
-            </figure>
-          ))}
-        </div>
-
-    
-      </div>
-    </div>
-  </section>
-)}
-
-
-
-       
+        {/* Product Highlights: single full-width column so images show 100% width */}
+        {highlightImages.length > 0 && (
+          <section id="highlights" className="border-t bg-white mt-6 sm:mt-10">
+            <div className="max-w-[1280px] mx-auto sm:px-6 py-0">
+              <h2 className="sr-only">Product Highlights</h2>
+              <div>
+                <div className="flex flex-col space-y-0">
+                  {highlightImages.map((img, i) => (
+                    <figure key={i} className="mx-[-1rem] sm:mx-[-1.5rem] lg:mx-0">
+                      <img
+                        src={fullImage(img)}
+                        alt={`${product.name} highlight ${i + 1}`}
+                        loading="lazy"
+                        decoding="async"
+                        className="block w-full h-auto"
+                        onError={(e) => { (e.target as HTMLImageElement).src = fullImage(undefined); }}
+                      />
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
 
       {/* Sticky mobile checkout bar */}
@@ -775,8 +711,7 @@ const highlightImages = useMemo<string[]>(() => {
             onClick={handleAddToCart}
             disabled={!(product as any).inStock || isLoading}
             className={`h-10 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 ${
-              (product as any).inStock && !isLoading ? 'bg-blue-600 text-white'
- : 'bg-gray-300 text-gray-500'
+              (product as any).inStock && !isLoading ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
             }`}
           >
             <ShoppingCart className="h-4 w-4" /> Add
