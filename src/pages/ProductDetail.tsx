@@ -1,5 +1,5 @@
 // src/pages/ProductDetail.tsx — B2C detail page with full SEO
-import React, { useState, useEffect, useMemo,useRef  } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -14,7 +14,6 @@ import {
   RotateCcw,
   MessageCircle,
   CreditCard,
-  X,
 } from 'lucide-react';
 import { productService } from '../services/productService';
 import type { Product } from '../types';
@@ -89,9 +88,6 @@ const ProductDetail: React.FC = () => {
   // quantity (raw typing + committed value)
   const [quantity, setQuantity] = useState<number>(1);
   const [rawQty, setRawQty] = useState<string>('1');
-  const bottomSentinelRef = useRef<HTMLDivElement | null>(null);
-const [showBottomStrip, setShowBottomStrip] = useState(false);
-
 
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
@@ -163,18 +159,18 @@ const [showBottomStrip, setShowBottomStrip] = useState(false);
     return final;
   };
 
+  /* If URL has #reviews, open tab and focus */
+  useEffect(() => {
+    if (window.location.hash === '#reviews') {
+      setActiveTab('reviews');
+      setTimeout(() => {
+        const el = document.getElementById('review-textarea') as HTMLTextAreaElement | null;
+        if (el) el.focus();
+      }, 300);
+    }
+  }, []);
 
-  const [activeTab, setActiveTab] =
-  useState<'description' | 'specifications' | 'reviews'>('description');
-
- useEffect(() => {
-   if (window.location.hash === '#reviews') {
-     setActiveTab('reviews');
-     setTimeout(() => {
-       const el = document.getElementById('review-textarea') as HTMLTextAreaElement | null;
-       if (el) el.focus();      }, 300);    }  }, []);
-
- 
+  const [activeTab, setActiveTab] = useState<'description' | 'specifications' | 'reviews'>('description');
 
   const { addToWishlist: addWish, removeFromWishlist: remWish } = { addToWishlist, removeFromWishlist };
 
@@ -242,23 +238,6 @@ const [showBottomStrip, setShowBottomStrip] = useState(false);
 
   const productId = useMemo<string | undefined>(() => (product ? ((product as any)._id || (product as any).id) : undefined), [product]);
   const inWishlist = productId ? isInWishlist(productId) : false;
-  // derive images BEFORE any early returns
-const validImages: string[] = normalizedImages;
-const currentImage: string | undefined =
-  validImages[selectedImage] || validImages[0];
-const hasMultipleImages = validImages.length > 1;
-
-useEffect(() => {
-  const el = bottomSentinelRef.current;
-  if (!el) return;
-  const io = new IntersectionObserver(
-    (ents) => setShowBottomStrip(ents.some(e => e.isIntersecting) && hasMultipleImages),
-    { threshold: 0.1 }
-  );
-  io.observe(el);
-  return () => io.disconnect();
-}, [hasMultipleImages]);
-
 
   /* ---------------------------- Render guards ---------------------------- */
   if (loading) {
@@ -337,9 +316,9 @@ useEffect(() => {
     );
   }
 
- 
-
-
+  const validImages: string[] = normalizedImages;
+  const currentImage: string | undefined = validImages[selectedImage] || validImages[0];
+  const hasMultipleImages = validImages.length > 1;
 
   /* --------- SEO: canonical, title/desc, Product + Breadcrumb JSON-LD --------- */
   const canonicalPath = `/product/${productHandle(product)}`;
@@ -468,7 +447,7 @@ useEffect(() => {
             {/* Product Info */}
             <div className="space-y-4 sm:space-y-6">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
+                <h1 className="text-2xl sm:3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
                   <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{product.category}</span>
                   {(product as any).brand && (
@@ -733,52 +712,8 @@ useEffect(() => {
           </div>
         </div>
 
-        
-        <div className="h-20 sm:h-6" />
-<div ref={bottomSentinelRef} className="h-20" />
-
+        {/* No related rails rendered */}
       </div>
-
-  {showBottomStrip && hasMultipleImages && (
-  
-  <div className="fixed inset-x-0 bottom-16 sm:bottom-0 z-50">
-    <div className="absolute inset-0 bg-gradient-to-t from-white/95 via-white/80 to-transparent pointer-events-none" />
-    <div className="relative mx-auto max-w-7xl px-3 sm:px-6 pb-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs sm:text-sm text-gray-700">Quick Product Highlights</div>
-        <button
-          onClick={() => setShowBottomStrip(false)}
-          className="p-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
-          aria-label="Close image strip"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [-ms-overflow-style:none]">
-        {validImages.map((img, idx) => (
-          <button
-            key={idx}
-            onClick={() => setSelectedImage(idx)}
-            className={`relative flex-shrink-0 rounded-xl overflow-hidden border-2 ${
-              selectedImage === idx ? 'border-blue-600' : 'border-gray-200 hover:border-gray-300'
-            }`}
-            aria-label={`Open image ${idx + 1}`}
-          >
-            <img
-              src={safeImage(img, 440, 440)}
-              alt={`${product.name} highlight ${idx + 1}`}
-              className="w-[140px] h-[140px] sm:w-[220px] sm:h-[220px] object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).src = safeImage(undefined, 440, 440); }}
-            />
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-)}
-
-
 
       {/* Sticky mobile checkout bar */}
       <div className="fixed inset-x-0 bottom-0 sm:hidden border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 z-40">
