@@ -595,14 +595,14 @@ const Search: React.FC = () => {
                 })}
               </ul>
               <div className="px-3 py-2 border-t bg-white">
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => submitQuery(inputValue)}
-                  className="w-full inline-flex items-center justify-center gap-2 text-sm text-blue-700 font-medium hover:underline"
-                >
-                  View all results for “{inputValue}”
-                  <ArrowRight className="h-4 w-4" />
-                </button>
+                <Link
+    to={`/search?q=${encodeURIComponent(inputValue)}`}
+    onMouseDown={(e) => e.preventDefault()}
+    className="w-full inline-flex items-center justify-center gap-2 text-sm text-blue-700 font-medium hover:underline"
+  >
+    View all results for “{inputValue}”
+    <ArrowRight className="h-4 w-4" />
+  </Link>
               </div>
             </div>
           )}

@@ -25,20 +25,27 @@ type Category = {
 
 // ---- Categories (update image paths to your assets) ----
 const CATEGORIES: Category[] = [
-   { label: 'Chargers',              slug: 'chargers',           img: '/Charger1.webp' },
-   { label: 'Car Charger',       slug: 'Car-Charger',    img: '/CarCharger.webp' },
-   { label: 'Data Cables',                slug: 'Data-Cables',             img: '/cable.png' },
-  { label: 'True Wireless Earbuds', slug: 'tws',                img: '/Earbud-removebg-preview.png' },
-   { label: 'Neckbands',             slug: 'neckband',           img: '/Neckband-removebg-preview.png' },
-  { label: 'Bluetooth Speakers',     slug: 'bluetooth-speakers',  img: '/Bluetooth-Speaker.webp' },
-  { label: 'Power Banks',           slug: 'power-bank',         img: '/Powerbank.webp' },
-  { label: 'Mobile ICs',            slug: 'ICs',          img: '/ics.webp' },
-
-    { label: 'Mobile Tools',          slug: 'mobile-repairing-tools', img: '/Reapring-Tools.webp' },
-
+  { label: 'Chargers', slug: 'chargers', img: '/Charger1.webp' },
+  { label: 'Car Charger', slug: 'Car-Charger', img: '/CarCharger.webp' },
+  { label: 'Data Cables', slug: 'Data-Cables', img: '/cable.png' },
+  { label: 'True Wireless Earbuds', slug: 'tws', img: '/Earbud-removebg-preview.png' },
+  { label: 'Neckbands', slug: 'neckband', img: '/Neckband-removebg-preview.png' },
+  { label: 'Bluetooth Speakers', slug: 'bluetooth-speakers', img: '/Bluetooth-Speaker.webp' },
+  { label: 'Power Banks', slug: 'power-bank', img: '/Powerbank.webp' },
+  { label: 'Mobile ICs', slug: 'ICs', img: '/ics.webp' },
+  { label: 'Mobile Tools', slug: 'mobile-repairing-tools', img: '/Reapring-Tools.webp' },
 ];
 
 const categoryUrl = (slug: string) => `/products?category=${encodeURIComponent(slug)}`;
+
+// ---- Rotating search hints ----
+const SEARCH_HINTS = [
+  'Search IC',
+  'Search neckband',
+  'Search mobile tools',
+  'Search TWS',
+  'Search charger',
+];
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -49,6 +56,9 @@ const Header: React.FC = () => {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+
+  // rotating hint index
+  const [hintIndex, setHintIndex] = useState(0);
 
   const { getTotalItems } = useCart();
   const { user, logout } = useAuth();
@@ -79,6 +89,15 @@ const Header: React.FC = () => {
       }
     }, 300);
     return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  // rotate hints every 3s when input is empty
+  useEffect(() => {
+    if (searchTerm.trim().length > 0) return;
+    const t = setInterval(() => {
+      setHintIndex((i) => (i + 1) % SEARCH_HINTS.length);
+    }, 3000);
+    return () => clearInterval(t);
   }, [searchTerm]);
 
   const performSearch = async (query: string) => {
@@ -243,7 +262,7 @@ const Header: React.FC = () => {
                 <input
                   ref={desktopSearchRef}
                   type="text"
-                  placeholder="Search products…"
+                  placeholder={searchTerm ? '' : SEARCH_HINTS[hintIndex]}
                   value={searchTerm}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="w-full pl-11 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -281,18 +300,18 @@ const Header: React.FC = () => {
                       </div>
                     ))}
                     {searchResults.length > 8 && (
-                      <div className="p-3 text-center border-t">
-                        <button
-                          onClick={() => {
-                            navigate(`/search?q=${encodeURIComponent(searchTerm)}`);
-                            setShowResults(false);
-                          }}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                        >
-                          View all {searchResults.length} results
-                        </button>
-                      </div>
-                    )}
+  <div className="p-3 text-center border-t">
+    <Link
+      to={`/search?q=${encodeURIComponent(searchTerm)}`}
+      onClick={() => setShowResults(false)}
+      onMouseDown={(e) => e.preventDefault()} // keep dropdown from blurring
+      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+    >
+      View all {searchResults.length} results
+    </Link>
+  </div>
+)}
+
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -380,7 +399,7 @@ const Header: React.FC = () => {
                 <input
                   ref={mobileSearchRef}
                   type="text"
-                  placeholder="Search products..."
+                  placeholder={searchTerm ? '' : SEARCH_HINTS[hintIndex]}
                   value={searchTerm}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
