@@ -33,7 +33,7 @@ export interface ProductFilters {
 
 /* ─────────────────────────── Constants ─────────────────────────── */
 const DEFAULT_LIMIT = 24;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 1000;
 const MC_TTL = 15_000;
 
 /* ─────────────────────────── Utilities ─────────────────────────── */
