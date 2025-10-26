@@ -17,26 +17,33 @@ const PALETTE = [
   'from-amber-600 to-orange-600',
 ];
 
-function slugify(input: string) {
-  return (input || '')
+const slugify = (input: string) =>
+  (input || '')
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)+/g, '');
-}
+
+const norm = (v?: string) => (v ?? '').trim();
 const pickAccent = (i: number) => PALETTE[i % PALETTE.length];
 
 function buildCategoryItems(categoryNames: string[], products: Product[]): CategoryItem[] {
+  const clean = (products || []).map((p: any) => ({
+    ...p,
+    category: norm(p?.category),
+    brand: norm(p?.brand),
+  }));
+
   const names = categoryNames?.length
-    ? categoryNames
-    : Array.from(new Set((products || []).map((p) => p.category).filter(Boolean)));
+    ? categoryNames.map(norm).filter(Boolean)
+    : Array.from(new Set(clean.map((p) => p.category).filter(Boolean)));
 
   return names.map((name, idx) => {
-    const inCat = (products || []).filter((p) => p.category === name);
+    const inCat = clean.filter((p) => p.category === name);
 
     const counts = new Map<string, number>();
     inCat.forEach((p) => {
-      const key = (p as any).brand || 'Others';
+      const key = p.brand || 'Others';
       counts.set(key, (counts.get(key) || 0) + 1);
     });
 
@@ -50,7 +57,7 @@ function buildCategoryItems(categoryNames: string[], products: Product[]): Categ
         slug: slugify(brand),
       }));
 
-    const previewImage = (inCat.find((p) => Array.isArray((p as any).images) && (p as any).images[0]) as any)?.images?.[0];
+    const previewImage = inCat.find((p) => Array.isArray((p as any).images) && (p as any).images[0])?.images?.[0];
 
     return {
       id: slugify(name),
@@ -76,9 +83,31 @@ const CategoriesPage: React.FC = () => {
       try {
         setLoading(true);
         setErr('');
-        const prodsResp = await productService.getProducts({ limit: 1000 });
+
+        // Bypass stale caches
+        const prodsResp: any = await productService.getProducts({
+          limit: 1000,
+          // bypass stale caches
+          _ts: Date.now(),
+        } as any);
+
         if (!alive) return;
-        const built = buildCategoryItems([], (prodsResp as any).products || (prodsResp as any).data || []);
+
+        const products: Product[] = Array.isArray(prodsResp?.products)
+          ? prodsResp.products
+          : Array.isArray(prodsResp?.data)
+          ? prodsResp.data
+          : [];
+
+        // Debug: confirm diverse categories
+        console.log('Products count:', products.length);
+        console.table(
+          products.slice(0, 50).map((p: any) => ({ category: norm(p?.category), brand: norm(p?.brand) }))
+        );
+
+        const built = buildCategoryItems([], products);
+        console.log('Built categories:', built.map((b) => ({ name: b.name, sub: b.subcategories?.length })));
+
         setItems(built);
       } catch (e: any) {
         if (!alive) return;
@@ -94,16 +123,17 @@ const CategoriesPage: React.FC = () => {
   }, []);
 
   const onSelectCategory = (cat: CategoryItem) => {
+    // Pass raw names so /products can match category strings correctly
     navigate({
       pathname: '/products',
-      search: `?${createSearchParams({ category: slugify(cat.name) })}`,
+      search: `?${createSearchParams({ category: cat.name })}`,
     });
   };
 
   const onSelectSubcategory = (cat: CategoryItem, sub: { name: string }) => {
     navigate({
       pathname: '/products',
-      search: `?${createSearchParams({ category: slugify(cat.name), brand: slugify(sub.name) })}`,
+      search: `?${createSearchParams({ category: cat.name, brand: sub.name })}`,
     });
   };
 
@@ -116,7 +146,6 @@ const CategoriesPage: React.FC = () => {
     [items]
   );
 
-  // Loading
   if (loading) {
     return (
       <div className="min-h-screen bg-white text-gray-800 flex items-center justify-center">
@@ -140,7 +169,6 @@ const CategoriesPage: React.FC = () => {
     );
   }
 
-  // Error
   if (err) {
     return (
       <div className="min-h-screen bg-white text-gray-800 flex items-center justify-center">
@@ -158,7 +186,6 @@ const CategoriesPage: React.FC = () => {
     );
   }
 
-  // SEO blocks for normal view
   const canonicalPath = '/categories';
   const robots = 'index,follow';
 
@@ -193,7 +220,6 @@ const CategoriesPage: React.FC = () => {
     url: `https://nakodamobile.com${canonicalPath}`,
   };
 
-  // View
   return (
     <div className="min-h-screen bg-white">
       <SEO
