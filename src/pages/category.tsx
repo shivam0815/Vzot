@@ -25,13 +25,23 @@ function slugify(input: string) {
 }
 const pickAccent = (i: number) => PALETTE[i % PALETTE.length];
 
+
+
+
+// REPLACE buildCategoryItems with:
 function buildCategoryItems(categoryNames: string[], products: Product[]): CategoryItem[] {
+  const clean = (products || []).map((p: any) => ({
+    ...p,
+    category: norm(p.category),
+    brand: norm(p.brand),
+  }));
+
   const names = categoryNames?.length
-    ? categoryNames
-    : Array.from(new Set((products || []).map((p) => p.category).filter(Boolean)));
+    ? categoryNames.map(norm).filter(Boolean)
+    : Array.from(new Set(clean.map((p) => p.category).filter(Boolean)));
 
   return names.map((name, idx) => {
-    const inCat = (products || []).filter((p) => p.category === name);
+    const inCat = clean.filter((p) => p.category === name);
 
     const counts = new Map<string, number>();
     inCat.forEach((p) => {
@@ -65,6 +75,7 @@ function buildCategoryItems(categoryNames: string[], products: Product[]): Categ
 
 
 
+const norm = (v?: any) => String(v ?? '').trim();
 const CategoriesPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -78,7 +89,7 @@ const CategoriesPage: React.FC = () => {
       try {
         setLoading(true);
         setErr('');
-        const prodsResp = await productService.getProducts({ limit: 1000 });
+       const prodsResp = await productService.getProducts({ limit: 1000 }, true);
         if (!alive) return;
         const built = buildCategoryItems([], prodsResp.products || []);
         setItems(built);
@@ -94,10 +105,10 @@ const CategoriesPage: React.FC = () => {
   }, []);
 
   const onSelectCategory = (cat: CategoryItem) => {
-    navigate({ pathname: '/products', search: `?${createSearchParams({ category: cat.name })}` });
+    navigate({ pathname: '/products', search: `?${createSearchParams({ category: slugify(cat.name) })}` });
   };
   const onSelectSubcategory = (cat: CategoryItem, sub: { name: string }) => {
-    navigate({ pathname: '/products', search: `?${createSearchParams({ category: cat.name, brand: sub.name })}` });
+    navigate({ pathname: '/products', search: `?${createSearchParams({ category: slugify(cat.name), brand: slugify(sub.name) })}` });
   };
 
   const countAll = useMemo(
