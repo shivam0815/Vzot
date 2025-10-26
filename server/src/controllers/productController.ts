@@ -44,6 +44,18 @@ const normSpecs = (value: any): Record<string, any> => {
 
 // escape for regex
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function visibilityFilter(statusParam?: string) {
+  const f: any = {
+    $and: [
+      { $or: [ { isActive: true }, { isActive: { $exists: false } } ] },
+      { $or: [ { status: 'active' }, { status: 'Active' }, { status: { $exists: false } } ] },
+    ],
+  };
+  if (typeof statusParam === 'string' && statusParam.trim()) {
+    f.$and[1] = { status: statusParam.trim() }; // honor explicit filter
+  }
+  return f;
+}
 
 
 const makeLooseNameRx = (raw: string) => {
@@ -66,7 +78,7 @@ async function fetchByHomeSort(
   }
 
   // Fallback implementation if model static doesn't exist (won't error)
-  const q: any = { isActive: true, status };
+ const q: any = visibilityFilter(status);
   let cursor = Product.find(q);
   if (sort === 'new') {
     cursor = cursor.sort({ createdAt: -1 });
@@ -237,7 +249,7 @@ const noExtraFilters =
 
     // === Special homesort route ===
   if (isHomeSort && noExtraFilters) {
-  const q: any = { isActive: true, status };
+ const query: any = visibilityFilter(status);
   const sortObj: any =
     String(sort).toLowerCase() === 'new'
       ? { createdAt: -1 }
