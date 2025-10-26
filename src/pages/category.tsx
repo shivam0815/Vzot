@@ -59,7 +59,16 @@ function buildCategoryItems(categoryNames: string[], products: Product[]): Categ
         slug: slugify(brand),
       }));
 
-    const previewImage = inCat.find((p) => Array.isArray(p.images) && p.images[0])?.images?.[0];
+     const previewImage =
+      inCat.find((p) => Array.isArray(p.images) && p.images[0])?.images?.[0] ||
+      `data:image/svg+xml;utf8,` +
+      encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450">
+           <rect width="100%" height="100%" fill="#eef2ff"/>
+           <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+                 font-family="Arial" font-size="32" fill="#475569">${name}</text>
+         </svg>`
+      );
 
     return {
       id: slugify(name),
@@ -92,6 +101,8 @@ const CategoriesPage: React.FC = () => {
        const prodsResp = await productService.getProducts({ limit: 1000 }, true);
         if (!alive) return;
         const built = buildCategoryItems([], prodsResp.products || []);
+       console.log('UNIQUE CATS →', Array.from(new Set((prodsResp.products||[]).map((p:any)=>norm(p.category)))));
+        console.log('BUILT ITEMS →', built.map(b=>b.name));
         setItems(built);
       } catch (e: any) {
         if (!alive) return;
