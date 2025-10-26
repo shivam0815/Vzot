@@ -594,16 +594,16 @@ const Search: React.FC = () => {
                   );
                 })}
               </ul>
-              <div className="px-3 py-2 border-t bg-white">
-                <Link
-    to={`/search?q=${encodeURIComponent(inputValue)}`}
-    onMouseDown={(e) => e.preventDefault()}
-    className="w-full inline-flex items-center justify-center gap-2 text-sm text-blue-700 font-medium hover:underline"
-  >
-    View all results for “{inputValue}”
-    <ArrowRight className="h-4 w-4" />
-  </Link>
-              </div>
+  <div className="px-3 py-2 border-t bg-white">
+    <Link
+      to={`/products?search=${encodeURIComponent(inputValue)}`}
+      onMouseDown={(e) => e.preventDefault()}
+      className="w-full inline-flex items-center justify-center gap-2 text-sm text-blue-700 font-medium hover:underline"
+    >
+      View all results for “{inputValue}”
+      <ArrowRight className="h-4 w-4" />
+    </Link>
+  </div>
             </div>
           )}
 

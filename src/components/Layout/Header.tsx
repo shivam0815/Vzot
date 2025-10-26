@@ -302,7 +302,8 @@ const Header: React.FC = () => {
                     {searchResults.length > 8 && (
   <div className="p-3 text-center border-t">
     <Link
-      to={`/search?q=${encodeURIComponent(searchTerm)}`}
+  to={`/products?search=${encodeURIComponent(searchTerm)}`}
+
       onClick={() => setShowResults(false)}
       onMouseDown={(e) => e.preventDefault()} // keep dropdown from blurring
       className="text-blue-600 hover:text-blue-800 text-sm font-medium"
