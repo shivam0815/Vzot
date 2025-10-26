@@ -2,12 +2,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, createSearchParams } from 'react-router-dom';
 import CategoriesCinematic, { CategoryItem } from '../components/Layout/CategoriesCinematic';
-import CategoriesCarousel from '../components/Layout/CategoriesCarousel';
+import CategoriesCarousel from '../components/Layout/CategoriesCarousel'; // ← adjust if your file lives elsewhere
 import { productService } from '../services/productService';
 import type { Product } from '../types';
 import { motion } from 'framer-motion';
 import SEO from '../components/Layout/SEO';
-
 const PALETTE = [
   'from-blue-600 to-purple-600',
   'from-indigo-600 to-sky-600',
@@ -17,29 +16,22 @@ const PALETTE = [
   'from-amber-600 to-orange-600',
 ];
 
-const slugify = (input: string) =>
-  (input || '')
+function slugify(input: string) {
+  return (input || '')
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)+/g, '');
-
-const norm = (v?: string) => (v ?? '').trim();
+}
 const pickAccent = (i: number) => PALETTE[i % PALETTE.length];
 
 function buildCategoryItems(categoryNames: string[], products: Product[]): CategoryItem[] {
-  const clean = (products || []).map((p: any) => ({
-    ...p,
-    category: norm(p?.category),
-    brand: norm(p?.brand),
-  }));
-
   const names = categoryNames?.length
-    ? categoryNames.map(norm).filter(Boolean)
-    : Array.from(new Set(clean.map((p) => p.category).filter(Boolean)));
+    ? categoryNames
+    : Array.from(new Set((products || []).map((p) => p.category).filter(Boolean)));
 
   return names.map((name, idx) => {
-    const inCat = clean.filter((p) => p.category === name);
+    const inCat = (products || []).filter((p) => p.category === name);
 
     const counts = new Map<string, number>();
     inCat.forEach((p) => {
@@ -57,7 +49,7 @@ function buildCategoryItems(categoryNames: string[], products: Product[]): Categ
         slug: slugify(brand),
       }));
 
-    const previewImage = inCat.find((p) => Array.isArray((p as any).images) && (p as any).images[0])?.images?.[0];
+    const previewImage = inCat.find((p) => Array.isArray(p.images) && p.images[0])?.images?.[0];
 
     return {
       id: slugify(name),
@@ -69,6 +61,9 @@ function buildCategoryItems(categoryNames: string[], products: Product[]): Categ
     };
   });
 }
+
+
+
 
 const CategoriesPage: React.FC = () => {
   const navigate = useNavigate();
@@ -83,31 +78,9 @@ const CategoriesPage: React.FC = () => {
       try {
         setLoading(true);
         setErr('');
-
-        // Bypass stale caches
-        const prodsResp: any = await productService.getProducts({
-          limit: 1000,
-          // bypass stale caches
-          _ts: Date.now(),
-        } as any);
-
+        const prodsResp = await productService.getProducts({ limit: 1000 });
         if (!alive) return;
-
-        const products: Product[] = Array.isArray(prodsResp?.products)
-          ? prodsResp.products
-          : Array.isArray(prodsResp?.data)
-          ? prodsResp.data
-          : [];
-
-        // Debug: confirm diverse categories
-        console.log('Products count:', products.length);
-        console.table(
-          products.slice(0, 50).map((p: any) => ({ category: norm(p?.category), brand: norm(p?.brand) }))
-        );
-
-        const built = buildCategoryItems([], products);
-        console.log('Built categories:', built.map((b) => ({ name: b.name, sub: b.subcategories?.length })));
-
+        const built = buildCategoryItems([], prodsResp.products || []);
         setItems(built);
       } catch (e: any) {
         if (!alive) return;
@@ -117,50 +90,36 @@ const CategoriesPage: React.FC = () => {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, []);
 
   const onSelectCategory = (cat: CategoryItem) => {
-    // Pass raw names so /products can match category strings correctly
-    navigate({
-      pathname: '/products',
-      search: `?${createSearchParams({ category: cat.name })}`,
-    });
+    navigate({ pathname: '/products', search: `?${createSearchParams({ category: cat.name })}` });
   };
-
   const onSelectSubcategory = (cat: CategoryItem, sub: { name: string }) => {
-    navigate({
-      pathname: '/products',
-      search: `?${createSearchParams({ category: cat.name, brand: sub.name })}`,
-    });
+    navigate({ pathname: '/products', search: `?${createSearchParams({ category: cat.name, brand: sub.name })}` });
   };
 
   const countAll = useMemo(
-    () =>
-      items.reduce(
-        (acc, c) => acc + (c.subcategories?.reduce((s, sc) => s + (sc.productCount || 0), 0) || 0),
-        0
-      ),
+    () => items.reduce((acc, c) => acc + (c.subcategories?.reduce((s, sc) => s + (sc.productCount || 0), 0) || 0), 0),
     [items]
   );
 
+  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-white text-gray-800 flex items-center justify-center">
         <SEO
-          title="Browse Categories"
-          description="Explore categories like TWS, neckbands, chargers, cables, ICs, and more."
-          canonicalPath="/categories"
-          robots="index,follow"
-          jsonLd={{
-            '@context': 'https://schema.org',
-            '@type': 'CollectionPage',
-            name: 'Categories',
-            url: 'https://nakodamobile.com/categories',
-          }}
-        />
+  title="Browse Categories"
+  description="Explore categories like TWS, neckbands, chargers, cables, ICs, Car Charger, Aux Cable, data Cable, Bluetooth Speaker, Power Bank, Ear Phone, Mobile fast Charger, Mat * Rubber, Mobile Repairing tools, Mobile accessries, Oem Services  and more."
+  canonicalPath="/categories"
+  jsonLd={{
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'Categories',
+    url: 'https://nakodamobile.in/categories'
+  }}
+/>
         <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
           <div className="animate-spin h-12 w-12 border-2 border-blue-200 border-t-blue-600 rounded-full mx-auto mb-4" />
           <div className="text-gray-700">Loading categories…</div>
@@ -169,16 +128,13 @@ const CategoriesPage: React.FC = () => {
     );
   }
 
+  // Error state
   if (err) {
     return (
       <div className="min-h-screen bg-white text-gray-800 flex items-center justify-center">
-        <SEO title="Browse Categories" description="Explore categories" canonicalPath="/categories" robots="noindex,follow" />
         <div className="text-center">
           <div className="text-red-600 font-medium mb-3">⚠️ {err}</div>
-          <button
-            onClick={() => location.reload()}
-            className="px-5 py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700"
-          >
+          <button onClick={() => location.reload()} className="px-5 py-2.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700">
             Retry
           </button>
         </div>
@@ -186,50 +142,9 @@ const CategoriesPage: React.FC = () => {
     );
   }
 
-  const canonicalPath = '/categories';
-  const robots = 'index,follow';
-
-  const categoryListJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    itemListOrder: 'http://schema.org/ItemListOrderAscending',
-    numberOfItems: items.length,
-    url: `https://nakodamobile.com${canonicalPath}`,
-    itemListElement: items.map((c, i) => ({
-      '@type': 'ListItem',
-      position: i + 1,
-      url: `https://nakodamobile.com/products?category=${encodeURIComponent(slugify(c.name))}`,
-      name: c.name,
-      image: c.image || undefined,
-    })),
-  };
-
-  const breadcrumbJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://nakodamobile.com/' },
-      { '@type': 'ListItem', position: 2, name: 'Categories', item: `https://nakodamobile.com${canonicalPath}` },
-    ],
-  };
-
-  const collectionJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'CollectionPage',
-    name: 'Categories',
-    url: `https://nakodamobile.com${canonicalPath}`,
-  };
-
+  // ✅ Render BOTH: carousel + cinematic list
   return (
     <div className="min-h-screen bg-white">
-      <SEO
-        title="Browse Categories"
-        description="Explore categories like TWS, neckbands, chargers, cables, ICs, and more."
-        canonicalPath={canonicalPath}
-        robots={robots}
-        jsonLd={[breadcrumbJsonLd, collectionJsonLd, categoryListJsonLd]}
-      />
-
       <CategoriesCarousel
         items={items}
         onSelectCategory={onSelectCategory}
@@ -242,7 +157,7 @@ const CategoriesPage: React.FC = () => {
         categories={items}
         heroGradient="from-blue-600 via-indigo-600 to-purple-600"
         overlayTint="bg-white/10"
-        heroImages={items.map((i) => i.image!).filter(Boolean).slice(0, 6)}
+        heroImages={items.map(i => i.image!).filter(Boolean).slice(0, 6)}
         onSelectCategory={onSelectCategory}
         onSelectSubcategory={onSelectSubcategory}
         searchValue={search}
