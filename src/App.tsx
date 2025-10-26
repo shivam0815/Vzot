@@ -148,7 +148,7 @@ function App() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/order-success" element={<OrderSuccess />} />
-
+  <Route path="/search" element={<PublicLayout><Search /></PublicLayout>} />
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
