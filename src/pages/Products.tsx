@@ -32,7 +32,7 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   banks: 'Power Banks',
   'power-bank': 'Power Banks',
   'power-banks': 'Power Banks',
-  "ICs": 'Integrated Circuits & Chips',
+  ICs: 'Integrated Circuits & Chips',
   'Mobile ICs': 'Mobile ICs',
   'mobile-repairing-tools': 'Mobile Repairing Tools',
   'mobile ics': 'Mobile ICs',
@@ -109,6 +109,8 @@ const useCanonical = (category: string, page: number, hasFilters: boolean) => {
 
 const Products: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
   const urlCategorySlug = (searchParams.get('category') || '').trim().toLowerCase();
   const normalizedFromUrl =
     (urlCategorySlug && CATEGORY_ALIAS_TO_NAME[urlCategorySlug]) || '';
@@ -129,6 +131,19 @@ const Products: React.FC = () => {
   const [page, setPage] = useState(1);
   const [limit] = useState(24);
   const [total, setTotal] = useState(0);
+
+  /* keep session return URL always fresh */
+  useEffect(() => {
+    const url = `${location.pathname}${location.search}`;
+    sessionStorage.setItem('last-products-url', url);
+  }, [location.pathname, location.search]);
+
+  /* derive page from URL and sync into state */
+  const pageFromUrl = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+  useEffect(() => {
+    if (page !== pageFromUrl) setPage(pageFromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageFromUrl]);
 
   /* categories (best-effort) */
   const [categories, setCategories] = useState<string[]>([
@@ -168,10 +183,14 @@ const Products: React.FC = () => {
     if (nextSlug) {
       if (currentSlug !== nextSlug) {
         next.set('category', nextSlug);
+        // reset page when category changes
+        next.delete('page');
         setSearchParams(next, { replace: true });
       }
     } else if (currentSlug) {
       next.delete('category');
+      // reset page when clearing category
+      next.delete('page');
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -279,7 +298,13 @@ const Products: React.FC = () => {
 
   /* reset to first page when filters change */
   useEffect(() => {
+    // reset state page
     setPage(1);
+    // also clear page from URL for consistency
+    const next = new URLSearchParams(searchParams);
+    next.delete('page');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedCategoryForApi, sortBy, searchTerm]);
 
   /* refetch when page or filters change */
@@ -287,6 +312,18 @@ const Products: React.FC = () => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, normalizedCategoryForApi, sortBy, searchTerm]);
+
+  /* central pager that updates URL + sessionStorage */
+  const goToPage = (n: number) => {
+    const nextPage = Math.max(1, n);
+    setPage(nextPage);
+    const params = new URLSearchParams(searchParams);
+    if (nextPage > 1) params.set('page', String(nextPage));
+    else params.delete('page');
+    setSearchParams(params, { replace: false }); // push history
+    const url = `${location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
+    sessionStorage.setItem('last-products-url', url);
+  };
 
   /* client safety net: search/price/isActive + local sort */
   const filteredProducts = useMemo(() => {
@@ -360,7 +397,6 @@ const Products: React.FC = () => {
         })()
       : null;
 
-  // ItemList JSON-LD only for indexable states
   const itemListJsonLd = !hasFilters
     ? {
         '@context': 'https://schema.org',
@@ -433,17 +469,16 @@ const Products: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-    <SEO
-  title={pageTitle}
-  description={pageDesc}
-  canonicalPath={canonical.replace('https://nakodamobile.com','')}
-  robots={robots}               // "index,follow" or "noindex,follow"
-  prevHref={prevLink || null}   // absolute URLs if present
-  nextHref={nextLink || null}
-  jsonLd={[breadcrumbJsonLd, itemListJsonLd].filter(Boolean) as object[]}
-/>
+      <SEO
+        title={pageTitle}
+        description={pageDesc}
+        canonicalPath={canonical.replace('https://nakodamobile.com','')}
+        robots={robots}
+        prevHref={prevLink || null}
+        nextHref={nextLink || null}
+        jsonLd={[breadcrumbJsonLd, itemListJsonLd].filter(Boolean) as object[]}
+      />
 
-      {/* Head extras for robots + canonical + prev/next + JSON-LD when SEO component lacks props */}
       <>
         <link rel="canonical" href={canonical} />
         {prevLink && <link rel="prev" href={prevLink} />}
@@ -635,7 +670,7 @@ const Products: React.FC = () => {
                 <button
                   disabled={!canPrev}
                   onClick={() => {
-                    if (canPrev) setPage((p) => p - 1);
+                    if (canPrev) goToPage(page - 1);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   className={`px-3 py-2 rounded-md ${canPrev ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
@@ -658,7 +693,7 @@ const Products: React.FC = () => {
                       <button
                         key={n}
                         onClick={() => {
-                          setPage(n);
+                          goToPage(n);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                         className={`px-3 py-2 rounded-md ${n === page ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
@@ -671,7 +706,7 @@ const Products: React.FC = () => {
                 <button
                   disabled={!canNext}
                   onClick={() => {
-                    if (canNext) setPage((p) => p + 1);
+                    if (canNext) goToPage(page + 1);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   className={`px-3 py-2 rounded-md ${canNext ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
