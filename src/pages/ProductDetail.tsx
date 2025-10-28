@@ -92,6 +92,19 @@ const ProductDetail: React.FC = () => {
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
 
+  // unified back handler using persisted listing URL
+  const backToList = () => {
+    const saved = sessionStorage.getItem('last-products-url');
+    if (saved) {
+      const relative = saved.replace(window.location.origin, '');
+      navigate(relative, { replace: true });
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/products');
+    }
+  };
+
   /* Normalize images */
   const normalizedImages = useMemo<string[]>(() => {
     const raw = (product as any)?.images;
@@ -194,7 +207,7 @@ const ProductDetail: React.FC = () => {
     };
     if (!isUserLoggedIn()) {
       toast.error('Please log in to add items to your cart');
-      navigate('/login', { state: { from: location } });
+      navigate('/login', { state: { from: window.location.pathname + window.location.search } });
       return;
     }
     if (!product || !maxQty) return;
@@ -287,9 +300,12 @@ const ProductDetail: React.FC = () => {
             <button onClick={() => window.location.reload()} className="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
               Try Again
             </button>
-            <Link to="/products" className="block w-full bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 text-center">
+            <button
+              onClick={backToList}
+              className="block w-full bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 text-center"
+            >
               Back to Products
-            </Link>
+            </button>
           </div>
         </div>
       </div>
@@ -303,10 +319,13 @@ const ProductDetail: React.FC = () => {
           <div className="text-6xl mb-4">🔍</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Product Not Found</h2>
           <p className="text-gray-600 mb-6">The product you're looking for doesn't exist or has been removed.</p>
-          <Link to="/products" className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+          <button
+            onClick={backToList}
+            className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+          >
             <ChevronLeft className="h-4 w-4 mr-2" />
-            Back to Products
-          </Link>
+            Back
+          </button>
         </div>
       </div>
     );
@@ -371,6 +390,15 @@ const ProductDetail: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Products', to: '/products' }, { label: product.name }]} />
+
+        {/* Back to listing preserving filters/page */}
+        <button
+          onClick={backToList}
+          className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 mb-4"
+        >
+          <ChevronLeft className="h-4 w-4 mr-2" />
+          Back
+        </button>
 
         <div className="bg-white rounded-xl shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
@@ -674,7 +702,7 @@ const ProductDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Product Highlights: single full-width column so images show 100% width */}
+        {/* Product Highlights */}
         {highlightImages.length > 0 && (
           <section id="highlights" className="border-t bg-white mt-6 sm:mt-10">
             <div className="max-w-[1280px] mx-auto sm:px-6 py-0">
