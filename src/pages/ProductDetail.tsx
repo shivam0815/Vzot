@@ -306,7 +306,7 @@ const ProductDetail: React.FC = () => {
          <button
   onClick={() => {
     const ref = document.referrer;
-    if (ref && !ref.includes(window.location.href)) {
+    if (ref && ref.includes(window.location.origin)) {
       window.history.back();
     } else {
       navigate('/products');
@@ -317,6 +317,7 @@ const ProductDetail: React.FC = () => {
   <ChevronLeft className="h-4 w-4 mr-2" />
   Back
 </button>
+
 
 
 
