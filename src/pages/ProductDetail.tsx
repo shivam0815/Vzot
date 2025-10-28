@@ -312,11 +312,12 @@ const ProductDetail: React.FC = () => {
       navigate('/products');
     }
   }}
-  className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
+  className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 mb-4"
 >
   <ChevronLeft className="h-4 w-4 mr-2" />
   Back
 </button>
+
 
 
 
@@ -385,7 +386,20 @@ const ProductDetail: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Products', to: '/products' }, { label: product.name }]} />
-
+<button
+  onClick={() => {
+    const ref = document.referrer;
+    if (ref && ref.includes(window.location.origin)) {
+      window.history.back();
+    } else {
+      navigate('/products');
+    }
+  }}
+  className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 mb-4"
+>
+  <ChevronLeft className="h-4 w-4 mr-2" />
+  Back
+</button>
         <div className="bg-white rounded-xl shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
             {/* Gallery */}
