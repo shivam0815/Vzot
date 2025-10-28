@@ -25,7 +25,10 @@ import SEO from '../components/Layout/SEO';
 import Reviews from '../components/Layout/Reviews';
 import Breadcrumbs from './Breadcrumbs';
 
-/* ------------------------- Helpers ------------------------- */
+import { useLocation } from "react-router-dom";
+
+
+
 const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   if (!raw) return {};
   if (raw instanceof Map) return Object.fromEntries(raw as Map<string, unknown>);
@@ -91,6 +94,13 @@ const ProductDetail: React.FC = () => {
 
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
+   const location = useLocation(); 
+
+  
+
+useEffect(() => {
+  sessionStorage.setItem("last-products-url", window.location.href);
+}, [location.search]);
 
   /* Normalize images */
   const normalizedImages = useMemo<string[]>(() => {
@@ -305,9 +315,11 @@ const ProductDetail: React.FC = () => {
           <p className="text-gray-600 mb-6">The product you're looking for doesn't exist or has been removed.</p>
          <button
   onClick={() => {
-    const ref = document.referrer;
-    if (ref && ref.includes(window.location.origin)) {
-      window.history.back();
+    const saved = sessionStorage.getItem('last-products-url');
+    if (saved) {
+      navigate(saved.replace(window.location.origin, ''), { replace: true });
+    } else if (window.history.length > 1) {
+      navigate(-1);
     } else {
       navigate('/products');
     }
@@ -317,6 +329,7 @@ const ProductDetail: React.FC = () => {
   <ChevronLeft className="h-4 w-4 mr-2" />
   Back
 </button>
+
 
 
 
@@ -388,9 +401,11 @@ const ProductDetail: React.FC = () => {
         <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Products', to: '/products' }, { label: product.name }]} />
 <button
   onClick={() => {
-    const ref = document.referrer;
-    if (ref && ref.includes(window.location.origin)) {
-      window.history.back();
+    const saved = sessionStorage.getItem('last-products-url');
+    if (saved) {
+      navigate(saved.replace(window.location.origin, ''), { replace: true });
+    } else if (window.history.length > 1) {
+      navigate(-1);
     } else {
       navigate('/products');
     }
@@ -400,6 +415,7 @@ const ProductDetail: React.FC = () => {
   <ChevronLeft className="h-4 w-4 mr-2" />
   Back
 </button>
+
         <div className="bg-white rounded-xl shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
             {/* Gallery */}
