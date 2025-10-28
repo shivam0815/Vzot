@@ -98,9 +98,7 @@ const ProductDetail: React.FC = () => {
 
   
 
-useEffect(() => {
-  sessionStorage.setItem("last-products-url", window.location.href);
-}, [location.search]);
+
 
   /* Normalize images */
   const normalizedImages = useMemo<string[]>(() => {

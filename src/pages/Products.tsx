@@ -129,6 +129,12 @@ const Products: React.FC = () => {
   const [page, setPage] = useState(1);
   const [limit] = useState(24);
   const [total, setTotal] = useState(0);
+  const location = useLocation();
+
+useEffect(() => {
+  const url = `${location.pathname}${location.search}`;
+  sessionStorage.setItem('last-products-url', url);
+}, [location.pathname, location.search]);
 
   /* categories (best-effort) */
   const [categories, setCategories] = useState<string[]>([
