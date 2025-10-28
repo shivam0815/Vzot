@@ -32,7 +32,7 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   banks: 'Power Banks',
   'power-bank': 'Power Banks',
   'power-banks': 'Power Banks',
-  ICs: 'Integrated Circuits & Chips',
+  "ICs": 'Integrated Circuits & Chips',
   'Mobile ICs': 'Mobile ICs',
   'mobile-repairing-tools': 'Mobile Repairing Tools',
   'mobile ics': 'Mobile ICs',
@@ -126,16 +126,9 @@ const Products: React.FC = () => {
   const [error, setError] = useState('');
 
   /* pagination */
-  const pageFromUrl = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
-  const [page, setPage] = useState(pageFromUrl);
+  const [page, setPage] = useState(1);
   const [limit] = useState(24);
   const [total, setTotal] = useState(0);
-  const location = useLocation();
-
-  useEffect(() => {
-    const url = `${location.pathname}${location.search}`;
-    sessionStorage.setItem('last-products-url', url);
-  }, [location.pathname, location.search]);
 
   /* categories (best-effort) */
   const [categories, setCategories] = useState<string[]>([
@@ -175,33 +168,14 @@ const Products: React.FC = () => {
     if (nextSlug) {
       if (currentSlug !== nextSlug) {
         next.set('category', nextSlug);
-        // when category changes, reset page in URL
-        next.delete('page');
         setSearchParams(next, { replace: true });
       }
     } else if (currentSlug) {
       next.delete('category');
-      next.delete('page');
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory]);
-
-  /* reflect page state -> URL */
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (page > 1) next.set('page', String(page));
-    else next.delete('page');
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
-
-  /* reflect URL -> page state (for browser back/forward) */
-  useEffect(() => {
-    const p = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
-    if (p !== page) setPage(p);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
 
   /* fetch categories (once) */
   useEffect(() => {
@@ -306,10 +280,6 @@ const Products: React.FC = () => {
   /* reset to first page when filters change */
   useEffect(() => {
     setPage(1);
-    const next = new URLSearchParams(searchParams);
-    next.delete('page');
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedCategoryForApi, sortBy, searchTerm]);
 
   /* refetch when page or filters change */
@@ -463,16 +433,17 @@ const Products: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <SEO
-        title={pageTitle}
-        description={pageDesc}
-        canonicalPath={canonical.replace('https://nakodamobile.com','')}
-        robots={robots}
-        prevHref={prevLink || null}
-        nextHref={nextLink || null}
-        jsonLd={[breadcrumbJsonLd, itemListJsonLd].filter(Boolean) as object[]}
-      />
+    <SEO
+  title={pageTitle}
+  description={pageDesc}
+  canonicalPath={canonical.replace('https://nakodamobile.com','')}
+  robots={robots}               // "index,follow" or "noindex,follow"
+  prevHref={prevLink || null}   // absolute URLs if present
+  nextHref={nextLink || null}
+  jsonLd={[breadcrumbJsonLd, itemListJsonLd].filter(Boolean) as object[]}
+/>
 
+      {/* Head extras for robots + canonical + prev/next + JSON-LD when SEO component lacks props */}
       <>
         <link rel="canonical" href={canonical} />
         {prevLink && <link rel="prev" href={prevLink} />}

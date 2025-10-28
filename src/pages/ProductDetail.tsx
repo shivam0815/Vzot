@@ -25,10 +25,7 @@ import SEO from '../components/Layout/SEO';
 import Reviews from '../components/Layout/Reviews';
 import Breadcrumbs from './Breadcrumbs';
 
-import { useLocation } from "react-router-dom";
-
-
-
+/* ------------------------- Helpers ------------------------- */
 const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   if (!raw) return {};
   if (raw instanceof Map) return Object.fromEntries(raw as Map<string, unknown>);
@@ -94,11 +91,6 @@ const ProductDetail: React.FC = () => {
 
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
-   const location = useLocation(); 
-
-  
-
-
 
   /* Normalize images */
   const normalizedImages = useMemo<string[]>(() => {
@@ -311,28 +303,10 @@ const ProductDetail: React.FC = () => {
           <div className="text-6xl mb-4">🔍</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Product Not Found</h2>
           <p className="text-gray-600 mb-6">The product you're looking for doesn't exist or has been removed.</p>
-         <button
-  onClick={() => {
-    const saved = sessionStorage.getItem('last-products-url');
-    if (saved) {
-      navigate(saved.replace(window.location.origin, ''), { replace: true });
-    } else if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/products');
-    }
-  }}
-  className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 mb-4"
->
-  <ChevronLeft className="h-4 w-4 mr-2" />
-  Back
-</button>
-
-
-
-
-
-
+          <Link to="/products" className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+            <ChevronLeft className="h-4 w-4 mr-2" />
+            Back to Products
+          </Link>
         </div>
       </div>
     );
@@ -397,22 +371,6 @@ const ProductDetail: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
         <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Products', to: '/products' }, { label: product.name }]} />
-<button
-  onClick={() => {
-    const saved = sessionStorage.getItem('last-products-url');
-    if (saved) {
-      navigate(saved.replace(window.location.origin, ''), { replace: true });
-    } else if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/products');
-    }
-  }}
-  className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 mb-4"
->
-  <ChevronLeft className="h-4 w-4 mr-2" />
-  Back
-</button>
 
         <div className="bg-white rounded-xl shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
