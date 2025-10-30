@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Grid, List } from 'lucide-react';
+import { Grid, List, Search } from 'lucide-react';
 import ProductCard from '../components/UI/ProductCard';
 import api from '../config/api';
 import { productService } from '../services/productService';
@@ -117,8 +117,7 @@ const Products: React.FC = () => {
 
   /* UI state */
   const [searchTerm, setSearchTerm] = useState('');
-  // Derive from URL only. No local setter that can desync or trigger mount resets.
-  const selectedCategory = normalizedFromUrl;
+  const [selectedCategory, setSelectedCategory] = useState<string>(normalizedFromUrl);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 20000]);
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'rating'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -166,7 +165,36 @@ const Products: React.FC = () => {
     'Stencil',
   ]);
 
-  const normalizedCategoryForApi = selectedCategory || '';
+  const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';
+
+  /* URL -> dropdown */
+  useEffect(() => {
+    if (normalizedFromUrl && normalizedFromUrl !== selectedCategory) {
+      setSelectedCategory(normalizedFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedFromUrl]);
+
+  /* dropdown -> URL */
+  useEffect(() => {
+    const currentSlug = (searchParams.get('category') || '').trim().toLowerCase();
+    const nextSlug = selectedCategory ? NAME_TO_SLUG[selectedCategory] : '';
+    const next = new URLSearchParams(searchParams);
+    if (nextSlug) {
+      if (currentSlug !== nextSlug) {
+        next.set('category', nextSlug);
+        // reset page when category changes
+        next.delete('page');
+        setSearchParams(next, { replace: true });
+      }
+    } else if (currentSlug) {
+      next.delete('category');
+      // reset page when clearing category
+      next.delete('page');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory]);
 
   /* fetch categories (once) */
   useEffect(() => {
@@ -268,6 +296,17 @@ const Products: React.FC = () => {
     }
   };
 
+  /* reset to first page when filters change */
+  useEffect(() => {
+    // reset state page
+    setPage(1);
+    // also clear page from URL for consistency
+    const next = new URLSearchParams(searchParams);
+    next.delete('page');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedCategoryForApi, sortBy, searchTerm]);
+
   /* refetch when page or filters change */
   useEffect(() => {
     fetchProducts();
@@ -284,33 +323,6 @@ const Products: React.FC = () => {
     setSearchParams(params, { replace: false }); // push history
     const url = `${location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
     sessionStorage.setItem('last-products-url', url);
-  };
-
-  // User-intent setters: update URL and clear ?page
-  const setCategoryViaUrl = (humanName: string) => {
-    const next = new URLSearchParams(searchParams);
-    const slug = humanName ? NAME_TO_SLUG[humanName] : '';
-    if (slug) next.set('category', slug);
-    else next.delete('category');
-    next.delete('page');
-    setSearchParams(next, { replace: false });
-    setPage(1);
-  };
-
-  const setSortViaUrl = (val: typeof sortBy) => {
-    setSortBy(val);
-    const next = new URLSearchParams(searchParams);
-    next.delete('page');
-    setSearchParams(next, { replace: false });
-    setPage(1);
-  };
-
-  const setSearchViaUrl = (val: string) => {
-    setSearchTerm(val);
-    const next = new URLSearchParams(searchParams);
-    next.delete('page');
-    setSearchParams(next, { replace: false });
-    setPage(1);
   };
 
   /* client safety net: search/price/isActive + local sort */
@@ -497,6 +509,7 @@ const Products: React.FC = () => {
               ? `Discover ${normalizedCategoryForApi} from Nakoda Mobile`
               : 'Discover our curated collection of high-quality products'}
           </p>
+          
         </div>
       </div>
 
@@ -509,7 +522,7 @@ const Products: React.FC = () => {
             <label className="text-sm font-medium text-gray-700">Category:</label>
             <select
               value={selectedCategory}
-              onChange={(e) => setCategoryViaUrl(e.target.value)}
+              onChange={(e) => setSelectedCategory(e.target.value)}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Categories</option>
@@ -521,7 +534,7 @@ const Products: React.FC = () => {
             </select>
           </div>
 
-          {/* Price (upper bound) */}
+          {/* Price */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
             <label className="text-sm font-medium text-gray-700">Price Range:</label>
             <div className="flex items-center space-x-2">
@@ -536,8 +549,6 @@ const Products: React.FC = () => {
                     Math.max(0, parseInt(e.target.value, 10) || 0),
                   ])
                 }
-                onMouseUp={() => setSearchViaUrl(searchTerm)} // ensure page reset after user finishes sliding
-                onTouchEnd={() => setSearchViaUrl(searchTerm)}
                 className="w-32"
               />
               <span className="text-sm text-gray-600">₹0 - ₹{priceRange[1].toLocaleString()}</span>
@@ -549,7 +560,7 @@ const Products: React.FC = () => {
             <label className="text-sm font-medium text-gray-700">Sort by:</label>
             <select
               value={sortBy}
-              onChange={(e) => setSortViaUrl(e.target.value as typeof sortBy)}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="name">Name</option>
@@ -583,26 +594,6 @@ const Products: React.FC = () => {
               🔄
             </button>
           </div>
-        </div>
-
-        {/* Simple search box (ties into URL reset logic) */}
-        <div className="mb-6 flex items-center gap-3">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') setSearchViaUrl((e.target as HTMLInputElement).value);
-            }}
-            placeholder="Search products"
-            className="w-full sm:max-w-md border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={() => setSearchViaUrl(searchTerm)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Search
-          </button>
         </div>
 
         {/* Results meta */}
@@ -663,62 +654,56 @@ const Products: React.FC = () => {
             </motion.div>
 
             {/* Pager */}
-            {(() => {
-              const totalPages = Math.max(1, Math.ceil((total || 0) / limit));
-              const canPrev = page > 1;
-              const canNext = page < totalPages;
+            {totalPages > 1 && (
+              <div className="mt-10 flex items-center justify-center gap-2">
+                <button
+                  disabled={!canPrev}
+                  onClick={() => {
+                    if (canPrev) goToPage(page - 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`px-3 py-2 rounded-md ${canPrev ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                >
+                  Prev
+                </button>
 
-              return totalPages > 1 ? (
-                <div className="mt-10 flex items-center justify-center gap-2">
-                  <button
-                    disabled={!canPrev}
-                    onClick={() => {
-                      if (canPrev) goToPage(page - 1);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className={`px-3 py-2 rounded-md ${canPrev ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-                  >
-                    Prev
-                  </button>
+                {Array.from({ length: totalPages })
+                  .map((_, i) => i + 1)
+                  .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+                  .reduce<number[]>((acc, n, i, arr) => {
+                    if (i && n - arr[i - 1] > 1) acc.push(-1);
+                    acc.push(n);
+                    return acc;
+                  }, [])
+                  .map((n, i) =>
+                    n === -1 ? (
+                      <span key={`gap-${i}`} className="px-2">…</span>
+                    ) : (
+                      <button
+                        key={n}
+                        onClick={() => {
+                          goToPage(n);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className={`px-3 py-2 rounded-md ${n === page ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+                      >
+                        {n}
+                      </button>
+                    )
+                  )}
 
-                  {Array.from({ length: totalPages })
-                    .map((_, i) => i + 1)
-                    .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
-                    .reduce<number[]>((acc, n, i, arr) => {
-                      if (i && n - arr[i - 1] > 1) acc.push(-1);
-                      acc.push(n);
-                      return acc;
-                    }, [])
-                    .map((n, i) =>
-                      n === -1 ? (
-                        <span key={`gap-${i}`} className="px-2">…</span>
-                      ) : (
-                        <button
-                          key={n}
-                          onClick={() => {
-                            goToPage(n);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className={`px-3 py-2 rounded-md ${n === page ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-                        >
-                          {n}
-                        </button>
-                      )
-                    )}
-
-                  <button
-                    disabled={!canNext}
-                    onClick={() => {
-                      if (canNext) goToPage(page + 1);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className={`px-3 py-2 rounded-md ${canNext ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
-                  >
-                    Next
-                  </button>
-                </div>
-              ) : null;
-            })()}
+                <button
+                  disabled={!canNext}
+                  onClick={() => {
+                    if (canNext) goToPage(page + 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className={`px-3 py-2 rounded-md ${canNext ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <div className="text-center py-16">
@@ -729,7 +714,7 @@ const Products: React.FC = () => {
               <button
                 onClick={() => {
                   setSearchTerm('');
-                  setCategoryViaUrl('');
+                  setSelectedCategory('');
                   setPriceRange([0, 20000]);
                 }}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
