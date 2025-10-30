@@ -1,6 +1,6 @@
-// src/pages/ProductDetail.tsx — B2C detail page with full SEO
+// src/pages/ProductDetail.tsx — B2C detail page with full SEO + smart back
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ShoppingCart,
@@ -79,8 +79,33 @@ const productUrlAbs = (p: any) => `https://nakodamobile.com/product/${productHan
 
 /* ------------------------------ Component ------------------------------ */
 const ProductDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>(); // can be id or slug; route path should be /product/:id
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // smart back plumbing
+  const backTarget =
+    (location.state as any)?.fromPath ||
+    sessionStorage.getItem('last-products-url') ||
+    '/products';
+
+  const cameFromProducts = (() => {
+    try {
+      if (!document.referrer) return false;
+      const u = new URL(document.referrer);
+      return u.origin === window.location.origin && u.pathname.startsWith('/products');
+    } catch { return false; }
+  })();
+
+  const smartBack: React.MouseEventHandler<HTMLAnchorElement | HTMLButtonElement> = (e) => {
+    e.preventDefault();
+    if (cameFromProducts && window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(backTarget, { replace: true });
+    }
+  };
+
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -287,9 +312,9 @@ const ProductDetail: React.FC = () => {
             <button onClick={() => window.location.reload()} className="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
               Try Again
             </button>
-            <Link to="/products" className="block w-full bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 text-center">
+            <a href={backTarget} onClick={smartBack} className="block w-full bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 text-center">
               Back to Products
-            </Link>
+            </a>
           </div>
         </div>
       </div>
@@ -303,10 +328,10 @@ const ProductDetail: React.FC = () => {
           <div className="text-6xl mb-4">🔍</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Product Not Found</h2>
           <p className="text-gray-600 mb-6">The product you're looking for doesn't exist or has been removed.</p>
-          <Link to="/products" className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+          <a href={backTarget} onClick={smartBack} className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
             <ChevronLeft className="h-4 w-4 mr-2" />
             Back to Products
-          </Link>
+          </a>
         </div>
       </div>
     );
@@ -370,7 +395,13 @@ const ProductDetail: React.FC = () => {
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
-        <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Products', to: '/products' }, { label: product.name }]} />
+        <Breadcrumbs
+          items={[
+            { label: 'Home', to: '/' },
+            { label: 'Products', to: backTarget, onClick: smartBack },
+            { label: product.name },
+          ]}
+        />
 
         <div className="bg-white rounded-xl shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
@@ -674,7 +705,7 @@ const ProductDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Product Highlights: single full-width column so images show 100% width */}
+        {/* Highlights */}
         {highlightImages.length > 0 && (
           <section id="highlights" className="border-t bg-white mt-6 sm:mt-10">
             <div className="max-w-[1280px] mx-auto sm:px-6 py-0">

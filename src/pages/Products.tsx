@@ -1,8 +1,7 @@
-// src/pages/Products.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Grid, List, Search } from 'lucide-react';
+import { Grid, List } from 'lucide-react';
 import ProductCard from '../components/UI/ProductCard';
 import api from '../config/api';
 import { productService } from '../services/productService';
@@ -11,8 +10,6 @@ import SEO from '../components/Layout/SEO';
 import { useBulkReviews } from '../hooks/useBulkReviews';
 
 /* ───────────────── helpers ───────────────── */
-
-/* category normalization */
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   tws: 'TWS',
   neckband: 'Bluetooth Neckbands',
@@ -70,7 +67,6 @@ const getId = (p: any): string | undefined => {
   return HEX24.test(s) ? s : undefined;
 };
 
-// Build absolute product URL for ItemList JSON-LD
 const productUrl = (p: any) => {
   const slug = (p?.slug || p?.name || '')
     .toString()
@@ -83,7 +79,6 @@ const productUrl = (p: any) => {
   return `https://nakodamobile.com/product/${handle}`;
 };
 
-// Canonical + robots + prev/next builder for collection pages
 const useCanonical = (category: string, page: number, hasFilters: boolean) => {
   const { pathname } = useLocation();
   const base = 'https://nakodamobile.com';
@@ -145,7 +140,7 @@ const Products: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageFromUrl]);
 
-  /* categories (best-effort) */
+  /* categories (fallback list + fetch) */
   const [categories, setCategories] = useState<string[]>([
     'TWS',
     'Bluetooth Neckbands',
@@ -175,26 +170,22 @@ const Products: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFromUrl]);
 
-  /* dropdown -> URL */
-  useEffect(() => {
-    const currentSlug = (searchParams.get('category') || '').trim().toLowerCase();
-    const nextSlug = selectedCategory ? NAME_TO_SLUG[selectedCategory] : '';
+  /* dropdown -> URL (only when user changes) */
+  const onCategoryChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
+    const nextHuman = e.target.value;
+    setSelectedCategory(nextHuman);
+    const nextSlug = nextHuman ? NAME_TO_SLUG[nextHuman] : '';
     const next = new URLSearchParams(searchParams);
     if (nextSlug) {
-      if (currentSlug !== nextSlug) {
-        next.set('category', nextSlug);
-        // reset page when category changes
-        next.delete('page');
-        setSearchParams(next, { replace: true });
-      }
-    } else if (currentSlug) {
+      next.set('category', nextSlug);
+    } else {
       next.delete('category');
-      // reset page when clearing category
-      next.delete('page');
-      setSearchParams(next, { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory]);
+    // reset page ONLY here (user intent)
+    next.delete('page');
+    setSearchParams(next, { replace: false });
+    setPage(1);
+  };
 
   /* fetch categories (once) */
   useEffect(() => {
@@ -206,9 +197,7 @@ const Products: React.FC = () => {
         if (!cancelled && arr.length) setCategories(arr.filter(Boolean));
       } catch {}
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   /* server fetch with pagination */
@@ -238,19 +227,13 @@ const Products: React.FC = () => {
       };
       Object.assign(filters, mapSort(sortBy));
 
-      const params = {
-        page,
-        limit,
-        ...filters,
-        _t: forceRefresh ? Date.now() : undefined,
-      };
+      const params = { page, limit, ...filters, _t: forceRefresh ? Date.now() : undefined };
 
       const r = await productService.getProducts(params, forceRefresh);
 
       const list =
-        (Array.isArray((r as any)?.items) && (r as any).items) ||
-        (Array.isArray((r as any)?.data?.items) && (r as any).data.items) ||
         (Array.isArray((r as any)?.products) && (r as any).products) ||
+        (Array.isArray((r as any)?.data?.items) && (r as any).data.items) ||
         (Array.isArray((r as any)?.data) && (r as any).data) ||
         [];
 
@@ -260,7 +243,7 @@ const Products: React.FC = () => {
         Number((r as any)?.meta?.total) ||
         Number((r as any)?.count) ||
         Number((r as any)?.pagination?.total) ||
-        0;
+        list.length;
 
       setProducts(list as Product[]);
       setTotal(t || list.length);
@@ -296,18 +279,7 @@ const Products: React.FC = () => {
     }
   };
 
-  /* reset to first page when filters change */
-  useEffect(() => {
-    // reset state page
-    setPage(1);
-    // also clear page from URL for consistency
-    const next = new URLSearchParams(searchParams);
-    next.delete('page');
-    setSearchParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedCategoryForApi, sortBy, searchTerm]);
-
-  /* refetch when page or filters change */
+  /* IMPORTANT: do NOT reset page here on dep changes */
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -325,7 +297,7 @@ const Products: React.FC = () => {
     sessionStorage.setItem('last-products-url', url);
   };
 
-  /* client safety net: search/price/isActive + local sort */
+  // ---- Bulk review summaries (one call) ----
   const filteredProducts = useMemo(() => {
     const list = Array.isArray(products) ? products : [];
     const q = (searchTerm || '').toLowerCase();
@@ -339,7 +311,7 @@ const Products: React.FC = () => {
         const priceVal = typeof p?.price === 'number' ? p.price : Number.NaN;
         const priceOk =
           Number.isFinite(priceVal) &&
-          priceVal >= priceRange[0] &&
+          priceVal >= 0 &&
           priceVal <= priceRange[1];
 
         const isActive = p?.isActive !== false;
@@ -363,7 +335,6 @@ const Products: React.FC = () => {
     return filtered;
   }, [products, searchTerm, priceRange, sortBy]);
 
-  // ---- Bulk review summaries (one call) ----
   const productIds = useMemo(
     () => filteredProducts.map((p) => getId(p)).filter(Boolean) as string[],
     [filteredProducts]
@@ -377,7 +348,6 @@ const Products: React.FC = () => {
   const hasPriceFilter = !(priceRange[0] === 0 && priceRange[1] === 20000);
   const hasFilters = hasSearch || hasPriceFilter;
 
-  // derive pagination to compute nextLink before render
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil((total || 0) / limit)),
     [total, limit]
@@ -509,7 +479,6 @@ const Products: React.FC = () => {
               ? `Discover ${normalizedCategoryForApi} from Nakoda Mobile`
               : 'Discover our curated collection of high-quality products'}
           </p>
-          
         </div>
       </div>
 
@@ -520,9 +489,10 @@ const Products: React.FC = () => {
           {/* Category */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
             <label className="text-sm font-medium text-gray-700">Category:</label>
+            {/* ← only here we reset page */}
             <select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              onChange={onCategoryChange}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Categories</option>
@@ -534,7 +504,7 @@ const Products: React.FC = () => {
             </select>
           </div>
 
-          {/* Price */}
+          {/* Price (max only for brevity) */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
             <label className="text-sm font-medium text-gray-700">Price Range:</label>
             <div className="flex items-center space-x-2">
@@ -560,7 +530,15 @@ const Products: React.FC = () => {
             <label className="text-sm font-medium text-gray-700">Sort by:</label>
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              onChange={(e) => {
+                const v = e.target.value as typeof sortBy;
+                setSortBy(v);
+                // Reset page on user-intent change
+                const next = new URLSearchParams(searchParams);
+                next.delete('page');
+                setSearchParams(next, { replace: false });
+                setPage(1);
+              }}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="name">Name</option>
@@ -587,7 +565,7 @@ const Products: React.FC = () => {
               <List className="h-5 w-5" />
             </button>
             <button
-              onClick={handleManualRefresh}
+              onClick={() => fetchProducts(true)}
               className="p-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
               title="Refresh Products"
             >
@@ -716,13 +694,18 @@ const Products: React.FC = () => {
                   setSearchTerm('');
                   setSelectedCategory('');
                   setPriceRange([0, 20000]);
+                  const next = new URLSearchParams(searchParams);
+                  next.delete('category');
+                  next.delete('page');
+                  setSearchParams(next, { replace: false });
+                  setPage(1);
                 }}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Clear Filters
               </button>
               <button
-                onClick={handleManualRefresh}
+                onClick={() => fetchProducts(true)}
                 className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
               >
                 Refresh Products
