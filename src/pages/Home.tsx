@@ -191,23 +191,27 @@ const pickPrimaryImage = (p: any): string | undefined => {
     
     // Load Mobile Accessories (general accessories categories combined)
   // Load Mobile Accessories (updated with correct database category names)
+// Home.tsx
 const loadMobileAccessories = async () => {
+  setLoadingMobileAccessories(true);
   try {
-    setLoadingMobileAccessories(true);
-
-    // ✅ use correct slugs from CATEGORIES
     const slugs = ['neckband','tws','Data-Cables','chargers','Car-Charger'];
-    const query = slugs.map(s => `category=${encodeURIComponent(s)}`).join('&');
+    const one = (s: string) =>
+      fetch(`${API_BASE}/products?category=${encodeURIComponent(s)}&limit=50&status=active`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => (d.products || d.items || []));
 
-    const res = await fetch(`${API_BASE}/products?${query}&limit=10&status=active`, { credentials: 'include' });
-    const data = await res.json();
-
-    if (!res.ok) throw new Error(data?.message || 'Failed to load mobile accessories');
-    setMobileAccessories(data.products || data.items || []);
+    const lists = await Promise.all(slugs.map(one));
+    const merged = Array.from(new Map(lists.flat().map((p: any) => [p._id, p])).values());
+    setMobileAccessories(merged);
+  } catch (e) {
+    console.error('loadMobileAccessories', e);
+    setMobileAccessories([]);
   } finally {
     setLoadingMobileAccessories(false);
   }
 };
+
 
 
 // Load Mobile ICs (corrected category name)
