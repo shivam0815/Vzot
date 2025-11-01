@@ -199,7 +199,7 @@ const loadMobileAccessories = async () => {
     const slugs = ['neckband','tws','Data-Cables','chargers','Car-Charger'];
     const query = slugs.map(s => `category=${encodeURIComponent(s)}`).join('&');
 
-    const res = await fetch(`${API_BASE}/products?${query}&limit=24&status=active`, { credentials: 'include' });
+    const res = await fetch(`${API_BASE}/products?${query}&limit=10&status=active`, { credentials: 'include' });
     const data = await res.json();
 
     if (!res.ok) throw new Error(data?.message || 'Failed to load mobile accessories');
