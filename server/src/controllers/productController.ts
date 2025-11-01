@@ -61,6 +61,28 @@ const makeLooseNameRx = (raw: string) => {
   return new RegExp(`^${core}s?$`, 'i');
 };
 
+/* Map slugs→DB category names */
+const CATEGORY_SYNONYMS: Record<string, string[]> = {
+  'neckband': ['Bluetooth Neckband', 'Bluetooth Neckbands', 'Neckband', 'Neckbands'],
+  'tws': ['TWS', 'True Wireless Earbuds', 'True Wireless Stereo'],
+  'data-cables': ['Data Cables', 'Data Cable'],
+  'chargers': ['Mobile Chargers', 'Wall Charger', 'Wall Chargers', 'Chargers'],
+  'car-charger': ['Car Charger', 'Car Chargers'],
+  'mobile-repairing-tools': ['Mobile Repairing Tools'],
+  'ics': ['ICs', 'Mobile IC', 'Mobile ICs'],
+};
+const expandCategoryTokens = (tokens: string[]): string[] => {
+  const out: string[] = [];
+  for (const raw of tokens) {
+    const t = String(raw || '').trim();
+    const key = t.toLowerCase();
+    const syns = CATEGORY_SYNONYMS[key];
+    if (syns && syns.length) out.push(...syns);
+    out.push(t); // keep original
+  }
+  return out;
+};
+
 async function fetchByHomeSort(
   sort: 'new' | 'popular' | 'trending',
   limit: number,
@@ -70,7 +92,6 @@ async function fetchByHomeSort(
   if (typeof anyProduct.getSortedFor === 'function') {
     return anyProduct.getSortedFor({ sort, limit, status });
   }
-
   const q: any = visibilityFilter(status);
   let cursor = Product.find(q);
   if (sort === 'new') cursor = cursor.sort({ createdAt: -1 });
@@ -178,9 +199,7 @@ export const getProducts = async (req: Request, res: Response) => {
 
     let ver = '0';
     if (redis) {
-      try {
-        ver = (await redis.get(nsKey)) ?? '0';
-      } catch {}
+      try { ver = (await redis.get(nsKey)) ?? '0'; } catch {}
     }
 
     const effectiveSearch = (q ?? search) || '';
@@ -246,26 +265,23 @@ export const getProducts = async (req: Request, res: Response) => {
           limit: Number(limit),
         },
       };
-      if (redis) {
-        try {
-          await redis.setex(key, ttl, JSON.stringify(payload));
-        } catch {}
-      }
+      if (redis) { try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {} }
       res.setHeader('X-Cache', 'MISS');
       return res.json(payload);
     }
 
-    // Generic listing with multi-category support
+    // Generic listing with multi-category and slug expansion
     const base = visibilityFilter(String(status || '').trim());
     const query: any = { ...base };
 
-    const cats = [
+    const catTokensRaw = [
       ...normArray(req.query.category),
       ...normArray((req.query as any).category_in),
       ...normArray((req.query as any).categories),
     ];
-    if (cats.length) {
-      const rxes = cats.map((c) => makeLooseNameRx(String(c))).filter(Boolean) as RegExp[];
+    if (catTokensRaw.length) {
+      const expanded = expandCategoryTokens(catTokensRaw);
+      const rxes = expanded.map((c) => makeLooseNameRx(String(c))).filter(Boolean) as RegExp[];
       if (rxes.length) query.$or = (query.$or || []).concat(rxes.map((rx) => ({ category: rx })));
     }
 
@@ -293,16 +309,11 @@ export const getProducts = async (req: Request, res: Response) => {
 
     function mapFrontendSort(token?: string): Record<string, 1 | -1> {
       switch (String(token || '').toLowerCase()) {
-        case 'name':
-          return { name: 1 };
-        case 'price-low':
-          return { price: 1 };
-        case 'price-high':
-          return { price: -1 };
-        case 'rating':
-          return { rating: -1, reviews: -1, createdAt: -1 };
-        default:
-          return { createdAt: -1 };
+        case 'name': return { name: 1 };
+        case 'price-low': return { price: 1 };
+        case 'price-high': return { price: -1 };
+        case 'rating': return { rating: -1, reviews: -1, createdAt: -1 };
+        default: return { createdAt: -1 };
       }
     }
     const sortOptions = mapFrontendSort(sort);
@@ -331,11 +342,7 @@ export const getProducts = async (req: Request, res: Response) => {
       },
     };
 
-    if (redis) {
-      try {
-        await redis.setex(key, ttl, JSON.stringify(payload));
-      } catch {}
-    }
+    if (redis) { try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {} }
     res.setHeader('X-Cache', 'MISS');
     return res.json(payload);
   } catch (error: any) {
