@@ -1,4 +1,4 @@
-// src/controllers/productController.ts - COMPLETE VERSION (with fixed caching for home sorts)
+// src/controllers/productController.ts
 import { Request, Response } from 'express';
 import Papa from 'papaparse';
 import crypto from 'crypto';
@@ -16,10 +16,7 @@ const normArray = (v: any): string[] => {
       const parsed = JSON.parse(v);
       if (Array.isArray(parsed)) return parsed.filter(Boolean).map((s) => String(s).trim());
     } catch {}
-    return String(v)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    return String(v).split(',').map((s) => s.trim()).filter(Boolean);
   }
   return [];
 };
@@ -42,21 +39,20 @@ const normSpecs = (value: any): Record<string, any> => {
   return {};
 };
 
-// escape for regex
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 function visibilityFilter(statusParam?: string) {
   const f: any = {
     $and: [
-      { $or: [ { isActive: true }, { isActive: { $exists: false } } ] },
-      { $or: [ { status: 'active' }, { status: 'Active' }, { status: { $exists: false } } ] },
+      { $or: [{ isActive: true }, { isActive: { $exists: false } }] },
+      { $or: [{ status: 'active' }, { status: 'Active' }, { status: { $exists: false } }] },
     ],
   };
   if (typeof statusParam === 'string' && statusParam.trim()) {
-    f.$and[1] = { status: statusParam.trim() }; 
+    f.$and[1] = { status: statusParam.trim() };
   }
   return f;
 }
-
 
 const makeLooseNameRx = (raw: string) => {
   const parts = raw.trim().split(/[\s\-_]+/).filter(Boolean).map(esc);
@@ -65,38 +61,33 @@ const makeLooseNameRx = (raw: string) => {
   return new RegExp(`^${core}s?$`, 'i');
 };
 
-
 async function fetchByHomeSort(
   sort: 'new' | 'popular' | 'trending',
   limit: number,
   status: 'active' | 'inactive' | 'draft' = 'active'
 ) {
   const anyProduct: any = Product as any;
-
   if (typeof anyProduct.getSortedFor === 'function') {
     return anyProduct.getSortedFor({ sort, limit, status });
   }
 
-  // Fallback implementation if model static doesn't exist (won't error)
- const q: any = visibilityFilter(status);
+  const q: any = visibilityFilter(status);
   let cursor = Product.find(q);
-  if (sort === 'new') {
-    cursor = cursor.sort({ createdAt: -1 });
-  } else if (sort === 'popular') {
+  if (sort === 'new') cursor = cursor.sort({ createdAt: -1 });
+  else if (sort === 'popular')
     cursor = cursor.sort({ isPopular: -1 as any, salesCount7d: -1 as any, rating: -1, createdAt: -1 });
-  } else if (sort === 'trending') {
+  else if (sort === 'trending')
     cursor = cursor.sort({ isTrending: -1 as any, salesCount7d: -1 as any, views7d: -1 as any, rating: -1, createdAt: -1 });
-  }
   return cursor.limit(Number(limit)).lean();
 }
 
-/** Redis cache key builder (versioned namespace + hashed query) */
+/** Redis cache key builder */
 const makeKey = (ver: string | number, query: any) =>
   'products:' + ver + ':' + crypto.createHash('sha1').update(JSON.stringify(query)).digest('hex');
 
 /* ─────────────────────────── Controllers ─────────────────────────── */
 
-// ✅ Create Product (Admin)
+// Create product
 export const createProduct = async (req: AuthRequest, res: Response) => {
   try {
     const body = req.body || {};
@@ -112,35 +103,28 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
 
       stockQuantity: normNumber(body.stockQuantity, 0),
 
-      // Normalize inputs
       features: normArray(body.features),
       tags: normArray(body.tags),
       specifications: normSpecs(body.specifications),
 
-      // images
       images: normArray(body.images),
       imageUrl: body.imageUrl || undefined,
 
-      // legacy counters
       rating: 0,
       reviews: 0,
 
-      // visibility
       isActive: true,
       inStock: normNumber(body.stockQuantity, 0) > 0,
       status: 'active' as const,
 
-      // aggregates used by cards
       averageRating: 0,
       ratingsCount: 0,
 
-      // Optional signals (safe defaults if your model has them)
       isTrending: Boolean(body.isTrending),
       isPopular: Boolean(body.isPopular),
       salesCount7d: normNumber(body.salesCount7d, 0),
       views7d: normNumber(body.views7d, 0),
 
-      // misc optional
       sku: body.sku?.trim(),
       color: body.color?.trim(),
       ports: body.ports != null ? normNumber(body.ports) : undefined,
@@ -150,7 +134,6 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
       manufacturingDetails:
         typeof body.manufacturingDetails === 'object' ? body.manufacturingDetails : {},
 
-      // NEW: only these two SEO fields (clamped)
       metaTitle: typeof body.metaTitle === 'string' ? body.metaTitle.trim().slice(0, 60) : undefined,
       metaDescription:
         typeof body.metaDescription === 'string' ? body.metaDescription.trim().slice(0, 160) : undefined,
@@ -159,38 +142,29 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
     const product = new Product(productData);
     const savedProduct = await product.save();
 
-    // 🔄 Bust product-list caches by bumping namespace version
     try {
       const redis = req.app.get('redis') as Redis | undefined;
       const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
       if (redis) await redis.incr(nsKey);
     } catch {}
 
-    res.status(201).json({
-      success: true,
-      message: 'Product created successfully',
-      product: savedProduct,
-    });
+    res.status(201).json({ success: true, message: 'Product created successfully', product: savedProduct });
   } catch (error: any) {
-    console.error('❌ Create product error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to create product',
-    });
+    res.status(500).json({ success: false, message: error.message || 'Failed to create product' });
   }
 };
 
-// ✅ Get Products (Public - User Facing) — with Redis caching (FIXED for home sorts)
+// Public list with caching
 export const getProducts = async (req: Request, res: Response) => {
   try {
     const {
       page = 1,
       limit = 12,
-      category,          // may be a slug ("car-charger") or name ("Car Charger")
-      brand,             // support brand filter similarly tolerant
-      search,            // old param name
-      q,                 // alias supported
-      sort,              // new|popular|trending (homepage)
+      category,
+      brand,
+      search,
+      q,
+      sort,
       sortBy = 'createdAt',
       sortOrder = 'desc',
       minPrice,
@@ -198,25 +172,21 @@ export const getProducts = async (req: Request, res: Response) => {
       status = 'active',
     } = req.query as any;
 
-    // Wire redis + settings
     const redis = req.app.get('redis') as Redis | undefined;
-    const ttl   = (req.app.get('products_cache_ttl') as number) ?? 60;
+    const ttl = (req.app.get('products_cache_ttl') as number) ?? 60;
     const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
 
-    // Namespace version (increments on writes)
     let ver = '0';
     if (redis) {
-      try { ver = (await redis.get(nsKey)) ?? '0'; } catch {}
+      try {
+        ver = (await redis.get(nsKey)) ?? '0';
+      } catch {}
     }
 
-    // Fast path for homepage sections (no extra filters, first page)
     const effectiveSearch = (q ?? search) || '';
-   const isHomeSort = ['new','popular','trending'].includes(String(sort || '').toLowerCase());
-const noExtraFilters =
-  !effectiveSearch &&
-  (!category || category === 'all' || category === '') &&
-  !brand && !minPrice && !maxPrice;
-
+    const isHomeSort = ['new', 'popular', 'trending'].includes(String(sort || '').toLowerCase());
+    const noExtraFilters =
+      !effectiveSearch && (!category || category === 'all' || category === '') && !brand && !minPrice && !maxPrice;
 
     const cachePayloadForKey = {
       page: Number(page),
@@ -231,86 +201,89 @@ const noExtraFilters =
       maxPrice,
       status,
     };
-
-    // Build cache key for ALL requests (including home sorts)
     const key = makeKey(ver, cachePayloadForKey);
 
-    // Check cache FIRST for all requests
     if (redis) {
       try {
         const hit = await redis.get(key);
         if (hit) {
-          const parsed = JSON.parse(hit);
           res.setHeader('X-Cache', 'HIT');
-          return res.json(parsed);
+          return res.json(JSON.parse(hit));
         }
       } catch {}
     }
 
-    // === Special homesort route ===
-  if (isHomeSort && noExtraFilters) {
- const query: any = visibilityFilter(status);
-  const sortObj: any =
-    String(sort).toLowerCase() === 'new'
-      ? { createdAt: -1 }
-      : String(sort).toLowerCase() === 'popular'
-      ? { isPopular: -1 as any, salesCount7d: -1 as any, rating: -1, createdAt: -1 }
-      : { isTrending: -1 as any, salesCount7d: -1 as any, views7d: -1 as any, rating: -1, createdAt: -1 };
+    // Home-sort fast path
+    if (isHomeSort && noExtraFilters) {
+      const query: any = visibilityFilter(status);
+      const sortObj: any =
+        String(sort).toLowerCase() === 'new'
+          ? { createdAt: -1 }
+          : String(sort).toLowerCase() === 'popular'
+          ? { isPopular: -1 as any, salesCount7d: -1 as any, rating: -1, createdAt: -1 }
+          : { isTrending: -1 as any, salesCount7d: -1 as any, views7d: -1 as any, rating: -1, createdAt: -1 };
 
-  const [products, totalProducts] = await Promise.all([
-    Product.find(q)
-      .sort(sortObj)
-      .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit))
-      .lean(),
-    Product.countDocuments(q),
-  ]);
-  const totalPages = Math.ceil(totalProducts / Number(limit));
+      const [products, totalProducts] = await Promise.all([
+        Product.find(query)
+          .sort(sortObj)
+          .skip((Number(page) - 1) * Number(limit))
+          .limit(Number(limit))
+          .lean(),
+        Product.countDocuments(query),
+      ]);
+      const totalPages = Math.ceil(totalProducts / Number(limit));
 
-  const payload = {
-    success: true,
-    products: products || [],
-    total: totalProducts,                   // ✅ FE reads this
-    pagination: {
-      currentPage: Number(page),
-      totalPages,
-      totalProducts,
-      total: totalProducts,                 // ✅ FE also checks this
-      hasMore: Number(page) < totalPages,
-      limit: Number(limit),
-    },
-  };
+      const payload = {
+        success: true,
+        products: products || [],
+        total: totalProducts,
+        pagination: {
+          currentPage: Number(page),
+          totalPages,
+          totalProducts,
+          total: totalProducts,
+          hasMore: Number(page) < totalPages,
+          limit: Number(limit),
+        },
+      };
+      if (redis) {
+        try {
+          await redis.setex(key, ttl, JSON.stringify(payload));
+        } catch {}
+      }
+      res.setHeader('X-Cache', 'MISS');
+      return res.json(payload);
+    }
 
-  if (redis) { try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {} }
-  res.setHeader('X-Cache', 'MISS');
-  return res.json(payload);
-}
+    // Generic listing with multi-category support
+    const base = visibilityFilter(String(status || '').trim());
+    const query: any = { ...base };
 
-
-    // === Generic listing path (search/category/brand/price/pagination) ===
-    const query: any = { isActive: true, status };
-
-    if (category && category !== 'all' && category !== '') {
-      const rx = makeLooseNameRx(String(category));
-      if (rx) query.category = rx;
+    const cats = [
+      ...normArray(req.query.category),
+      ...normArray((req.query as any).category_in),
+      ...normArray((req.query as any).categories),
+    ];
+    if (cats.length) {
+      const rxes = cats.map((c) => makeLooseNameRx(String(c))).filter(Boolean) as RegExp[];
+      if (rxes.length) query.$or = (query.$or || []).concat(rxes.map((rx) => ({ category: rx })));
     }
 
     if (brand && brand !== 'all' && brand !== '') {
       const rx = makeLooseNameRx(String(brand));
       if (rx) query.brand = rx;
     }
-// search filter: only run when >= 2 chars, and fix tags match
-if (typeof effectiveSearch === 'string' && effectiveSearch.trim().length >= 2) {
-  const rx = new RegExp(esc(effectiveSearch.trim()), 'i');
-  query.$or = [
-    { name: rx },
-    { description: rx },
-    { brand: rx },
-    { category: rx },
-    { tags: rx }, // array of strings can match regex directly
-  ];
-}
 
+    if (typeof effectiveSearch === 'string' && effectiveSearch.trim().length >= 2) {
+      const rx = new RegExp(esc(effectiveSearch.trim()), 'i');
+      query.$or = (query.$or || []).concat([
+        { name: rx },
+        { description: rx },
+        { brand: rx },
+        { category: rx },
+        { tags: rx },
+      ]);
+    }
 
     if (minPrice || maxPrice) {
       query.price = {};
@@ -319,15 +292,20 @@ if (typeof effectiveSearch === 'string' && effectiveSearch.trim().length >= 2) {
     }
 
     function mapFrontendSort(token?: string): Record<string, 1 | -1> {
-  switch (String(token || '').toLowerCase()) {
-    case 'name':       return { name: 1 };
-    case 'price-low':  return { price: 1 };
-    case 'price-high': return { price: -1 };
-    case 'rating':     return { rating: -1, reviews: -1, createdAt: -1 };
-    default:           return { createdAt: -1 };
-  }
-}
-const sortOptions = mapFrontendSort(sort);
+      switch (String(token || '').toLowerCase()) {
+        case 'name':
+          return { name: 1 };
+        case 'price-low':
+          return { price: 1 };
+        case 'price-high':
+          return { price: -1 };
+        case 'rating':
+          return { rating: -1, reviews: -1, createdAt: -1 };
+        default:
+          return { createdAt: -1 };
+      }
+    }
+    const sortOptions = mapFrontendSort(sort);
 
     const products = await Product.find(query)
       .sort(sortOptions)
@@ -339,40 +317,34 @@ const sortOptions = mapFrontendSort(sort);
     const totalProducts = await Product.countDocuments(query);
     const totalPages = Math.ceil(totalProducts / Number(limit));
 
-   // after computing totalProducts & totalPages
-const payload = {
-  success: true,
-  products: products || [],
-  total: totalProducts,              // <-- add
-  pagination: {
-    currentPage: Number(page),
-    totalPages,
-    totalProducts,
-    total: totalProducts,            // <-- add
-    hasMore: Number(page) < totalPages,
-    limit: Number(limit),
-  },
-};
+    const payload = {
+      success: true,
+      products: products || [],
+      total: totalProducts,
+      pagination: {
+        currentPage: Number(page),
+        totalPages,
+        totalProducts,
+        total: totalProducts,
+        hasMore: Number(page) < totalPages,
+        limit: Number(limit),
+      },
+    };
 
-
-    // Store in cache
     if (redis) {
-      try { await redis.setex(key, ttl, JSON.stringify(payload)); } catch {}
+      try {
+        await redis.setex(key, ttl, JSON.stringify(payload));
+      } catch {}
     }
-
     res.setHeader('X-Cache', 'MISS');
     return res.json(payload);
   } catch (error: any) {
     console.error('❌ Get products error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to fetch products',
-      products: [],
-    });
+    res.status(500).json({ success: false, message: error.message || 'Failed to fetch products', products: [] });
   }
 };
 
-// ✅ Get All Products (Admin)
+// Admin list
 export const getAllProducts = async (req: AuthRequest, res: Response) => {
   try {
     const {
@@ -432,14 +404,11 @@ export const getAllProducts = async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     console.error('❌ Admin get products error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to fetch products',
-    });
+    res.status(500).json({ success: false, message: error.message || 'Failed to fetch products' });
   }
 };
 
-// ✅ Debug endpoint
+// Debug
 export const debugProducts = async (_req: Request, res: Response) => {
   try {
     const recent = await Product.find({})
@@ -453,7 +422,6 @@ export const debugProducts = async (_req: Request, res: Response) => {
       $or: [{ isActive: false }, { status: { $ne: 'active' } }],
     });
 
-    // quick category/brand distribution (helpful to verify names)
     const byCategory = await Product.aggregate([
       { $group: { _id: '$category', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
@@ -489,14 +457,11 @@ export const debugProducts = async (_req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('❌ Debug products error:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ✅ Get single product
+// Get one
 export const getProductById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -520,7 +485,7 @@ export const getProductById = async (req: Request, res: Response) => {
   }
 };
 
-// ✅ Update product
+// Update
 export const updateProduct = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -540,15 +505,13 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     if (updateData.specifications !== undefined)
       updateData.specifications = normSpecs(updateData.specifications);
     if (updateData.images !== undefined) updateData.images = normArray(updateData.images);
-    if (updateData.imageUrl === '') updateData.imageUrl = undefined; // clear if empty
+    if (updateData.imageUrl === '') updateData.imageUrl = undefined;
 
-    // Optional signals normalization
     if (updateData.salesCount7d !== undefined) updateData.salesCount7d = normNumber(updateData.salesCount7d);
     if (updateData.views7d !== undefined) updateData.views7d = normNumber(updateData.views7d);
     if (updateData.isTrending !== undefined) updateData.isTrending = Boolean(updateData.isTrending);
     if (updateData.isPopular !== undefined) updateData.isPopular = Boolean(updateData.isPopular);
 
-    // NEW: clamp if provided
     if (updateData.metaTitle !== undefined && updateData.metaTitle !== null) {
       updateData.metaTitle = String(updateData.metaTitle).trim().slice(0, 60);
     }
@@ -565,7 +528,6 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    // 🔄 Bust product-list caches by bumping namespace version
     try {
       const redis = req.app.get('redis') as Redis | undefined;
       const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
@@ -582,7 +544,7 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// ✅ Delete product
+// Delete
 export const deleteProduct = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -593,7 +555,6 @@ export const deleteProduct = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    // 🔄 Bust product-list caches by bumping namespace version
     try {
       const redis = req.app.get('redis') as Redis | undefined;
       const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
@@ -621,13 +582,11 @@ type CsvRow = {
   Brand?: string;
   SKU?: string;
   ImageURL?: string;
-  Images?: string;        // comma-separated
+  Images?: string;
   StockQuantity?: string;
-  Specifications?: string; // JSON
-
-  // NEW (exactly these two)
-  MetaTitle?: string;       // <= 60 chars
-  MetaDescription?: string; // <= 160 chars
+  Specifications?: string;
+  MetaTitle?: string;
+  MetaDescription?: string;
 };
 
 export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
@@ -645,15 +604,10 @@ export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
     }
 
     const toInsert = data.map((r) => {
-      const imagesArr = r.Images
-        ? r.Images.split(',').map((s) => s.trim()).filter(Boolean)
-        : [];
+      const imagesArr = r.Images ? r.Images.split(',').map((s) => s.trim()).filter(Boolean) : [];
 
-      // clamp the two SEO fields if provided (leave undefined if blank)
       const metaTitle =
-        typeof r.MetaTitle === 'string' && r.MetaTitle.trim()
-          ? r.MetaTitle.trim().slice(0, 60)
-          : undefined;
+        typeof r.MetaTitle === 'string' && r.MetaTitle.trim() ? r.MetaTitle.trim().slice(0, 60) : undefined;
 
       const metaDescription =
         typeof r.MetaDescription === 'string' && r.MetaDescription.trim()
@@ -672,23 +626,18 @@ export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
         stockQuantity: Number(r.StockQuantity || 0),
         inStock: Number(r.StockQuantity || 0) > 0,
 
-        // SKU unchanged
         sku: r.SKU?.trim() ? r.SKU.trim() : undefined,
 
-        // ONLY these two new fields
         metaTitle,
         metaDescription,
 
-        // keep same defaults
         isActive: true,
         status: 'active' as const,
       };
     });
 
-    // Keep your existing insert behavior
     const inserted = await Product.insertMany(toInsert, { ordered: false });
 
-    // 🔄 Bust cache after bulk insert
     try {
       const redis = req.app.get('redis') as Redis | undefined;
       const nsKey = (req.app.get('products_cache_ns_key') as string) ?? 'products:ver';
