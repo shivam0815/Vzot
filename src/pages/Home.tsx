@@ -195,11 +195,18 @@ const loadMobileAccessories = async () => {
   try {
     setLoadingMobileAccessories(true);
 
-    // ✅ use correct slugs from CATEGORIES
+    // use the slugs that match your Header.tsx
     const slugs = ['neckband','tws','Data-Cables','chargers','Car-Charger'];
-    const query = slugs.map(s => `category=${encodeURIComponent(s)}`).join('&');
 
-    const res = await fetch(`${API_BASE}/products?${query}&limit=10&status=active`, { credentials: 'include' });
+    const params = new URLSearchParams();
+    // either of these names works with the controller; pick one:
+    params.set('categories', slugs.join(','));  // preferred
+    // params.set('category', slugs.join(',')); // also OK
+    params.set('limit', '12');
+    params.set('status', 'active');
+
+    const url = `${API_BASE}/products?${params.toString()}`;
+    const res = await fetch(url, { credentials: 'include' });
     const data = await res.json();
 
     if (!res.ok) throw new Error(data?.message || 'Failed to load mobile accessories');
