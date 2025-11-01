@@ -523,8 +523,8 @@ const toImg = (u: string): string => {
                 <Smartphone className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Mobile Accessories</h2>
-                <p className="text-gray-500">Essential accessories for every mobile user</p>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Bluetooth Neckband</h2>
+                <p className="text-gray-500">Wireless neckband with different features</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -546,7 +546,7 @@ const toImg = (u: string): string => {
           {loadingMobileAccessories && mobileAccessories.length === 0 ? (
             <SkeletonScrollGrid count={8} />
           ) : mobileAccessories.length === 0 ? (
-            <div className="text-sm text-gray-600">Mobile accessories will appear here soon.</div>
+            <div className="text-sm text-gray-600">Bluetooth Neckband  will appear here soon.</div>
           ) : (
             <div ref={mobileAccessoriesRef.ref} className="flex gap-4 overflow-x-auto scroll-smooth no-scrollbar py-1">
               {mobileAccessories.slice(0, 12).map((p) => (
