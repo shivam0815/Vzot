@@ -82,7 +82,7 @@ const variantUrl = (keyOrUrl: string, suffix: 'thumb' | 'sm' | 'md' | 'lg') => {
 
 // ----- core: S3 presign + PUT -----
 async function presign(filename: string, contentType: string, folder = 'products') {
-  const res = await fetch(apiUrl('/api/uploads/s3/sign'), {
+  const res = await fetch(apiUrl('/uploads/s3/sign'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ filename, contentType, folder }),

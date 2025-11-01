@@ -632,7 +632,7 @@ const toImg = (u: string): string => {
             </div>
           </div>
 
-          {loadingMobileRepairTools && mobileRepairTools.length === 0 ? (
+          { loadingMobileRepairTools && mobileRepairTools.length === 0 ? (
             <SkeletonScrollGrid count={8} />
           ) : mobileRepairTools.length === 0 ? (
             <div className="text-sm text-gray-600">Mobile repairing tools will appear here soon.</div>

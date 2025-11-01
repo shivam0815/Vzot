@@ -52,7 +52,7 @@ function visibilityFilter(statusParam?: string) {
     ],
   };
   if (typeof statusParam === 'string' && statusParam.trim()) {
-    f.$and[1] = { status: statusParam.trim() }; // honor explicit filter
+    f.$and[1] = { status: statusParam.trim() }; 
   }
   return f;
 }
