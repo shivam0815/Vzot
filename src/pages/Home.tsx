@@ -194,14 +194,21 @@ const pickPrimaryImage = (p: any): string | undefined => {
 const loadMobileAccessories = async () => {
   try {
     setLoadingMobileAccessories(true);
-    const accessoryCategories = ['Bluetooth Neckbands', 'TWS', 'Data Cables', 'Mobile Chargers', 'Car Chargers'];
-    const categoryQuery = accessoryCategories.map(cat => `category=${encodeURIComponent(cat)}`).join('&');
-    const res = await fetch(`${API_BASE}/products?${categoryQuery}&limit=24&status=active`, { credentials: 'include' });
+
+    // ✅ use correct slugs from CATEGORIES
+    const slugs = ['neckband','tws','Data-Cables','chargers','Car-Charger'];
+    const query = slugs.map(s => `category=${encodeURIComponent(s)}`).join('&');
+
+    const res = await fetch(`${API_BASE}/products?${query}&limit=24&status=active`, { credentials: 'include' });
     const data = await res.json();
+
     if (!res.ok) throw new Error(data?.message || 'Failed to load mobile accessories');
     setMobileAccessories(data.products || data.items || []);
-  } finally { setLoadingMobileAccessories(false); }
+  } finally {
+    setLoadingMobileAccessories(false);
+  }
 };
+
 
 // Load Mobile ICs (corrected category name)
 const loadMobileIC = async () => {
@@ -514,7 +521,12 @@ const toImg = (u: string): string => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link to="/products?category=bluetooth-neckband&category=true-wireless-stereo&category=data-cable&category=Wall-charger&category=car-charger" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">View all →</Link>
+<Link
+  to="/products?category=neckband&category=tws&category=Data-Cables&category=chargers&category=Car-Charger"
+  className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4"
+>
+  View all →
+</Link>
               <button onClick={mobileAccessoriesRef.scrollLeft} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Prev">
                 <ChevronLeft className="w-5 h-5" />
               </button>
