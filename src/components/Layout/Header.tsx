@@ -39,25 +39,19 @@ const CATEGORIES: Category[] = [
 const categoryUrl = (slug: string) => `/products?category=${encodeURIComponent(slug)}`;
 
 // ---- Rotating search hints ----
-const SEARCH_HINTS = [
-  'Search IC',
-  'Search neckband',
-  'Search mobile tools',
-  'Search TWS',
-  'Search charger',
-];
+const SEARCH_HINTS = ['Search IC', 'Search neckband', 'Search mobile tools', 'Search TWS', 'Search charger'];
 
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
-  // rotating hint index
   const [hintIndex, setHintIndex] = useState(0);
 
   const { getTotalItems } = useCart();
@@ -69,6 +63,7 @@ const Header: React.FC = () => {
   const mobileSearchRef = useRef<HTMLInputElement>(null);
   const searchResultsRef = useRef<HTMLDivElement>(null);
   const categoriesRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   // reflect OAuth token
   useEffect(() => {
@@ -151,6 +146,9 @@ const Header: React.FC = () => {
       if (categoriesRef.current && !categoriesRef.current.contains(ev.target as Node)) {
         setIsCategoriesOpen(false);
       }
+      if (moreRef.current && !moreRef.current.contains(ev.target as Node)) {
+        setIsMoreOpen(false);
+      }
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
@@ -159,7 +157,7 @@ const Header: React.FC = () => {
   return (
     <header className="bg-white shadow-lg sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Top Row: 3 columns => logo | nav+search (grows) | right actions */}
+        {/* Top Row */}
         <div className="grid grid-cols-[auto,1fr,auto] items-center h-16 gap-4">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
@@ -168,15 +166,14 @@ const Header: React.FC = () => {
             </motion.div>
           </Link>
 
-          {/* Desktop: nav + wide search */}
+          {/* Desktop: nav + search */}
           <div className="hidden lg:flex items-center gap-5 min-w-0">
-            {/* Nav (ORDER: Home → Categories → Shop Now → Contact → Blog) */}
             <nav className="flex items-center gap-6 shrink-0">
               <Link to="/" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
                 Home
               </Link>
 
-              {/* Categories (desktop hover + click/touch to toggle) */}
+              {/* Categories */}
               <div
                 ref={categoriesRef}
                 className="relative"
@@ -188,7 +185,7 @@ const Header: React.FC = () => {
                   aria-haspopup="true"
                   aria-expanded={isCategoriesOpen}
                   onFocus={() => setIsCategoriesOpen(true)}
-                  onClick={() => setIsCategoriesOpen((v) => !v)} // touch-friendly
+                  onClick={() => setIsCategoriesOpen((v) => !v)}
                 >
                   Categories
                   <motion.span animate={{ rotate: isCategoriesOpen ? 180 : 0 }} className="inline-block">▾</motion.span>
@@ -204,7 +201,6 @@ const Header: React.FC = () => {
                       className="absolute left-1/2 -translate-x-1/2 top-full mt-3 w-[92vw] max-w-[980px] bg-white border border-gray-200 rounded-2xl shadow-xl p-5"
                       role="menu"
                     >
-                      {/* Responsive grid like reference image */}
                       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-10 gap-y-3">
                         {CATEGORIES.map((c) => (
                           <Link
@@ -214,7 +210,6 @@ const Header: React.FC = () => {
                             onClick={() => setIsCategoriesOpen(false)}
                             role="menuitem"
                           >
-                            {/* circular icon */}
                             <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 shadow-sm">
                               <img
                                 src={c.img}
@@ -230,7 +225,6 @@ const Header: React.FC = () => {
                         ))}
                       </div>
 
-                      {/* footer link */}
                       <div className="pt-4 mt-4 border-t">
                         <Link
                           to="/categories"
@@ -251,12 +245,60 @@ const Header: React.FC = () => {
               <Link to="/contact" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
                 Contact
               </Link>
-              <Link to="/blog" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
-                Blog
-              </Link>
+
+              {/* More dropdown replacing Blog */}
+              <div
+                ref={moreRef}
+                className="relative"
+                onMouseEnter={() => setIsMoreOpen(true)}
+                onMouseLeave={() => setIsMoreOpen(false)}
+              >
+                <button
+                  className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium inline-flex items-center gap-1"
+                  aria-haspopup="true"
+                  aria-expanded={isMoreOpen}
+                  onFocus={() => setIsMoreOpen(true)}
+                  onClick={() => setIsMoreOpen((v) => !v)}
+                >
+                  More
+                  <motion.span animate={{ rotate: isMoreOpen ? 180 : 0 }} className="inline-block">▾</motion.span>
+                </button>
+
+                <AnimatePresence>
+                  {isMoreOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute left-0 top-full mt-3 w-56 bg-white border border-gray-200 rounded-2xl shadow-xl p-2"
+                      role="menu"
+                    >
+                      <Link
+                        to="/blog"
+                        className="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100"
+                        onClick={() => setIsMoreOpen(false)}
+                        role="menuitem"
+                      >
+                        Blog
+                      </Link>
+                      <a
+                        href="https://nakodamobile.in/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100"
+                        role="menuitem"
+                        onClick={() => setIsMoreOpen(false)}
+                      >
+                        Explore B2B
+                      </a>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </nav>
 
-            {/* WIDE Desktop Search (grows) */}
+            {/* Desktop Search */}
             <div className="relative flex-1 max-w-2xl xl:max-w-3xl 2xl:max-w-4xl" ref={searchResultsRef}>
               <form onSubmit={handleSearchSubmit} className="relative">
                 <input
@@ -276,7 +318,6 @@ const Header: React.FC = () => {
                 </button>
               </form>
 
-              {/* Desktop Search Results */}
               <AnimatePresence>
                 {showResults && searchResults.length > 0 && (
                   <motion.div
@@ -300,19 +341,17 @@ const Header: React.FC = () => {
                       </div>
                     ))}
                     {searchResults.length > 8 && (
-  <div className="p-3 text-center border-t">
-    <Link
-  to={`/products?search=${encodeURIComponent(searchTerm)}`}
-
-      onClick={() => setShowResults(false)}
-      onMouseDown={(e) => e.preventDefault()} // keep dropdown from blurring
-      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-    >
-      View all {searchResults.length} results
-    </Link>
-  </div>
-)}
-
+                      <div className="p-3 text-center border-t">
+                        <Link
+                          to={`/products?search=${encodeURIComponent(searchTerm)}`}
+                          onClick={() => setShowResults(false)}
+                          onMouseDown={(e) => e.preventDefault()}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        >
+                          View all {searchResults.length} results
+                        </Link>
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -360,14 +399,13 @@ const Header: React.FC = () => {
                   <Link to="/profile" className="block px-4 py-2 text-gray-700 hover:bg-gray-100">Profile</Link>
                   <Link to="/video" className="block px-4 py-2 text-gray-700 hover:bg-gray-100">Video</Link>
                   <a
-  href="https://nakodamobile.in/"
-  target="_blank"
-  rel="noopener noreferrer"
-  className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
->
-  Explore B2B
-</a>
-
+                    href="https://nakodamobile.in/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
+                  >
+                    Explore B2B
+                  </a>
                   <button onClick={logout} className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100">
                     Logout
                   </button>
@@ -386,7 +424,10 @@ const Header: React.FC = () => {
             <button
               onClick={() => {
                 setIsMenuOpen((v) => !v);
-                if (isMenuOpen) setIsCategoriesOpen(false);
+                if (isMenuOpen) {
+                  setIsCategoriesOpen(false);
+                  setIsMoreOpen(false);
+                }
               }}
               className="lg:hidden p-2 text-gray-700 hover:text-blue-600"
               aria-label="Open menu"
@@ -423,7 +464,6 @@ const Header: React.FC = () => {
                 </button>
               </form>
 
-              {/* Mobile results */}
               <AnimatePresence>
                 {showResults && searchResults.length > 0 && (
                   <motion.div
@@ -462,10 +502,15 @@ const Header: React.FC = () => {
               className="lg:hidden py-3 border-t"
             >
               <nav className="flex flex-col space-y-2">
-                {/* ORDER: Home → Categories → Shop Now → Contact → Blog */}
-                <Link to="/" className="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-100 rounded-lg" onClick={() => setIsMenuOpen(false)}>Home</Link>
+                <Link
+                  to="/"
+                  className="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-100 rounded-lg"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Home
+                </Link>
 
-                {/* Categories accordion with icons */}
+                {/* Categories accordion */}
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <button
                     className="w-full flex items-center justify-between px-3 py-2 text-gray-700"
@@ -491,12 +536,7 @@ const Header: React.FC = () => {
                             className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
                           >
                             <span className="w-12 h-12 rounded-full bg-gray-100 inline-flex items-center justify-center shadow-sm">
-                              <img
-                                src={c.img}
-                                alt={c.alt || c.label}
-                                className="w-9 h-9 object-contain"
-                                loading="lazy"
-                              />
+                              <img src={c.img} alt={c.alt || c.label} className="w-9 h-9 object-contain" loading="lazy" />
                             </span>
                             <span className="text-gray-800">{c.label}</span>
                           </Link>
@@ -513,9 +553,59 @@ const Header: React.FC = () => {
                   </AnimatePresence>
                 </div>
 
-                <Link to="/products" className="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-100 rounded-lg" onClick={() => setIsMenuOpen(false)}>Shop Now</Link>
-                <Link to="/contact" className="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-100 rounded-lg" onClick={() => setIsMenuOpen(false)}>Contact</Link>
-                <Link to="/blog" className="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-100 rounded-lg" onClick={() => setIsMenuOpen(false)}>Blog</Link>
+                <Link
+                  to="/products"
+                  className="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-100 rounded-lg"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Shop Now
+                </Link>
+                <Link
+                  to="/contact"
+                  className="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-gray-100 rounded-lg"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Contact
+                </Link>
+
+                {/* More accordion (Blog + Explore B2B) */}
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <button
+                    className="w-full flex items-center justify-between px-3 py-2 text-gray-700"
+                    onClick={() => setIsMoreOpen((s) => !s)}
+                    aria-expanded={isMoreOpen}
+                  >
+                    <span className="font-medium">More</span>
+                    <motion.span animate={{ rotate: isMoreOpen ? 180 : 0 }}>▾</motion.span>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {isMoreOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="bg-white"
+                      >
+                        <Link
+                          to="/blog"
+                          onClick={() => setIsMenuOpen(false)}
+                          className="block px-4 py-2 hover:bg-gray-50 text-gray-800"
+                        >
+                          Blog
+                        </Link>
+                        <a
+                          href="https://nakodamobile.in/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block px-4 py-2 hover:bg-gray-50 text-gray-800"
+                          onClick={() => setIsMenuOpen(false)}
+                        >
+                          Explore B2B
+                        </a>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </nav>
             </motion.div>
           )}
