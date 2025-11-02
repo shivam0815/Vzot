@@ -29,15 +29,13 @@ const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   banks: 'Power Banks',
   'power-bank': 'Power Banks',
   'power-banks': 'Power Banks',
-  ICs: 'Integrated Circuits & Chips',
-  'Mobile ICs': 'Mobile ICs',
-  'mobile-repairing-tools': 'Mobile Repairing Tools',
-  'mobile ics': 'Mobile ICs',
+  ics: 'ICs',
   'mobile-ics': 'Mobile ICs',
+  'mobile ics': 'Mobile ICs',
+  'mobile-repairing-tools': 'Mobile Repairing Tools',
   electronics: 'Electronics',
   accessories: 'Accessories',
   others: 'Others',
-  ics: 'ICs',
 };
 const NAME_TO_SLUG: Record<string, string> = {
   TWS: 'tws',
@@ -47,16 +45,12 @@ const NAME_TO_SLUG: Record<string, string> = {
   'Car Chargers': 'car-chargers',
   'Bluetooth Speakers': 'bluetooth-speakers',
   'Power Banks': 'power-banks',
-  'Integrated Circuits & Chips': 'ICs',
+  ICs: 'ics',
+  'Mobile ICs': 'mobile-ics',
   'Mobile Repairing Tools': 'mobile-repairing-tools',
   Electronics: 'electronics',
   Accessories: 'accessories',
-  'Mobile ICs': 'Mobile ICs',
-  'Mobile Accessories': 'Mobile Accessories',
-  'mobile ics': 'Mobile ICs',
-  'mobile-ics': 'Mobile ICs',
   Others: 'others',
-  ICs: 'ics',
 };
 
 const HEX24 = /^[a-f\d]{24}$/i;
@@ -79,26 +73,48 @@ const productUrl = (p: any) => {
   return `https://nakodamobile.com/product/${handle}`;
 };
 
-const useCanonical = (category: string, page: number, hasFilters: boolean) => {
+const parseCategoriesFromUrl = (sp: URLSearchParams): string[] => {
+  // Accept either multiple ?category=… or a single ?categories=a,b,c
+  const multi = sp.getAll('category').map((s) => s.trim()).filter(Boolean);
+  const csv = (sp.get('categories') || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const set = new Set<string>([...multi, ...csv]);
+  return [...set];
+};
+
+const toHuman = (slugOrName: string): string => {
+  const key = slugOrName.trim().toLowerCase();
+  return CATEGORY_ALIAS_TO_NAME[key] || slugOrName;
+};
+
+const useCanonical = (categoryNames: string[], page: number, hasFilters: boolean) => {
   const { pathname } = useLocation();
   const base = 'https://nakodamobile.com';
+
   const params = new URLSearchParams();
-  if (category) params.set('category', (NAME_TO_SLUG[category] || category).toLowerCase());
+  if (categoryNames.length === 1) {
+    params.set('category', (NAME_TO_SLUG[categoryNames[0]] || categoryNames[0]).toLowerCase());
+  } else if (categoryNames.length > 1) {
+    const slugs = categoryNames.map((n) => (NAME_TO_SLUG[n] || n).toLowerCase());
+    params.set('categories', slugs.join(','));
+  }
   if (page > 1) params.set('page', String(page));
-  const qs = params.toString();
+
   const path = pathname.startsWith('/products') ? '/products' : '/products';
-  const canonical = `${base}${path}${qs ? `?${qs}` : ''}`;
+  const canonical = `${base}${path}${params.toString() ? `?${params.toString()}` : ''}`;
   const robots = hasFilters ? 'noindex,follow' : 'index,follow';
+
   const prevLink =
     page > 1
-      ? `${base}${path}${
-          (() => {
-            const p = new URLSearchParams(qs);
-            p.set('page', String(page - 1));
-            return p.toString() ? `?${p.toString()}` : '';
-          })()
-        }`
+      ? (() => {
+          const p = new URLSearchParams(params);
+          p.set('page', String(page - 1));
+          return `${base}${path}${p.toString() ? `?${p.toString()}` : ''}`;
+        })()
       : null;
+
   return { canonical, robots, prevLink };
 };
 
@@ -106,47 +122,52 @@ const Products: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
 
-  const urlCategorySlug = (searchParams.get('category') || '').trim().toLowerCase();
-  const normalizedFromUrl =
-    (urlCategorySlug && CATEGORY_ALIAS_TO_NAME[urlCategorySlug]) || '';
+  // URL → categories
+  const urlSingle = (searchParams.get('category') || '').trim().toLowerCase();
+  const urlMulti = parseCategoriesFromUrl(searchParams);
+  const urlHumanList = (urlMulti.length ? urlMulti : urlSingle ? [urlSingle] : [])
+    .map(toHuman)
+    .filter(Boolean);
 
-  /* UI state */
+  // UI state
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>(normalizedFromUrl);
+  const [selectedCategory, setSelectedCategory] = useState<string>(urlHumanList[0] || '');
+  const [selectedMulti, setSelectedMulti] = useState<string[]>(urlHumanList.length > 1 ? urlHumanList : []);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 20000]);
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'rating'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  /* data state */
+  // data
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  /* pagination */
+  // pagination
   const [page, setPage] = useState(1);
   const [limit] = useState(24);
   const [total, setTotal] = useState(0);
 
-  /* keep session return URL always fresh */
+  // keep session return URL
   useEffect(() => {
     const url = `${location.pathname}${location.search}`;
     sessionStorage.setItem('last-products-url', url);
   }, [location.pathname, location.search]);
 
-  /* derive page from URL and sync into state */
+  // page from URL
   const pageFromUrl = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
   useEffect(() => {
     if (page !== pageFromUrl) setPage(pageFromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageFromUrl]);
 
-  /* categories (fallback list + fetch) */
+  // categories dropdown list (fallback + fetch)
   const [categories, setCategories] = useState<string[]>([
     'TWS',
     'Bluetooth Neckbands',
     'Data Cables',
     'Mobile Chargers',
-    'Integrated Circuits & Chips',
+    'ICs',
+    'Mobile ICs',
     'Mobile Repairing Tools',
     'Electronics',
     'Accessories',
@@ -154,40 +175,7 @@ const Products: React.FC = () => {
     'Bluetooth Speakers',
     'Power Banks',
     'Others',
-    'ICs',
-    'Mobile ICs',
-    'Mobile accessories',
-    'Stencil',
   ]);
-
-  const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';
-
-  /* URL -> dropdown */
-  useEffect(() => {
-    if (normalizedFromUrl && normalizedFromUrl !== selectedCategory) {
-      setSelectedCategory(normalizedFromUrl);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedFromUrl]);
-
-  /* dropdown -> URL (only when user changes) */
-  const onCategoryChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
-    const nextHuman = e.target.value;
-    setSelectedCategory(nextHuman);
-    const nextSlug = nextHuman ? NAME_TO_SLUG[nextHuman] : '';
-    const next = new URLSearchParams(searchParams);
-    if (nextSlug) {
-      next.set('category', nextSlug);
-    } else {
-      next.delete('category');
-    }
-    // reset page ONLY here (user intent)
-    next.delete('page');
-    setSearchParams(next, { replace: false });
-    setPage(1);
-  };
-
-  /* fetch categories (once) */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -197,22 +185,53 @@ const Products: React.FC = () => {
         if (!cancelled && arr.length) setCategories(arr.filter(Boolean));
       } catch {}
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  /* server fetch with pagination */
+  // URL → UI sync (single + multi)
+  useEffect(() => {
+    if (urlHumanList.length > 1) {
+      setSelectedMulti(urlHumanList);
+      setSelectedCategory('');
+    } else if (urlHumanList.length === 1 && urlHumanList[0] !== selectedCategory) {
+      setSelectedCategory(urlHumanList[0]);
+      setSelectedMulti([]);
+    } else if (urlHumanList.length === 0) {
+      setSelectedCategory('');
+      setSelectedMulti([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.toString()]);
+
+  // Build filters for API
+  const normalizedCategoryForApiList = selectedMulti.length
+    ? selectedMulti
+    : selectedCategory
+    ? [selectedCategory]
+    : urlHumanList;
+
+  // server fetch
   const fetchProducts = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
 
       const filters: any = {};
-      if (normalizedCategoryForApi) filters.category = normalizedCategoryForApi;
+      if (normalizedCategoryForApiList.length > 1) {
+        // send categories CSV
+        filters.categories = normalizedCategoryForApiList.join(',');
+      } else if (normalizedCategoryForApiList.length === 1) {
+        // single category
+        filters.category = normalizedCategoryForApiList[0];
+      }
+
       if (searchTerm) filters.q = searchTerm;
 
       const mapSort = (
         ui: typeof sortBy
-      ): { sortBy: 'createdAt' | 'price' | 'rating' | 'trending'; sortOrder: 'asc' | 'desc' } => {
+      ): { sortBy: 'createdAt' | 'price' | 'rating'; sortOrder: 'asc' | 'desc' } => {
         switch (ui) {
           case 'price-low':
             return { sortBy: 'price', sortOrder: 'asc' };
@@ -279,25 +298,27 @@ const Products: React.FC = () => {
     }
   };
 
-  /* IMPORTANT: do NOT reset page here on dep changes */
+  // fetch on changes
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, normalizedCategoryForApi, sortBy, searchTerm]);
+  }, [page, selectedCategory, selectedMulti.join(','), sortBy, searchTerm]);
 
-  /* central pager that updates URL + sessionStorage */
+  // pager
   const goToPage = (n: number) => {
     const nextPage = Math.max(1, n);
     setPage(nextPage);
     const params = new URLSearchParams(searchParams);
+
     if (nextPage > 1) params.set('page', String(nextPage));
     else params.delete('page');
-    setSearchParams(params, { replace: false }); // push history
+
+    setSearchParams(params, { replace: false });
     const url = `${location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
     sessionStorage.setItem('last-products-url', url);
   };
 
-  // ---- Bulk review summaries (one call) ----
+  // Bulk review summaries
   const filteredProducts = useMemo(() => {
     const list = Array.isArray(products) ? products : [];
     const q = (searchTerm || '').toLowerCase();
@@ -309,10 +330,7 @@ const Products: React.FC = () => {
         const matchesSearch = !q || name.includes(q) || desc.includes(q);
 
         const priceVal = typeof p?.price === 'number' ? p.price : Number.NaN;
-        const priceOk =
-          Number.isFinite(priceVal) &&
-          priceVal >= 0 &&
-          priceVal <= priceRange[1];
+        const priceOk = Number.isFinite(priceVal) && priceVal >= 0 && priceVal <= priceRange[1];
 
         const isActive = p?.isActive !== false;
 
@@ -343,7 +361,7 @@ const Products: React.FC = () => {
 
   const handleManualRefresh = () => fetchProducts(true);
 
-  // ────────────── SEO: canonical, robots, JSON-LD ──────────────
+  // SEO/canonical
   const hasSearch = !!searchTerm.trim();
   const hasPriceFilter = !(priceRange[0] === 0 && priceRange[1] === 20000);
   const hasFilters = hasSearch || hasPriceFilter;
@@ -355,7 +373,8 @@ const Products: React.FC = () => {
   const canPrev = page > 1;
   const canNext = page < totalPages;
 
-  const { canonical, robots, prevLink } = useCanonical(normalizedCategoryForApi, page, hasFilters);
+  const activeCats = normalizedCategoryForApiList;
+  const { canonical, robots, prevLink } = useCanonical(activeCats, page, hasFilters);
   const nextLink =
     canNext
       ? (() => {
@@ -367,46 +386,58 @@ const Products: React.FC = () => {
         })()
       : null;
 
-  const itemListJsonLd = !hasFilters
-    ? {
-        '@context': 'https://schema.org',
-        '@type': 'ItemList',
-        itemListOrder: 'http://schema.org/ItemListOrderAscending',
-        numberOfItems: filteredProducts.length,
-        url: canonical,
-        itemListElement: filteredProducts.map((p, idx) => ({
-          '@type': 'ListItem',
-          position: idx + 1,
-          url: productUrl(p),
-          name: p?.name || undefined,
-          image:
-            (Array.isArray((p as any)?.images) && (p as any).images[0]) ||
-            (p as any)?.image ||
-            undefined,
-          sku: (p as any)?.sku || undefined,
-          brand: (p as any)?.brand ? { '@type': 'Brand', name: (p as any).brand } : undefined,
-        })),
-      }
-    : undefined;
+  const itemListJsonLd =
+    !hasFilters && activeCats.length <= 1
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'ItemList',
+          itemListOrder: 'http://schema.org/ItemListOrderAscending',
+          numberOfItems: filteredProducts.length,
+          url: canonical,
+          itemListElement: filteredProducts.map((p, idx) => ({
+            '@type': 'ListItem',
+            position: idx + 1,
+            url: productUrl(p),
+            name: p?.name || undefined,
+            image:
+              (Array.isArray((p as any)?.images) && (p as any).images[0]) ||
+              (p as any)?.image ||
+              undefined,
+            sku: (p as any)?.sku || undefined,
+            brand: (p as any)?.brand ? { '@type': 'Brand', name: (p as any).brand } : undefined,
+          })),
+        }
+      : undefined;
 
-  const breadcrumbJsonLd = normalizedCategoryForApi
-    ? {
-        '@context': 'https://schema.org',
-        '@type': 'BreadcrumbList',
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://nakodamobile.com/' },
-          { '@type': 'ListItem', position: 2, name: 'Products', item: 'https://nakodamobile.com/products' },
-          { '@type': 'ListItem', position: 3, name: normalizedCategoryForApi, item: canonical },
-        ],
-      }
-    : undefined;
+  const breadcrumbJsonLd =
+    activeCats.length > 0
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://nakodamobile.com/' },
+            { '@type': 'ListItem', position: 2, name: 'Products', item: 'https://nakodamobile.com/products' },
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: activeCats.length === 1 ? activeCats[0] : 'Multiple Categories',
+              item: canonical,
+            },
+          ],
+        }
+      : undefined;
 
-  const pageTitle = normalizedCategoryForApi
-    ? `${normalizedCategoryForApi} — Shop Products`
-    : 'Shop Products';
-  const pageDesc = normalizedCategoryForApi
-    ? `Buy ${normalizedCategoryForApi} online at Nakoda Mobile. Fast shipping. GST invoice.`
-    : 'Browse tech accessories at Nakoda Mobile. Fast shipping. GST invoice.';
+  const pageTitle =
+    activeCats.length === 1
+      ? `${activeCats[0]} — Shop Products`
+      : activeCats.length > 1
+      ? `${activeCats.join(', ')} — Shop Products`
+      : 'Shop Products';
+
+  const pageDesc =
+    activeCats.length === 1
+      ? `Buy ${activeCats[0]} online at Nakoda Mobile. Fast shipping. GST invoice.`
+      : 'Browse tech accessories at Nakoda Mobile. Fast shipping. GST invoice.';
 
   /* loading */
   if (loading) {
@@ -427,7 +458,7 @@ const Products: React.FC = () => {
         <div className="text-center">
           <div className="text-red-600 text-xl mb-4">{error}</div>
           <button
-            onClick={() => fetchProducts(true)}
+            onClick={() => handleManualRefresh()}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             Try Again
@@ -472,11 +503,11 @@ const Products: React.FC = () => {
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">
-            {normalizedCategoryForApi || 'Premium Tech Accessories'}
+            {activeCats.length ? activeCats.join(', ') : 'Premium Tech Accessories'}
           </h1>
           <p className="text-xl md:text-2xl mb-8">
-            {normalizedCategoryForApi
-              ? `Discover ${normalizedCategoryForApi} from Nakoda Mobile`
+            {activeCats.length
+              ? `Discover ${activeCats.join(', ')} from Nakoda Mobile`
               : 'Discover our curated collection of high-quality products'}
           </p>
         </div>
@@ -486,13 +517,24 @@ const Products: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8 flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
-          {/* Category */}
+          {/* Category (single selector for now) */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
             <label className="text-sm font-medium text-gray-700">Category:</label>
-            {/* ← only here we reset page */}
             <select
               value={selectedCategory}
-              onChange={onCategoryChange}
+              onChange={(e) => {
+                const nextHuman = e.target.value;
+                setSelectedCategory(nextHuman);
+                setSelectedMulti([]); // switch to single
+                const next = new URLSearchParams(searchParams);
+                // clear multi
+                next.delete('categories');
+                next.delete('category');
+                if (nextHuman) next.set('category', (NAME_TO_SLUG[nextHuman] || nextHuman).toLowerCase());
+                next.delete('page');
+                setSearchParams(next, { replace: false });
+                setPage(1);
+              }}
               className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Categories</option>
@@ -533,7 +575,6 @@ const Products: React.FC = () => {
               onChange={(e) => {
                 const v = e.target.value as typeof sortBy;
                 setSortBy(v);
-                // Reset page on user-intent change
                 const next = new URLSearchParams(searchParams);
                 next.delete('page');
                 setSearchParams(next, { replace: false });
@@ -565,7 +606,7 @@ const Products: React.FC = () => {
               <List className="h-5 w-5" />
             </button>
             <button
-              onClick={() => fetchProducts(true)}
+              onClick={() => handleManualRefresh()}
               className="p-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
               title="Refresh Products"
             >
@@ -578,7 +619,7 @@ const Products: React.FC = () => {
         <div className="mb-6">
           <p className="text-gray-600">
             Showing {filteredProducts.length} of {total || products.length} products
-            {normalizedCategoryForApi && ` in ${normalizedCategoryForApi}`}
+            {activeCats.length ? ` in ${activeCats.join(', ')}` : ''}
             {searchTerm && ` · matching "${searchTerm}"`}
           </p>
         </div>
@@ -693,9 +734,11 @@ const Products: React.FC = () => {
                 onClick={() => {
                   setSearchTerm('');
                   setSelectedCategory('');
+                  setSelectedMulti([]);
                   setPriceRange([0, 20000]);
                   const next = new URLSearchParams(searchParams);
                   next.delete('category');
+                  next.delete('categories');
                   next.delete('page');
                   setSearchParams(next, { replace: false });
                   setPage(1);
@@ -705,7 +748,7 @@ const Products: React.FC = () => {
                 Clear Filters
               </button>
               <button
-                onClick={() => fetchProducts(true)}
+                onClick={() => handleManualRefresh()}
                 className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
               >
                 Refresh Products

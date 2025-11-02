@@ -7,6 +7,24 @@ import Product from '../models/Product';
 import type { AuthRequest } from '../types';
 
 /* ───────────────────────────── Helpers ───────────────────────────── */
+// ── Category query helpers ─────────────────────────────────────
+const normCatsFromQuery = (q: any): string[] => {
+  const out: string[] = [];
+  if (Array.isArray(q?.category)) out.push(...q.category);
+  else if (typeof q?.category === 'string' && q.category.trim()) out.push(q.category);
+  if (typeof q?.categories === 'string' && q.categories.trim()) {
+    out.push(...q.categories.split(','));
+  }
+  return out.map(s => String(s).trim()).filter(Boolean);
+};
+
+const catRegexes = (cats: string[]) => {
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return cats.map(c => {
+    const human = c.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return new RegExp(`^${esc(human)}$`, 'i'); // exact, case-insensitive
+  });
+};
 
 const normArray = (v: any): string[] => {
   if (Array.isArray(v)) return v.filter(Boolean).map((s) => String(s).trim());
@@ -270,6 +288,38 @@ export const getProducts = async (req: Request, res: Response) => {
       return res.json(payload);
     }
 
+    // ── map sortBy/sortOrder (new) OR fallback to old `sort` tokens ─────────────
+    function mapSortByAndOrder(
+      sBy?: string,
+      sOrder?: string
+    ): Record<string, 1 | -1> | null {
+      const by = String(sBy || '').toLowerCase();
+      const ord: 1 | -1 = (String(sOrder || '').toLowerCase() === 'asc') ? 1 : -1;
+      switch (by) {
+        case 'price':      return { price: ord };
+        case 'createdat':  return { createdAt: ord };
+        case 'name':       return { name: ord };
+        case 'rating':     return ord === -1
+          ? { rating: -1, reviews: -1, createdAt: -1 }
+          : { rating: 1, reviews: 1, createdAt: 1 };
+        default:           return null;
+      }
+    }
+
+    function mapFrontendSort(token?: string): Record<string, 1 | -1> {
+      switch (String(token || '').toLowerCase()) {
+        case 'name':        return { name: 1 };
+        case 'price-low':   return { price: 1 };
+        case 'price-high':  return { price: -1 };
+        case 'rating':      return { rating: -1, reviews: -1, createdAt: -1 };
+        default:            return { createdAt: -1 };
+      }
+    }
+
+    const sortOptions =
+      mapSortByAndOrder(sortBy, sortOrder) ??
+      mapFrontendSort(sort);
+
     // Generic listing with multi-category and slug expansion
     const base = visibilityFilter(String(status || '').trim());
     const query: any = { ...base };
@@ -297,7 +347,8 @@ export const getProducts = async (req: Request, res: Response) => {
         { description: rx },
         { brand: rx },
         { category: rx },
-        { tags: rx },
+        { tags: rx },              // works on arrays in Mongo
+        // { tags: { $elemMatch: rx } }, // explicit alternative if you prefer
       ]);
     }
 
@@ -306,17 +357,6 @@ export const getProducts = async (req: Request, res: Response) => {
       if (minPrice) query.price.$gte = Number(minPrice);
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
-
-    function mapFrontendSort(token?: string): Record<string, 1 | -1> {
-      switch (String(token || '').toLowerCase()) {
-        case 'name': return { name: 1 };
-        case 'price-low': return { price: 1 };
-        case 'price-high': return { price: -1 };
-        case 'rating': return { rating: -1, reviews: -1, createdAt: -1 };
-        default: return { createdAt: -1 };
-      }
-    }
-    const sortOptions = mapFrontendSort(sort);
 
     const products = await Product.find(query)
       .sort(sortOptions)
@@ -559,7 +599,10 @@ export const deleteProduct = async (req: AuthRequest, res: Response) => {
     const product = await Product.findByIdAndDelete(id);
 
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found',
+      });
     }
 
     try {
