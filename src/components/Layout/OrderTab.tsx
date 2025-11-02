@@ -35,7 +35,7 @@ interface IUser {
 }
 
 interface IOrderItem {
-  productId?: string | { _id?: string; name?: string; image?: string };
+  productId?: string | { _id?: string; name?: string; image?: string; images?: string[] };
   name?: string;
   image?: string;
   quantity: number;
@@ -145,6 +145,16 @@ interface IShippingPayment {
 /* =========================
    Utils
 ========================= */
+function itemImage(it: IOrderItem): string {
+  if (it?.image) return it.image;
+  if (typeof it.productId === 'object' && it.productId) {
+    // prefer first image from populated array; fall back to single image field if any
+    const arr = (it.productId as any).images as string[] | undefined;
+    if (Array.isArray(arr) && arr[0]) return arr[0];
+    if ((it.productId as any).image) return (it.productId as any).image as string;
+  }
+  return '';
+}
 
 const currency = (n: number) =>
   new Intl.NumberFormat('en-IN', {
@@ -1194,9 +1204,7 @@ const OrdersTab: React.FC = () => {
                     <td className="p-3">
                       <div className="flex -space-x-2 items-center">
                         {o.items.slice(0, 5).map((it, idx) => {
-                          const src =
-                            (typeof it.productId === 'object' && it.productId?.image) ||
-                            it.image;
+                          const src = itemImage(it);
                           return src ? (
                             <img
                               key={idx}
@@ -1346,9 +1354,7 @@ const OrdersTab: React.FC = () => {
 
                 <div className="mt-3 flex items-center gap-2 overflow-x-auto -mx-1 px-1">
                   {o.items.slice(0, 6).map((it, idx) => {
-                    const src =
-                      (typeof it.productId === 'object' && it.productId?.image) ||
-                      it.image;
+                    const src = itemImage(it);
                     return src ? (
                       <img
                         key={idx}
@@ -1560,12 +1566,10 @@ const OrdersTab: React.FC = () => {
   <div className="font-semibold text-gray-900 mb-2">Items</div>
   <div className="space-y-2">
     {selected.items.map((it, idx) => {
-      const src =
-        (typeof it.productId === 'object' && it.productId?.image) || it.image;
-      const name =
-        (typeof it.productId === 'object' && it.productId?.name) ||
-        it.name ||
-        'Item';
+      const src = itemImage(it);
+const name =
+  (typeof it.productId === 'object' && (it.productId as any)?.name) ||
+  it.name || 'Item';
       return (
         <div key={idx} className="flex items-center gap-3 border rounded-2xl p-2">
           <div className="w-12 h-12 rounded-xl bg-gray-100 border overflow-hidden flex items-center justify-center">

@@ -18,7 +18,7 @@ import { newsletterService } from '../services/newsletterService';
 import toast from 'react-hot-toast';
 
 // 🔽 S3/Cloudinary-aware helpers
-import { resolveImageUrl, getFirstImageUrl, getOptimizedImageUrl } from '../utils/imageUtils';
+import { resolveImageUrl,  getOptimizedImageUrl } from '../utils/imageUtils';
 import { useTranslation } from 'react-i18next';
 
 const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(e.trim());
