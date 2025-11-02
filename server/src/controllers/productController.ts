@@ -7,24 +7,6 @@ import Product from '../models/Product';
 import type { AuthRequest } from '../types';
 
 /* ───────────────────────────── Helpers ───────────────────────────── */
-// ── Category query helpers ─────────────────────────────────────
-const normCatsFromQuery = (q: any): string[] => {
-  const out: string[] = [];
-  if (Array.isArray(q?.category)) out.push(...q.category);
-  else if (typeof q?.category === 'string' && q.category.trim()) out.push(q.category);
-  if (typeof q?.categories === 'string' && q.categories.trim()) {
-    out.push(...q.categories.split(','));
-  }
-  return out.map(s => String(s).trim()).filter(Boolean);
-};
-
-const catRegexes = (cats: string[]) => {
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return cats.map(c => {
-    const human = c.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
-    return new RegExp(`^${esc(human)}$`, 'i'); // exact, case-insensitive
-  });
-};
 
 const normArray = (v: any): string[] => {
   if (Array.isArray(v)) return v.filter(Boolean).map((s) => String(s).trim());
