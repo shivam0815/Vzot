@@ -1,6 +1,6 @@
 // src/models/Product.ts (B2C)
 import mongoose, { Schema, Document, Model } from 'mongoose';
-
+import istVirtuals from './plugins/istVirtuals';
 export interface IProduct extends Document {
   _id: mongoose.Types.ObjectId;
   // core
@@ -242,7 +242,7 @@ productSchema.pre('validate', function (next) {
 });
 
 /** ───────────────────────── Statics (helper for controller) ───────────────────────── */
-
+productSchema.plugin(istVirtuals);
 productSchema.statics.getSortedFor = function ({
   sort = 'new',
   limit = 24,

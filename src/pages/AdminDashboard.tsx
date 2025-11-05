@@ -558,16 +558,16 @@ const InventoryManagement = memo<{
                   </td>
                   <td>
                     <div className="product-image">
-                      {product.imageUrl ? (
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }}
-                        />
-                      ) : (
-                        <div className="no-image">📦</div>
-                      )}
-                    </div>
+  {(() => {
+    const img = product.imageUrl || product.images?.[0] || product.image;
+    return img ? (
+      <img src={img} alt={product.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
+    ) : (
+      <div className="no-image">📦</div>
+    );
+  })()}
+</div>
+
                   </td>
                   <td>
                     {editingProduct === product._id ? (
