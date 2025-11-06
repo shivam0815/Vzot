@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL || 'https://nakodamobile.in/api';
+const baseURL = import.meta.env.VITE_API_URL || 'https://localhost:5000/api';
 
 const api = axios.create({
   baseURL,

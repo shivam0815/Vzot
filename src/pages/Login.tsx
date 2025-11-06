@@ -67,14 +67,14 @@ const Login: React.FC = () => {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <img src="/home.webp" alt="" className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover" />
+      <img src="/login.webp" alt="" className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover" />
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-transparent via-white/10 to-white/80" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
         <div className="rounded-t-2xl bg-white/95 backdrop-blur-sm shadow-sm ring-1 ring-black/5 py-3">
           <div className="flex items-center justify-center gap-3">
-            <img src="/logo.png" alt="Nakoda Mobile" className="h-8 w-8 rounded-lg ring-1 ring-black/5 object-contain" />
-            <span className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">Nakoda Mobile</span>
+            <img src="/logo.webp" alt="Nakoda Mobile" className="h-8 w-8 rounded-lg ring-1 ring-black/5 object-contain" />
+            <span className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">VZOT</span>
           </div>
         </div>
       </div>

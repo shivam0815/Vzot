@@ -1,99 +1,72 @@
 <!doctype html>
 <html lang="en">
- <head>
+<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
 
-  <title>Nakoda Mobile — OEM & Wholesale Mobile Accessories | Shop Online</title>
-  <meta name="description" content="Nakoda Mobile — OEM & wholesale supplier of chargers, cables, earphones & TWS. Serving distributors (B2B) and direct retail (B2C). Pan-India delivery." />
+  <title>VZOT (Local) — Mobile Accessories Store</title>
+  <meta name="description" content="Local development build for VZOT — a mobile accessories brand by Vzot Technologies." />
 
-  <meta name="robots" content="index,follow,max-image-preview:large" />
-  <link rel="canonical" href="https://nakodamobile.com/" />
+  <!-- Prevent search engine indexing in development -->
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="canonical" href="http://localhost:5173/" />
 
- <link rel="icon" href="/favicon.ico" sizes="any">
+  <!-- App Icons -->
+  <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <meta name="theme-color" content="#0ea5e9" />
 
+  <!-- Open Graph (DEV placeholders) -->
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="Nakoda Mobile" />
-  <meta property="og:title" content="Nakoda Mobile — OEM & Wholesale Mobile Accessories | Shop Online" />
-  <meta property="og:description" content="Mobile accessories manufacturer in Karol Bagh, Delhi. OEM/wholesale for B2B buyers & direct B2C store. Chargers, cables, TWS & more." />
-  <meta property="og:url" content="https://nakodamobile.com/" />
-  <meta property="og:image" content="https://nakodamobile.com/og-home-1200x630.jpg" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
+  <meta property="og:site_name" content="VZOT" />
+  <meta property="og:title" content="VZOT — Local Dev Build" />
+  <meta property="og:description" content="Local preview of the VZOT mobile accessories store." />
+  <meta property="og:url" content="http://localhost:5173/" />
+  <meta property="og:image" content="/og-dev.jpg" />
 
+  <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Nakoda Mobile — OEM & Wholesale Mobile Accessories | Shop Online" />
-  <meta name="twitter:description" content="B2B OEM/wholesale and B2C retail for mobile accessories. Pan-India shipping." />
-  <meta name="twitter:image" content="https://nakodamobile.com/og-home-1200x630.jpg" />
+  <meta name="twitter:title" content="VZOT — Local Dev" />
+  <meta name="twitter:description" content="Development build of the VZOT mobile accessories website." />
+  <meta name="twitter:image" content="/og-dev.jpg" />
 
+  <!-- Structured Data (Local Dev) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
-    "name": "Nakoda Mobile",
+    "name": "VZOT (Development Build)",
     "image": "/favicon-512.png",
-    "url": "https://nakodamobile.com/",
-    "telephone": "+91-9667960044",
-    "email": "nakodaoem@gmail.com",
+    "url": "http://localhost:5173/",
+    "telephone": "+91-0000000000",
+    "email": "dev@vzot.local",
     "address": {
       "@type": "PostalAddress",
-      "streetAddress": "Building No. 3372/2, Gali No. 2, Christian Colony, Karol Bagh Near Baptist Church",
-      "addressLocality": "Delhi",
-      "addressRegion": "Delhi",
-      "postalCode": "110005",
+      "streetAddress": "Dev Mode - No Live Address",
+      "addressLocality": "Localhost",
+      "addressRegion": "DEV",
+      "postalCode": "000000",
       "addressCountry": "IN"
     },
     "openingHours": ["Mo-Sa 10:00-19:00"],
     "contactPoint": [{
       "@type": "ContactPoint",
-      "telephone": "+91-9667960044",
-      "contactType": "sales",
-      "areaServed": "IN",
+      "telephone": "+91-0000000000",
+      "contactType": "support",
       "availableLanguage": ["en","hi"]
-    }],
-    "sameAs": [
-      "https://www.facebook.com/jitendra.kothari.121/",
-      "https://www.instagram.com/v2m_nakoda_mobile/",
-      "https://www.youtube.com/@V2MNakodaMobile"
-    ]
+    }]
   }
   </script>
-
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "url": "https://nakodamobile.com/",
-    "name": "Nakoda Mobile",
-    "potentialAction": {
-      "@type": "SearchAction",
-      "target": "https://nakodamobile.com/search?q={query}",
-      "query-input": "required name=query"
-    }
-  }
-  </script>
-
-  <meta name="google-site-verification" content="zquNbBl6_D4eh-GYYAyqm5kvldO3gUQrbtBF1Qf0l-o" />
 </head>
-
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-MD3TJ5YVXN"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', 'G-MD3TJ5YVXN');
-</script>
 
 <body>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
-      <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
-  <!-- Removed Razorpay checkout.js (not needed for PhonePe) -->
+
+  <!-- Razorpay (optional for local sandbox testing) -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
 </body>
 </html>

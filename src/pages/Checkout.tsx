@@ -67,7 +67,7 @@ const emptyAddress: Address = {
   landmark: '',
 };
 
-const SHIPPING_FREE_THRESHOLD = 2000;
+const SHIPPING_FREE_THRESHOLD = 1499;
 const BASE_SHIPPING_FEE = 150;
 
 const COD_FEE = 25;

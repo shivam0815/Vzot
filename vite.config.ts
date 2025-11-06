@@ -15,7 +15,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://nakodamobile.com/',
+        target: 'http://localhost:5000/',
         changeOrigin: true,
         secure: true,
       },

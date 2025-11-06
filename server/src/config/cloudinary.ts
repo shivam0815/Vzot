@@ -31,7 +31,7 @@ const S3_BUCKET = required.S3_BUCKET!;
 const S3_REGION = required.S3_REGION!;
 const S3_PUBLIC_BASE =
   required.S3_PUBLIC_BASE ||
-  `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
+  `http://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
 const PREFIX = required.S3_UPLOAD_PREFIX.replace(/^\/+|\/+$/g, "") + "/";
 const PRESIGN_TTL = Number(required.S3_PRESIGN_TTL_SECONDS);
 
