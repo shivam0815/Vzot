@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckIcon } from '@heroicons/react/24/solid';
-
+import VZOTBackground from '../components/Layout/VZOTBackground';
 type SuccessState = {
   order?: any;
   orderId?: string | null;
@@ -52,9 +52,11 @@ const OrderSuccess: React.FC = () => {
   const goShop = () => navigate('/products');
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center px-4">
+
       <div className="w-full max-w-md">
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-8 text-center">
+            <VZOTBackground />
           <div className="mx-auto w-14 h-14 rounded-full border-4 border-blue-600 flex items-center justify-center mb-5">
             <CheckIcon className="w-7 h-7 text-blue-600" />
           </div>

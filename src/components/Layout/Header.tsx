@@ -2,10 +2,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, User, Search, Menu, X, Heart, Loader2 } from 'lucide-react';
+import { ShoppingCart, User, Search, Menu, X, Heart, Loader2, Moon, Sun } from 'lucide-react';
 
 import { useCart } from '../../hooks/useCart';
 import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../UI/ThemeProvider'; // 👈 theme hook
 
 // ---- Types ----
 interface SearchResult {
@@ -57,6 +58,7 @@ const Header: React.FC = () => {
   const { getTotalItems } = useCart();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { theme, toggle } = useTheme(); // 👈
 
   // Refs
   const desktopSearchRef = useRef<HTMLInputElement>(null);
@@ -167,7 +169,7 @@ const Header: React.FC = () => {
   };
 
   return (
-    <header className="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-50">
+    <header className="bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Top Row */}
         <div className="grid grid-cols-[auto,1fr,auto] items-center min-h-16 gap-6 py-2">
@@ -181,7 +183,7 @@ const Header: React.FC = () => {
           {/* Desktop: nav + search */}
           <div className="hidden lg:flex items-center gap-5 min-w-0">
             <nav className="flex items-center gap-7 shrink-0">
-              <Link to="/" className="text-slate-800/90 hover:text-slate-900 text-base md:text-[17px] font-semibold">
+              <Link to="/" className="text-slate-800/90 dark:text-slate-200/90 hover:text-slate-900 dark:hover:text-white text-base md:text-[17px] font-semibold">
                 Home
               </Link>
 
@@ -193,7 +195,7 @@ const Header: React.FC = () => {
                 onMouseLeave={() => setIsCategoriesOpen(false)}
               >
                 <button
-                  className="text-slate-800/90 hover:text-slate-900 text-base font-semibold"
+                  className="text-slate-800/90 dark:text-slate-200/90 hover:text-slate-900 dark:hover:text-white text-base font-semibold"
                   aria-haspopup="menu"
                   aria-expanded={isCategoriesOpen}
                   onFocus={() => setIsCategoriesOpen(true)}
@@ -212,7 +214,7 @@ const Header: React.FC = () => {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 8 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute left-1/2 -translate-x-1/2 top-full mt-3 w-[92vw] max-w-[980px] bg-white border border-gray-200 rounded-2xl shadow-xl p-5"
+                      className="absolute left-1/2 -translate-x-1/2 top-full mt-3 w-[92vw] max-w-[980px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-xl p-5"
                       role="menu"
                     >
                       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-10 gap-y-3">
@@ -220,11 +222,11 @@ const Header: React.FC = () => {
                           <Link
                             key={c.slug}
                             to={categoryUrl(c.slug)}
-                            className="group flex items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-gray-50 transition-colors"
+                            className="group flex items-center gap-3 rounded-xl px-2.5 py-2 hover:bg-gray-50 dark:hover:bg-slate-800/70 transition-colors"
                             onClick={() => setIsCategoriesOpen(false)}
                             role="menuitem"
                           >
-                            <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 shadow-sm">
+                            <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-100 dark:bg-slate-800 shadow-sm">
                               <img
                                 src={c.img}
                                 alt={c.alt || c.label}
@@ -232,17 +234,17 @@ const Header: React.FC = () => {
                                 loading="lazy"
                               />
                             </span>
-                            <span className="text-[15px] text-gray-900 group-hover:text-sky-700 font-medium">
+                            <span className="text-[15px] text-gray-900 dark:text-slate-200 group-hover:text-sky-700 dark:group-hover:text-sky-400 font-medium">
                               {c.label}
                             </span>
                           </Link>
                         ))}
                       </div>
 
-                      <div className="pt-4 mt-4 border-t">
+                      <div className="pt-4 mt-4 border-t border-gray-200 dark:border-slate-800">
                         <Link
                           to="/categories"
-                          className="block text-center w-full border border-gray-200 hover:border-sky-600 hover:text-sky-700 rounded-xl py-2.5 text-sm font-medium"
+                          className="block text-center w-full border border-gray-200 dark:border-slate-700 hover:border-sky-600 dark:hover:border-sky-500 hover:text-sky-700 dark:hover:text-sky-400 rounded-xl py-2.5 text-sm font-medium text-slate-900 dark:text-slate-200"
                           onClick={() => setIsCategoriesOpen(false)}
                         >
                           View all categories
@@ -253,10 +255,10 @@ const Header: React.FC = () => {
                 </AnimatePresence>
               </div>
 
-              <Link to="/products" className="text-slate-800/90 hover:text-slate-900 text-base font-semibold">
+              <Link to="/products" className="text-slate-800/90 dark:text-slate-200/90 hover:text-slate-900 dark:hover:text-white text-base font-semibold">
                 Shop Now
               </Link>
-              <Link to="/contact" className="text-slate-800/90 hover:text-slate-900 text-base font-semibold">
+              <Link to="/contact" className="text-slate-800/90 dark:text-slate-200/90 hover:text-slate-900 dark:hover:text-white text-base font-semibold">
                 Contact
               </Link>
 
@@ -268,7 +270,7 @@ const Header: React.FC = () => {
                 onMouseLeave={() => setIsMoreOpen(false)}
               >
                 <button
-                  className="text-slate-800/90 hover:text-slate-900 text-base font-semibold"
+                  className="text-slate-800/90 dark:text-slate-200/90 hover:text-slate-900 dark:hover:text-white text-base font-semibold"
                   aria-haspopup="menu"
                   aria-expanded={isMoreOpen}
                   onFocus={() => setIsMoreOpen(true)}
@@ -287,12 +289,12 @@ const Header: React.FC = () => {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 8 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute left-0 top-full mt-3 w-56 bg-white border border-gray-200 rounded-2xl shadow-xl p-2"
+                      className="absolute left-0 top-full mt-3 w-56 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-xl p-2"
                       role="menu"
                     >
                       <Link
                         to="/blog"
-                        className="block px-3 py-2 rounded-lg text-slate-800 hover:bg-gray-100 text-sm"
+                        className="block px-3 py-2 rounded-lg text-slate-800 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 text-sm"
                         onClick={() => setIsMoreOpen(false)}
                         role="menuitem"
                       >
@@ -302,7 +304,7 @@ const Header: React.FC = () => {
                         href="https://nakodamobile.in/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block px-3 py-2 rounded-lg text-slate-800 hover:bg-gray-100 text-sm"
+                        className="block px-3 py-2 rounded-lg text-slate-800 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 text-sm"
                         role="menuitem"
                         onClick={() => setIsMoreOpen(false)}
                       >
@@ -323,24 +325,24 @@ const Header: React.FC = () => {
                   placeholder={searchTerm ? '' : 'Searching...'}
                   value={searchTerm}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2 text-sm rounded-full border border-slate-300/60
-                             bg-white/70 shadow-inner placeholder:text-slate-400
-                             focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                  className="w-full pl-10 pr-10 py-2 text-sm rounded-full border border-slate-300/60 dark:border-slate-700
+                             bg-white/70 dark:bg-slate-800/70 shadow-inner placeholder:text-slate-400 dark:placeholder:text-slate-500
+                             text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-400 focus:border-transparent"
                   aria-label="Search products"
                 />
                 <span className="absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true">
                   {isSearching ? (
-                    <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
+                    <Loader2 className="h-4 w-4 text-slate-400 dark:text-slate-500 animate-spin" />
                   ) : (
-                    <Search className="h-4 w-4 text-slate-400" />
+                    <Search className="h-4 w-4 text-slate-400 dark:text-slate-500" />
                   )}
                 </span>
                 <button
                   type="submit"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-black/5"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/5"
                   aria-label="Search"
                 >
-                  <Search className="h-4 w-4 text-slate-600" />
+                  <Search className="h-4 w-4 text-slate-600 dark:text-slate-300" />
                 </button>
               </form>
 
@@ -350,13 +352,13 @@ const Header: React.FC = () => {
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="absolute top-full left-0 right-0 mt-2 bg-white border rounded-lg shadow-lg max-h-96 overflow-y-auto z-50"
+                    className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg max-h-96 overflow-y-auto z-50"
                   >
                     {searchResults.slice(0, 8).map((result) => (
                       <div
                         key={result.id}
                         onClick={() => handleResultClick(result.id)}
-                        className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                        className="flex items-center p-3 hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-200/70 dark:border-slate-800/70 last:border-b-0"
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => e.key === 'Enter' && handleResultClick(result.id)}
@@ -364,21 +366,21 @@ const Header: React.FC = () => {
                       >
                         <img src={result.image} alt={result.name} className="w-12 h-12 object-cover rounded-md mr-3" />
                         <div className="flex-1">
-                          <h4 className="text-sm font-medium text-gray-900 truncate">{result.name}</h4>
-                          <p className="text-xs text-gray-500">{result.category}</p>
-                          <p className="text-sm font-semibold text-sky-700">
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">{result.name}</h4>
+                          <p className="text-xs text-gray-500 dark:text-slate-400">{result.category}</p>
+                          <p className="text-sm font-semibold text-sky-700 dark:text-sky-400">
                             ₹{Number(result.price || 0).toLocaleString()}
                           </p>
                         </div>
                       </div>
                     ))}
                     {searchResults.length > 8 && (
-                      <div className="p-3 text-center border-t">
+                      <div className="p-3 text-center border-t border-slate-200 dark:border-slate-800">
                         <Link
                           to={`/products?search=${encodeURIComponent(searchTerm)}`}
                           onClick={() => setShowResults(false)}
                           onMouseDown={(e) => e.preventDefault()}
-                          className="text-sky-700 hover:text-sky-900 text-sm font-medium"
+                          className="text-sky-700 dark:text-sky-400 hover:text-sky-900 dark:hover:text-sky-300 text-sm font-medium"
                         >
                           View all {searchResults.length} results
                         </Link>
@@ -392,22 +394,32 @@ const Header: React.FC = () => {
 
           {/* Right actions */}
           <div className="flex items-center justify-self-end space-x-2 sm:space-x-3">
+            {/* Theme toggle */}
+            <button
+              onClick={toggle}
+              className="p-2 rounded-full text-slate-800 dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5"
+              aria-label="Toggle theme"
+              title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            >
+              {theme === 'dark' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </button>
+
             {/* Mobile Search toggle */}
             <button
               onClick={() => setIsSearchOpen((v) => !v)}
-              className="lg:hidden p-2 rounded-full text-slate-800 hover:bg-black/5"
+              className="lg:hidden p-2 rounded-full text-slate-800 dark:text-slate-200 hover:bg黑/5 hover:bg-black/5 dark:hover:bg-white/5"
               aria-label="Open search"
             >
               <Search className="h-5 w-5" />
             </button>
 
             {/* Wishlist */}
-            <Link to="/wishlist" className="p-2 rounded-full text-slate-800 hover:bg-black/5" aria-label="Wishlist">
+            <Link to="/wishlist" className="p-2 rounded-full text-slate-800 dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5" aria-label="Wishlist">
               <Heart className="h-6 w-6" />
             </Link>
 
             {/* Cart */}
-            <Link to="/cart" className="relative p-2 rounded-full text-slate-800 hover:bg-black/5" aria-label="Cart">
+            <Link to="/cart" className="relative p-2 rounded-full text-slate-800 dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5" aria-label="Cart">
               <ShoppingCart className="h-6 w-6" />
               {getTotalItems() > 0 && (
                 <motion.span
@@ -423,14 +435,14 @@ const Header: React.FC = () => {
             {/* Account */}
             {user ? (
               <div className="relative group">
-                <button className="flex items-center space-x-2 p-2 rounded-full text-slate-800 hover:bg-black/5" aria-haspopup="menu" aria-expanded="false">
+                <button className="flex items-center space-x-2 p-2 rounded-full text-slate-800 dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5" aria-haspopup="menu" aria-expanded="false">
                   <User className="h-6 w-6" />
                   <span className="hidden sm:block text-sm">{user.name}</span>
                 </button>
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <Link to="/profile" className="block px-4 py-2 text-slate-800 hover:bg-gray-100">Profile</Link>
-                  <Link to="/video" className="block px-4 py-2 text-slate-800 hover:bg-gray-100">Video</Link>
-                  <button onClick={logout} className="block w-full text-left px-4 py-2 text-slate-800 hover:bg-gray-100">
+                <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <Link to="/profile" className="block px-4 py-2 text-slate-800 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800">Profile</Link>
+                  <Link to="/video" className="block px-4 py-2 text-slate-800 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800">Video</Link>
+                  <button onClick={logout} className="block w-full text-left px-4 py-2 text-slate-800 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800">
                     Logout
                   </button>
                 </div>
@@ -438,7 +450,7 @@ const Header: React.FC = () => {
             ) : (
               <Link
                 to="/login"
-                className="px-5 py-2.5 rounded-full bg-slate-900 text-white text-base hover:bg-black"
+                className="px-5 py-2.5 rounded-full bg-slate-900 text-white text-base hover:bg-black dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
               >
                 Login
               </Link>
@@ -453,7 +465,7 @@ const Header: React.FC = () => {
                   setIsMoreOpen(false);
                 }
               }}
-              className="lg:hidden p-2 rounded-full text-slate-800 hover:bg-black/5"
+              className="lg:hidden p-2 rounded-full text-slate-800 dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5"
               aria-label="Open menu"
             >
               {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -468,7 +480,7 @@ const Header: React.FC = () => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden py-3 border-t"
+              className="lg:hidden py-3 border-t border-slate-200 dark:border-slate-800"
             >
               <form onSubmit={handleSearchSubmit} className="relative" role="search" aria-label="Site search mobile">
                 <input
@@ -477,15 +489,16 @@ const Header: React.FC = () => {
                   placeholder={searchTerm ? '' : SEARCH_HINTS[hintIndex]}
                   value={searchTerm}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-slate-300/60 rounded-full bg-white/80
-                             focus:ring-2 focus:ring-sky-400 focus:border-transparent text-sm placeholder:text-slate-400"
+                  className="w-full pl-10 pr-4 py-2 border border-slate-300/60 dark:border-slate-700 rounded-full bg-white/80 dark:bg-slate-800/70
+                             focus:ring-2 focus:ring-sky-400 focus:border-transparent text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500
+                             text-slate-900 dark:text-slate-100"
                   aria-label="Search products"
                 />
                 <button type="submit" className="absolute left-3 top-2.5" aria-label="Search">
                   {isSearching ? (
-                    <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
+                    <Loader2 className="h-5 w-5 text-slate-400 dark:text-slate-500 animate-spin" />
                   ) : (
-                    <Search className="h-5 w-5 text-slate-400" />
+                    <Search className="h-5 w-5 text-slate-400 dark:text-slate-500" />
                   )}
                 </button>
               </form>
@@ -496,13 +509,13 @@ const Header: React.FC = () => {
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
-                    className="mt-2 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto"
+                    className="mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg max-h-64 overflow-y-auto"
                   >
                     {searchResults.slice(0, 5).map((result) => (
                       <div
                         key={result.id}
                         onClick={() => handleResultClick(result.id)}
-                        className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                        className="flex items-center p-3 hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer border-b border-slate-200/70 dark:border-slate-800/70 last:border-b-0"
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => e.key === 'Enter' && handleResultClick(result.id)}
@@ -510,8 +523,8 @@ const Header: React.FC = () => {
                       >
                         <img src={result.image} alt={result.name} className="w-10 h-10 object-cover rounded-md mr-3" />
                         <div className="flex-1">
-                          <h4 className="text-sm font-medium text-gray-900 truncate">{result.name}</h4>
-                          <p className="text-sm font-semibold text-sky-700">
+                          <h4 className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">{result.name}</h4>
+                          <p className="text-sm font-semibold text-sky-700 dark:text-sky-400">
                             ₹{Number(result.price || 0).toLocaleString()}
                           </p>
                         </div>
@@ -531,21 +544,21 @@ const Header: React.FC = () => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden py-3 border-t"
+              className="lg:hidden py-3 border-t border-slate-200 dark:border-slate-800"
             >
               <nav className="flex flex-col space-y-2">
                 <Link
                   to="/"
-                  className="px-3 py-2 text-slate-800 hover:text-slate-900 hover:bg-black/5 rounded-lg"
+                  className="px-3 py-2 text-slate-800 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-lg"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Home
                 </Link>
 
                 {/* Categories accordion */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="border border-gray-200 dark:border-slate-800 rounded-lg overflow-hidden">
                   <button
-                    className="w-full flex items-center justify-between px-3 py-2 text-slate-800"
+                    className="w-full flex items-center justify-between px-3 py-2 text-slate-800 dark:text-slate-200"
                     onClick={() => setIsCategoriesOpen((s) => !s)}
                     aria-expanded={isCategoriesOpen}
                   >
@@ -558,25 +571,25 @@ const Header: React.FC = () => {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="bg-white"
+                        className="bg-white dark:bg-slate-900"
                       >
                         {CATEGORIES.map((c) => (
                           <Link
                             key={c.slug}
                             to={categoryUrl(c.slug)}
                             onClick={() => setIsMenuOpen(false)}
-                            className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50"
+                            className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-slate-800"
                           >
-                            <span className="w-12 h-12 rounded-full bg-gray-100 inline-flex items-center justify-center shadow-sm">
+                            <span className="w-12 h-12 rounded-full bg-gray-100 dark:bg-slate-800 inline-flex items-center justify-center shadow-sm">
                               <img src={c.img} alt={c.alt || c.label} className="w-9 h-9 object-contain" loading="lazy" />
                             </span>
-                            <span className="text-slate-800">{c.label}</span>
+                            <span className="text-slate-800 dark:text-slate-200">{c.label}</span>
                           </Link>
                         ))}
                         <Link
                           to="/categories"
                           onClick={() => setIsMenuOpen(false)}
-                          className="block px-4 py-2 text-sky-700 font-medium hover:bg-sky-50"
+                          className="block px-4 py-2 text-sky-700 dark:text-sky-400 font-medium hover:bg-sky-50 dark:hover:bg-slate-800"
                         >
                           View all categories
                         </Link>
@@ -587,23 +600,23 @@ const Header: React.FC = () => {
 
                 <Link
                   to="/products"
-                  className="px-3 py-2 text-slate-800 hover:text-slate-900 hover:bg-black/5 rounded-lg"
+                  className="px-3 py-2 text-slate-800 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-lg"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Shop Now
                 </Link>
                 <Link
                   to="/contact"
-                  className="px-3 py-2 text-slate-800 hover:text-slate-900 hover:bg-black/5 rounded-lg"
+                  className="px-3 py-2 text-slate-800 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-lg"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Contact
                 </Link>
 
                 {/* More accordion */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="border border-gray-200 dark:border-slate-800 rounded-lg overflow-hidden">
                   <button
-                    className="w-full flex items-center justify-between px-3 py-2 text-slate-800"
+                    className="w-full flex items-center justify-between px-3 py-2 text-slate-800 dark:text-slate-200"
                     onClick={() => setIsMoreOpen((s) => !s)}
                     aria-expanded={isMoreOpen}
                   >
@@ -616,12 +629,12 @@ const Header: React.FC = () => {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="bg-white"
+                        className="bg-white dark:bg-slate-900"
                       >
                         <Link
                           to="/blog"
                           onClick={() => setIsMenuOpen(false)}
-                          className="block px-4 py-2 hover:bg-gray-50 text-slate-800"
+                          className="block px-4 py-2 hover:bg-gray-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200"
                         >
                           Blog
                         </Link>
@@ -629,7 +642,7 @@ const Header: React.FC = () => {
                           href="https://nakodamobile.in/"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block px-4 py-2 hover:bg-gray-50 text-slate-800"
+                          className="block px-4 py-2 hover:bg-gray-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200"
                           onClick={() => setIsMenuOpen(false)}
                         >
                           Explore B2B

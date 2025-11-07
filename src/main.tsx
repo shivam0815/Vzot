@@ -7,7 +7,7 @@ import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { WishlistProvider } from './context/WishlistContext';
-
+import { ThemeProvider } from "./components/UI/ThemeProvider";
 import './index.css';
 import './i18n';
 
@@ -35,7 +35,9 @@ createRoot(rootEl).render(
         <AuthProvider>
           <CartProvider>
             <WishlistProvider>
-              <App />
+              <ThemeProvider>
+                <App />
+              </ThemeProvider>
             </WishlistProvider>
           </CartProvider>
         </AuthProvider>
@@ -43,3 +45,4 @@ createRoot(rootEl).render(
     </HelmetProvider>
   </StrictMode>
 );
+;

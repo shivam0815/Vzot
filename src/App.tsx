@@ -13,7 +13,7 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Scrolltop from './components/Layout/Scrolltop';
 // import
-
+import Shipping from './pages/Shipping';
 
 // inside <Routes>
 <Route path="/order-success" element={<OrderSuccess />} />
@@ -147,6 +147,7 @@ function App() {
           {/* Legal */}
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
+          <Route path="/shipping" element={<PublicLayout><Shipping /></PublicLayout>} />
           <Route path="/order-success" element={<OrderSuccess />} />
   <Route path="/search" element={<PublicLayout><Search /></PublicLayout>} />
           {/* Fallback */}

@@ -1,3 +1,31 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------- Light theme ---------- */
+:root {
+  --bg: #ffffff;
+  --fg: #0f172a;
+  --card: #ffffff;
+  --muted: #475569;
+  --border: #e2e8f0;
+  --accent: #0ea5e9;
+  --accent-fg: #ffffff;
+}
+
+/* ---------- Dark theme ---------- */
+:root.dark {
+  --bg: #0f172a;
+  --fg: #f1f5f9;
+  --card: #111827;
+  --muted: #94a3b8;
+  --border: #334155;
+  --accent: #38bdf8;
+  --accent-fg: #0b1220;
+}
+
+/* Global apply */
+@layer base {
+  html { color-scheme: light dark; }
+  body { @apply min-h-screen bg-bg text-fg; }
+}

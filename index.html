@@ -60,10 +60,42 @@
     }]
   }
   </script>
+
+  <!-- Theme bootstrap: no-FOUC + system fallback -->
+  <script>
+(function () {
+  try {
+    var saved = localStorage.getItem("theme");           // "light" | "dark" | null
+    var mql = window.matchMedia("(prefers-color-scheme: dark)");
+    var apply = (dark) => {
+      var root = document.documentElement;
+      root.classList.toggle("dark", dark);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", dark ? "#0f172a" : "#0ea5e9"); // match your tokens
+    };
+
+    var initialDark = saved ? saved === "dark" : mql.matches;
+    apply(initialDark);
+
+    // Only auto-follow system if user hasn’t explicitly set a theme
+    if (!saved) {
+      mql.addEventListener("change", (e) => apply(e.matches));
+    }
+
+    // Cross-tab sync
+    window.addEventListener("storage", (e) => {
+      if (e.key === "theme") apply(e.newValue === "dark");
+    });
+  } catch {}
+})();
+</script>
+
 </head>
 
 <body>
   <div id="root"></div>
+
+  <!-- Your app -->
   <script type="module" src="/src/main.tsx"></script>
 
   <!-- Razorpay (optional for local sandbox testing) -->
