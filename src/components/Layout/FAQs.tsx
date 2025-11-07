@@ -1,3 +1,4 @@
+// src/components/FAQs.tsx
 import React, { useState } from 'react';
 import { QuestionMarkCircleIcon, ChevronDownIcon } from '@heroicons/react/24/solid';
 import clsx from 'clsx';
@@ -11,30 +12,61 @@ const data = [
 
 const FAQs: React.FC = () => {
   const [open, setOpen] = useState<number | null>(0);
+
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-3xl text-white">
       <div className="flex items-center gap-2 mb-5">
-        <QuestionMarkCircleIcon className="w-5 h-5 text-gray-900" />
-        <h3 className="text-lg font-semibold text-gray-900">Frequently Asked Questions</h3>
+        <QuestionMarkCircleIcon className="w-5 h-5 text-white" />
+        <h3 className="text-lg font-semibold">Frequently Asked Questions</h3>
       </div>
 
-      <div className="divide-y divide-gray-100 rounded-xl border border-gray-100 overflow-hidden bg-white">
+      <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl overflow-hidden divide-y divide-white/10">
         {data.map((item, i) => {
           const active = open === i;
+          const panelId = `faq-panel-${i}`;
+          const btnId = `faq-btn-${i}`;
+
           return (
-            <button
-              key={item.q}
-              onClick={() => setOpen(active ? null : i)}
-              className="w-full text-left p-4 md:p-5 hover:bg-gray-50"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="font-medium text-gray-900">{item.q}</div>
-                  {active && <div className="mt-1 text-sm text-gray-600">{item.a}</div>}
+            <div key={item.q}>
+              <button
+                id={btnId}
+                aria-controls={panelId}
+                aria-expanded={active}
+                onClick={() => setOpen(active ? null : i)}
+                className={clsx(
+                  'w-full text-left px-4 md:px-5 py-4 md:py-5 transition',
+                  'hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/20'
+                )}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="font-medium text-white">{item.q}</div>
+                    {active && (
+                      <div className="mt-1 text-sm text-white/80">{item.a}</div>
+                    )}
+                  </div>
+                  <ChevronDownIcon
+                    className={clsx(
+                      'w-5 h-5 text-white/70 transition-transform',
+                      active && 'rotate-180'
+                    )}
+                  />
                 </div>
-                <ChevronDownIcon className={clsx('w-5 h-5 text-gray-500 transition', active && 'rotate-180')} />
-              </div>
-            </button>
+              </button>
+
+              {/* Optional animated panel height (kept simple for reliability) */}
+              {/* If you prefer always-in-DOM with height transition, replace conditional render with a max-h animation. */}
+              {!active ? null : (
+                <div
+                  id={panelId}
+                  role="region"
+                  aria-labelledby={btnId}
+                  className="px-4 md:px-5 pb-4 md:pb-5 text-sm text-white/80"
+                >
+                  {item.a}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>

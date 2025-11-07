@@ -1,27 +1,14 @@
-// src/pages/Contact.tsx
+// src/pages/Contact.tsx — dark gradient + glassmorphism
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  MapPin,
-  Phone,
-  Mail,
-  Clock,
-  Send,
-  MessageSquare,
-  User,
-  Building2,
-  Facebook,
-  Twitter,
-  Instagram,
-  Youtube,
-  CheckCircle,
-  Copy,
-  Check
+  MapPin, Phone, Mail, Clock, Send, MessageSquare, User, Building2,
+  Facebook, Twitter, Instagram, Youtube, CheckCircle, Copy, Check
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { contactService } from '../services/contactService';
-
-// ---------------- Contact constants (single source of truth)
+import VZOTBackground from '../components/Layout/VZOTBackground';
+// ---------------- Contact constants
 const ADDRESS_TEXT =
   'Building No.3372, Gali No.2, Christian Colony, Karol Bagh Near Baptist Church, New Delhi, 110005';
 const MAPS_Q = encodeURIComponent(`${ADDRESS_TEXT} Nakoda Mobile`);
@@ -33,7 +20,6 @@ const PHONE_SECONDARY = '9667960044';
 const TEL_PRIMARY = `tel:+91${PHONE_PRIMARY}`;
 const TEL_SECONDARY = `tel:+91${PHONE_SECONDARY}`;
 
-// WhatsApp format: no plus sign in path; optional pre-filled message
 const WA_MSG = encodeURIComponent('Hi Nakoda Mobile, I have an enquiry.');
 const WA_PRIMARY = `https://wa.me/91${PHONE_PRIMARY}?text=${WA_MSG}`;
 
@@ -41,45 +27,25 @@ const EMAIL_SUPPORT = 'support@nakodamobile.in';
 const EMAIL_OEM = 'oem@nakodamobile.in';
 
 // ---------------- Types
-type DeptValue =
-  | 'general'
-  | 'support'
-  | 'oem'
-  | 'wholesale'
-  | 'technical'
-  | 'partnership';
-
+type DeptValue = 'general' | 'support' | 'oem' | 'wholesale' | 'technical' | 'partnership';
 const isEmail = (e: string) => /^[^\s@]+@[^\s@]{2,}\.[^\s@]{2,}$/i.test(e.trim());
 const is10DigitPhone = (p: string) => /^\d{10}$/.test(p);
 
 type FormState = {
-  name: string;
-  email: string;
-  phone: string;
-  subject: '' | DeptValue;
-  message: string;
-  website: string; // honeypot
+  name: string; email: string; phone: string; subject: '' | DeptValue; message: string; website: string;
 };
-
 type FormErrors = Partial<Record<keyof FormState, string>>;
 
 const Contact: React.FC = () => {
   const [formData, setFormData] = useState<FormState>({
-    name: '',
-    email: '',
-    phone: '',
-    subject: '',
-    message: '',
-    website: '', // honeypot (must remain empty)
+    name: '', email: '', phone: '', subject: '', message: '', website: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sentOk, setSentOk] = useState(false);
 
-  // --- derived values
   const msgChars = formData.message.length;
   const msgTooShort = msgChars > 0 && msgChars < 10;
 
-  // --- validation
   const validate = (data: FormState): FormErrors => {
     const errs: FormErrors = {};
     if (!data.name.trim()) errs.name = 'Name is required';
@@ -91,22 +57,15 @@ const Contact: React.FC = () => {
     if (data.website) errs.website = 'Spam detected';
     return errs;
   };
-
   const [errors, setErrors] = useState<FormErrors>({});
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name } = e.target;
     setErrors(prev => ({ ...prev, [name]: validate(formData)[name as keyof FormState] }));
   };
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: name === 'phone' ? value.replace(/[^\d]/g, '') : value,
-    }));
+    setFormData(prev => ({ ...prev, [name]: name === 'phone' ? value.replace(/[^\d]/g, '') : value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -118,7 +77,6 @@ const Contact: React.FC = () => {
       if (firstErr) toast.error(firstErr);
       return;
     }
-
     setIsSubmitting(true);
     setSentOk(false);
     try {
@@ -128,41 +86,27 @@ const Contact: React.FC = () => {
         phone: formData.phone.trim() || undefined,
         subject: formData.subject as DeptValue,
         message: formData.message.trim(),
-        website: formData.website, // honeypot (empty for humans)
+        website: formData.website,
       });
-
       setSentOk(true);
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        subject: '',
-        message: '',
-        website: '',
-      });
+      setFormData({ name: '', email: '', phone: '', subject: '', message: '', website: '' });
     } catch {
-      // toasts handled in service
+      // service toasts errors
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // --- contact info cards
+  // cards
   type ContactCard = {
     icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
     title: string;
     details: Array<{ text: string; href?: string }>;
   };
-
   const contactCards: ContactCard[] = [
+    { icon: MapPin, title: 'Visit Our Store', details: [{ text: ADDRESS_TEXT, href: MAPS_VIEW }] },
     {
-      icon: MapPin,
-      title: 'Visit Our Store',
-      details: [{ text: ADDRESS_TEXT, href: MAPS_VIEW }],
-    },
-    {
-      icon: Phone,
-      title: 'Call Us',
+      icon: Phone, title: 'Call Us',
       details: [
         { text: `+91 ${PHONE_PRIMARY}`, href: TEL_PRIMARY },
         { text: `+91 ${PHONE_SECONDARY}`, href: TEL_SECONDARY },
@@ -170,22 +114,11 @@ const Contact: React.FC = () => {
         { text: 'Tue–Sun: 11:00 AM – 8:00 PM' },
       ],
     },
-    {
-      icon: Mail,
-      title: 'Email Us',
-      details: [
-        { text: EMAIL_SUPPORT, href: `mailto:${EMAIL_SUPPORT}` },
-        { text: EMAIL_OEM, href: `mailto:${EMAIL_OEM}` },
-      ],
-    },
-    {
-      icon: Clock,
-      title: 'Business Hours',
-      details: [
-        { text: 'Tuesday – Sunday: 11:00 AM – 8:00 PM' },
-     
-      ],
-    },
+    { icon: Mail, title: 'Email Us', details: [
+      { text: EMAIL_SUPPORT, href: `mailto:${EMAIL_SUPPORT}` },
+      { text: EMAIL_OEM, href: `mailto:${EMAIL_OEM}` },
+    ]},
+    { icon: Clock, title: 'Business Hours', details: [{ text: 'Tuesday – Sunday: 11:00 AM – 8:00 PM' }] },
   ];
 
   const departments: { value: DeptValue; label: string }[] = [
@@ -198,92 +131,54 @@ const Contact: React.FC = () => {
   ];
 
   const faqs = [
-    {
-      question: 'What is your return policy?',
-      answer:
-        'We offer a 07-day return policy for all products. Items must be in original condition with packaging.',
-    },
-    {
-      question: 'Do you provide warranty on products?',
-      answer:
-        'Yes, all our products come with manufacturer warranty. Warranty period varies by product category.',
-    },
-    {
-      question: 'How long does shipping take?',
-      answer:
-        'Standard shipping takes 3–5 business days. Express shipping is available for faster delivery.',
-    },
-    {
-      question: 'Do you offer bulk discounts?',
-      answer:
-        'Yes, we provide attractive discounts for bulk orders. Contact our OEM team for custom pricing.',
-    },
+    { question: 'What is your return policy?', answer: 'We offer a 07-day return policy for all products. Items must be in original condition with packaging.' },
+    { question: 'Do you provide warranty on products?', answer: 'Yes, all our products come with manufacturer warranty. Warranty period varies by product category.' },
+    { question: 'How long does shipping take?', answer: 'Standard shipping takes 3–5 business days. Express shipping is available for faster delivery.' },
+    { question: 'Do you offer bulk discounts?', answer: 'Yes, we provide attractive discounts for bulk orders. Contact our OEM team for custom pricing.' },
   ];
 
   // copy helpers
   const [copied, setCopied] = useState<string>('');
   const handleCopy = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(text);
-      setTimeout(() => setCopied(''), 1500);
-      toast.success('Copied!');
-    } catch {
-      toast.error('Copy failed');
-    }
+    try { await navigator.clipboard.writeText(text); setCopied(text); setTimeout(() => setCopied(''), 1500); toast.success('Copied!'); }
+    catch { toast.error('Copy failed'); }
   };
 
   // JSON-LD (LocalBusiness)
-  const jsonLd = useMemo(
-    () => ({
-      '@context': 'https://schema.org',
-      '@type': 'LocalBusiness',
-      name: 'Nakoda Mobile',
-      image: '/favicon-512.png',
-      address: {
-        '@type': 'PostalAddress',
-        streetAddress:
-          'Building No.3372, Gali No.2, Christian Colony, Karol Bagh Near Baptist Church',
-        addressLocality: 'New Delhi',
-        postalCode: '110005',
-        addressCountry: 'IN',
-      },
-      telephone: `+91${PHONE_SECONDARY}`,
-      email: EMAIL_SUPPORT,
-      openingHoursSpecification: [
-        {
-          '@type': 'OpeningHoursSpecification',
-          dayOfWeek: ['Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-          opens: '11:00',
-          closes: '20:00',
-        },
-        {
-          '@type': 'OpeningHoursSpecification',
-          dayOfWeek: 'Monday',
-          opens: '00:00',
-          closes: '00:00',
-        }, // Closed
-      ],
-      sameAs: [
-        'https://www.facebook.com/jitukumarkothari/',
-        'https://x.com/_nakodamobile_?t=yJpXFZwym_u7fbB_3ORckQ&s=08',
-        'https://www.instagram.com/v2m_nakoda_mobile/',
-        'https://www.youtube.com/@V2MNakodaMobile',
-      ],
-    }),
-    []
-  );
+  const jsonLd = useMemo(() => ({
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    name: 'Nakoda Mobile',
+    image: '/favicon-512.png',
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'Building No.3372, Gali No.2, Christian Colony, Karol Bagh Near Baptist Church',
+      addressLocality: 'New Delhi',
+      postalCode: '110005',
+      addressCountry: 'IN',
+    },
+    telephone: `+91${PHONE_SECONDARY}`,
+    email: EMAIL_SUPPORT,
+    openingHoursSpecification: [
+      { '@type': 'OpeningHoursSpecification', dayOfWeek: ['Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'], opens: '11:00', closes: '20:00' },
+      { '@type': 'OpeningHoursSpecification', dayOfWeek: 'Monday', opens: '00:00', closes: '00:00' },
+    ],
+    sameAs: [
+      'https://www.facebook.com/jitukumarkothari/',
+      'https://x.com/_nakodamobile_?t=yJpXFZwym_u7fbB_3ORckQ&s=08',
+      'https://www.instagram.com/v2m_nakoda_mobile/',
+      'https://www.youtube.com/@V2MNakodaMobile',
+    ],
+  }), []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+     <div className="relative min-h-screen text-white">
+      <VZOTBackground />
       {/* Structured data */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 text-white py-20">
+      <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -292,11 +187,10 @@ const Contact: React.FC = () => {
             className="text-center"
           >
             <h1 className="text-4xl md:text-6xl font-bold mb-6">Get in Touch</h1>
-            <p className="text-xl mb-8 text-gray-200 max-w-3xl mx-auto">
-              Have questions? We’d love to hear from you. Send us a message and we’ll respond as soon as
-              possible.
+            <p className="text-lg md:text-xl mb-8 text-white/80 max-w-3xl mx-auto">
+              Have questions? Send us a message and we’ll respond as soon as possible.
             </p>
-            <div className="inline-flex items-center gap-2 bg-white/15 px-4 py-2 rounded-full text-sm">
+            <div className="inline-flex items-center gap-2 bg-white/10 px-4 py-2 rounded-full text-sm backdrop-blur">
               <CheckCircle className="h-4 w-4 text-emerald-300" />
               Typical response time: under 24 hours
             </div>
@@ -304,8 +198,8 @@ const Contact: React.FC = () => {
         </div>
       </section>
 
-      {/* Contact Info Cards */}
-      <section className="py-16 bg-white">
+      {/* Contact Info Cards (glass) */}
+      <section className="py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {contactCards.map((info, index) => (
@@ -315,43 +209,38 @@ const Contact: React.FC = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.08 }}
-                className="relative rounded-xl p-6 text-center border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow"
+                className="relative rounded-xl p-6 text-center border border-white/10 bg-white/5 backdrop-blur-sm hover:bg-white/10 transition"
               >
-                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-indigo-50 to-transparent opacity-50" />
+                <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
                 <div className="relative">
-                  <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <info.icon className="h-8 w-8 text-blue-600" />
+                  <div className="bg-white/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border border-white/10">
+                    <info.icon className="h-8 w-8 text-sky-300" />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-3">{info.title}</h3>
+                  <h3 className="text-xl font-semibold mb-3">{info.title}</h3>
                   <div className="space-y-1">
                     {info.details.map((d, i) => (
                       <div key={i} className="flex items-center justify-center gap-2 text-sm">
                         {d.href ? (
                           <>
                             <a
-  href={d.href}
-  target="_blank"
-  rel="noopener noreferrer"
-  className="text-blue-600 hover:text-blue-700 break-words whitespace-normal"
->
-  {d.text}
-</a>
-
+                              href={d.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sky-300 hover:text-sky-200 break-words whitespace-normal"
+                            >
+                              {d.text}
+                            </a>
                             <button
                               type="button"
                               onClick={() => handleCopy(d.text)}
-                              className="inline-flex items-center rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
+                              className="inline-flex items-center rounded border border-white/15 px-2 py-0.5 text-xs text-white/80 hover:bg-white/10"
                               title="Copy"
                             >
-                              {copied === d.text ? (
-                                <Check className="w-3.5 h-3.5" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
+                              {copied === d.text ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
                           </>
                         ) : (
-                          <span className="text-gray-600">{d.text}</span>
+                          <span className="text-white/80">{d.text}</span>
                         )}
                       </div>
                     ))}
@@ -363,21 +252,17 @@ const Contact: React.FC = () => {
         </div>
       </section>
 
-      {/* Contact Form & Map */}
-      <section className="py-16">
+      {/* Contact Form & Map (glass) */}
+      <section className="py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             {/* Contact Form */}
             <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }}>
-              <div className="bg-white rounded-xl shadow-lg p-8">
-                <h2 className="text-3xl font-bold text-gray-900 mb-6">Send us a Message</h2>
+              <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm p-8">
+                <h2 className="text-3xl font-bold mb-6">Send us a Message</h2>
 
                 {sentOk && (
-                  <div
-                    role="status"
-                    aria-live="polite"
-                    className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800 flex items-center gap-2"
-                  >
+                  <div role="status" aria-live="polite" className="mb-6 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-emerald-200 flex items-center gap-2">
                     <CheckCircle className="w-5 h-5" />
                     Thank you! Your message has been sent. We’ll get back to you shortly.
                   </div>
@@ -385,112 +270,60 @@ const Contact: React.FC = () => {
 
                 <form onSubmit={handleSubmit} className="space-y-6" noValidate>
                   {/* honeypot */}
-                  <input
-                    type="text"
-                    name="website"
-                    value={formData.website}
-                    onChange={handleChange}
-                    tabIndex={-1}
-                    autoComplete="off"
-                    className="hidden"
-                    aria-hidden="true"
-                  />
+                  <input type="text" name="website" value={formData.website} onChange={handleChange} tabIndex={-1} autoComplete="off" className="hidden" aria-hidden="true" />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                        Full Name *
-                      </label>
+                      <label htmlFor="name" className="block text-sm font-medium text-white/80 mb-2">Full Name *</label>
                       <div className="relative">
                         <input
-                          type="text"
-                          id="name"
-                          name="name"
-                          autoComplete="name"
-                          required
-                          value={formData.name}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          className={
-                            'w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-                            (errors.name ? 'border-rose-300' : 'border-gray-300')
-                          }
+                          type="text" id="name" name="name" autoComplete="name" required
+                          value={formData.name} onChange={handleChange} onBlur={handleBlur}
+                          className={`w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 text-white placeholder-white/50 border ${errors.name ? 'border-rose-400/40' : 'border-white/15'} focus:ring-2 focus:ring-sky-500 focus:border-transparent`}
                           placeholder="Enter your full name"
                         />
-                        <User className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                        <User className="absolute left-3 top-3.5 h-5 w-5 text-white/60" />
                       </div>
-                      {errors.name && <p className="mt-1 text-xs text-rose-600">{errors.name}</p>}
+                      {errors.name && <p className="mt-1 text-xs text-rose-300">{errors.name}</p>}
                     </div>
 
                     <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                        Email Address *
-                      </label>
+                      <label htmlFor="email" className="block text-sm font-medium text-white/80 mb-2">Email Address *</label>
                       <div className="relative">
                         <input
-                          type="email"
-                          id="email"
-                          name="email"
-                          autoComplete="email"
-                          required
-                          value={formData.email}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          className={
-                            'w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-                            (errors.email ? 'border-rose-300' : 'border-gray-300')
-                          }
+                          type="email" id="email" name="email" autoComplete="email" required
+                          value={formData.email} onChange={handleChange} onBlur={handleBlur}
+                          className={`w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 text-white placeholder-white/50 border ${errors.email ? 'border-rose-400/40' : 'border-white/15'} focus:ring-2 focus:ring-sky-500 focus:border-transparent`}
                           placeholder="Enter your email"
                         />
-                        <Mail className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                        <Mail className="absolute left-3 top-3.5 h-5 w-5 text-white/60" />
                       </div>
-                      {errors.email && <p className="mt-1 text-xs text-rose-600">{errors.email}</p>}
+                      {errors.email && <p className="mt-1 text-xs text-rose-300">{errors.email}</p>}
                     </div>
 
                     <div>
-                      <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                        Phone Number
-                      </label>
+                      <label htmlFor="phone" className="block text-sm font-medium text-white/80 mb-2">Phone Number</label>
                       <div className="relative">
                         <input
-                          type="tel"
-                          id="phone"
-                          name="phone"
-                          inputMode="numeric"
-                          autoComplete="tel"
-                          value={formData.phone}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          maxLength={10}
-                          className={
-                            'w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-                            (errors.phone ? 'border-rose-300' : 'border-gray-300')
-                          }
+                          type="tel" id="phone" name="phone" inputMode="numeric" autoComplete="tel"
+                          value={formData.phone} onChange={handleChange} onBlur={handleBlur} maxLength={10}
+                          className={`w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 text-white placeholder-white/50 border ${errors.phone ? 'border-rose-400/40' : 'border-white/15'} focus:ring-2 focus:ring-sky-500 focus:border-transparent`}
                           placeholder="10-digit number"
                         />
-                        <Phone className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                        <Phone className="absolute left-3 top-3.5 h-5 w-5 text-white/60" />
                       </div>
-                      {errors.phone && <p className="mt-1 text-xs text-rose-600">{errors.phone}</p>}
+                      {errors.phone && <p className="mt-1 text-xs text-rose-300">{errors.phone}</p>}
                     </div>
 
                     <div>
-                      <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-2">
-                        Department *
-                      </label>
+                      <label htmlFor="subject" className="block text-sm font-medium text-white/80 mb-2">Department *</label>
                       <div className="relative">
                         <select
-                          id="subject"
-                          name="subject"
-                          required
-                          value={formData.subject}
-                          onChange={handleChange}
-                          onBlur={handleBlur}
-                          className={
-                            'w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-                            (errors.subject ? 'border-rose-300' : 'border-gray-300')
-                          }
+                          id="subject" name="subject" required value={formData.subject}
+                          onChange={handleChange} onBlur={handleBlur}
+                          className={`w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 text-white border ${errors.subject ? 'border-rose-400/40' : 'border-white/15'} focus:ring-2 focus:ring-sky-500 focus:border-transparent`}
                         >
-                          <option value="">Select department</option>
+                          <option className="bg-slate-800 text-white" value="">Select department</option>
                           {[
                             { value: 'general', label: 'General Inquiry' },
                             { value: 'support', label: 'Customer Support' },
@@ -498,48 +331,37 @@ const Contact: React.FC = () => {
                             { value: 'wholesale', label: 'Wholesale Inquiry' },
                             { value: 'technical', label: 'Technical Support' },
                             { value: 'partnership', label: 'Partnership' },
-                          ].map((dept) => (
-                            <option key={dept.value} value={dept.value}>
+                          ].map(dept => (
+                            <option className="bg-slate-800 text-white" key={dept.value} value={dept.value}>
                               {dept.label}
                             </option>
                           ))}
                         </select>
-                        <Building2 className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                        <Building2 className="absolute left-3 top-3.5 h-5 w-5 text-white/60" />
                       </div>
-                      {errors.subject && <p className="mt-1 text-xs text-rose-600">{errors.subject}</p>}
+                      {errors.subject && <p className="mt-1 text-xs text-rose-300">{errors.subject}</p>}
                     </div>
                   </div>
 
                   <div>
-                    <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-2">
-                      Message *
-                    </label>
+                    <label htmlFor="message" className="block text-sm font-medium text-white/80 mb-2">Message *</label>
                     <div className="relative">
                       <textarea
-                        id="message"
-                        name="message"
-                        required
-                        rows={6}
-                        maxLength={1000}
-                        value={formData.message}
-                        onChange={handleChange}
-                        onBlur={handleBlur}
-                        className={
-                          'w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-                          (errors.message ? 'border-rose-300' : 'border-gray-300')
-                        }
+                        id="message" name="message" required rows={6} maxLength={1000}
+                        value={formData.message} onChange={handleChange} onBlur={handleBlur}
+                        className={`w-full pl-10 pr-4 py-3 rounded-lg bg-white/10 text-white placeholder-white/50 border ${errors.message ? 'border-rose-400/40' : 'border-white/15'} focus:ring-2 focus:ring-sky-500 focus:border-transparent`}
                         placeholder="Tell us how we can help you..."
                         aria-describedby="message-help"
                       />
-                      <MessageSquare className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                      <MessageSquare className="absolute left-3 top-3.5 h-5 w-5 text-white/60" />
                     </div>
                     <div className="mt-1 flex items-center justify-between text-xs">
-                      <span id="message-help" className={msgTooShort ? 'text-rose-600' : 'text-gray-500'}>
+                      <span id="message-help" className={msgTooShort ? 'text-rose-300' : 'text-white/60'}>
                         {msgTooShort ? 'Please enter at least 10 characters' : 'Be as detailed as possible'}
                       </span>
-                      <span className="text-gray-400">{msgChars}/1000</span>
+                      <span className="text-white/50">{msgChars}/1000</span>
                     </div>
-                    {errors.message && <p className="mt-1 text-xs text-rose-600">{errors.message}</p>}
+                    {errors.message && <p className="mt-1 text-xs text-rose-300">{errors.message}</p>}
                   </div>
 
                   <motion.button
@@ -547,7 +369,7 @@ const Contact: React.FC = () => {
                     whileTap={{ scale: isSubmitting ? 1 : 0.98 }}
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-sky-600 text-white py-3 rounded-lg font-semibold hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     aria-busy={isSubmitting}
                     aria-live="polite"
                   >
@@ -568,14 +390,9 @@ const Contact: React.FC = () => {
             </motion.div>
 
             {/* Map & Additional Info */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-              className="space-y-8"
-            >
-              {/* Map */}
-              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }} className="space-y-8">
+              {/* Map (glass frame) */}
+              <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm overflow-hidden">
                 <div className="h-64">
                   <iframe
                     title="Nakoda Mobile Location"
@@ -586,58 +403,56 @@ const Contact: React.FC = () => {
                   />
                 </div>
                 <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">Visit Our Store</h3>
-                  <p className="text-gray-600 mb-4">
-                    Come visit our physical store to see our products in person and get expert advice from our team.
+                  <h3 className="text-xl font-semibold mb-2">Visit Our Store</h3>
+                  <p className="text-white/80 mb-4">
+                    Come visit our physical store to see products in person and get expert advice from our team.
                   </p>
-                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                  <div className="flex items-center gap-4 text-sm text-white/80">
                     <div className="flex items-center">
-                      <CheckCircle className="h-4 w-4 text-green-500 mr-1" />
+                      <CheckCircle className="h-4 w-4 text-emerald-300 mr-1" />
                       Free Parking
                     </div>
                     <div className="flex items-center">
-                      <CheckCircle className="h-4 w-4 text-green-500 mr-1" />
+                      <CheckCircle className="h-4 w-4 text-emerald-300 mr-1" />
                       Expert Staff
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Social Media */}
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Follow Us</h3>
-                <p className="text-gray-600 mb-6">
-                  Stay connected with us on social media for the latest updates, offers, and tech news.
-                </p>
+              {/* Social Media (glass) */}
+              <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm p-6">
+                <h3 className="text-xl font-semibold mb-4">Follow Us</h3>
+                <p className="text-white/80 mb-6">Stay connected for updates, offers, and tech news.</p>
                 <div className="flex space-x-4">
                   {[
-                    { icon: Facebook, color: 'text-blue-600', bg: 'bg-blue-100', href: 'https://www.facebook.com/jitukumarkothari/' },
-                    { icon: Twitter, color: 'text-blue-400', bg: 'bg-blue-50', href: 'https://x.com/_nakodamobile_?t=yJpXFZwym_u7fbB_3ORckQ&s=08' },
-                    { icon: Instagram, color: 'text-pink-600', bg: 'bg-pink-100', href: 'https://www.instagram.com/v2m_nakoda_mobile/' },
-                    { icon: Youtube, color: 'text-red-600', bg: 'bg-red-100', href: 'https://www.youtube.com/@V2MNakodaMobile' },
-                  ].map((social, index) => (
+                    { icon: Facebook, href: 'https://www.facebook.com/jitukumarkothari/' },
+                    { icon: Twitter, href: 'https://x.com/_nakodamobile_?t=yJpXFZwym_u7fbB_3ORckQ&s=08' },
+                    { icon: Instagram, href: 'https://www.instagram.com/v2m_nakoda_mobile/' },
+                    { icon: Youtube, href: 'https://www.youtube.com/@V2MNakodaMobile' },
+                  ].map((social, idx) => (
                     <a
-                      key={index}
+                      key={idx}
                       href={social.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`${social.bg} ${social.color} p-3 rounded-lg hover:scale-110 transition-transform duration-200`}
+                      className="p-3 rounded-lg border border-white/10 hover:bg-white/10 transition"
                       aria-label="Visit our social profile"
                     >
-                      <social.icon className="h-6 w-6" />
+                      <social.icon className="h-6 w-6 text-white" />
                     </a>
                   ))}
                 </div>
               </div>
 
-              {/* Quick Contact */}
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl p-6">
+              {/* Quick Contact (accent) */}
+              <div className="bg-gradient-to-r from-sky-700 to-indigo-700 rounded-xl p-6 border border-white/10">
                 <h3 className="text-xl font-semibold mb-4">Need Immediate Help?</h3>
-                <p className="mb-4">For urgent inquiries, call us directly or chat with our support team.</p>
+                <p className="mb-4 text-white/90">For urgent inquiries, call us directly or chat on WhatsApp.</p>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <a
                     href={TEL_SECONDARY}
-                    className="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 transition-colors duration-200 text-center"
+                    className="bg-white text-sky-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 text-center"
                   >
                     Call Now
                   </a>
@@ -645,7 +460,7 @@ const Contact: React.FC = () => {
                     href={WA_PRIMARY}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="border-2 border-white text-white px-4 py-2 rounded-lg font-medium hover:bg-white hover:text-blue-600 transition-colors duration-200 text-center"
+                    className="border-2 border-white text-white px-4 py-2 rounded-lg font-medium hover:bg-white hover:text-sky-700 text-center"
                   >
                     WhatsApp
                   </a>
@@ -656,12 +471,12 @@ const Contact: React.FC = () => {
         </div>
       </section>
 
-      {/* FAQ Section */}
-      <section className="py-16 bg-white">
+      {/* FAQ Section (glass accordions) */}
+      <section className="py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Frequently Asked Questions</h2>
-            <p className="text-gray-600">Quick answers to common questions</p>
+            <h2 className="text-3xl font-bold mb-4">Frequently Asked Questions</h2>
+            <p className="text-white/80">Quick answers to common questions</p>
           </div>
 
           <div className="space-y-6">
@@ -672,13 +487,13 @@ const Contact: React.FC = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.05 }}
-                className="bg-gray-50 rounded-lg p-6 group open:bg-gray-100"
+                className="rounded-lg p-6 group open:bg-white/10 bg-white/5 border border-white/10 backdrop-blur cursor-pointer"
               >
-                <summary className="cursor-pointer select-none text-lg font-semibold text-gray-900 mb-2 list-none flex items-center justify-between">
+                <summary className="select-none text-lg font-semibold mb-2 list-none flex items-center justify-between">
                   {faq.question}
-                  <span className="ml-4 text-sm text-gray-500 group-open:rotate-180 transition-transform">▼</span>
+                  <span className="ml-4 text-sm text-white/70 group-open:rotate-180 transition-transform">▼</span>
                 </summary>
-                <p className="text-gray-700">{faq.answer}</p>
+                <p className="text-white/80">{faq.answer}</p>
               </motion.details>
             ))}
           </div>

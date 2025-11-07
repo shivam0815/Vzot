@@ -4,27 +4,19 @@ import { Home, ChevronRight } from "lucide-react";
 
 type Crumb = {
   label: string;
-  /** Path string or { pathname, search } object */
   to?: string | { pathname: string; search?: string };
-  /** React Router location state (e.g., { fromPath }) */
   state?: any;
-  /** Optional click handler for custom behavior */
   onClick?: React.MouseEventHandler<HTMLAnchorElement>;
 };
 
 type Props = {
   items: Crumb[];
   className?: string;
-  /**
-   * When true, clicks on a crumb whose `to` resolves to "/products"
-   * will perform a smart back: go(-1) if user came from products,
-   * else navigate to the last stored products URL from sessionStorage.
-   */
   enableSmartBack?: boolean;
 };
 
 const CrumbSeparator = () => (
-  <ChevronRight className="mx-1 h-4 w-4 text-gray-400" aria-hidden="true" />
+  <ChevronRight className="mx-1 h-4 w-4 text-white/40" aria-hidden="true" />
 );
 
 function isProductsPath(to?: Crumb["to"]) {
@@ -33,13 +25,15 @@ function isProductsPath(to?: Crumb["to"]) {
   return to.pathname === "/products";
 }
 
-export default function Breadcrumbs({ items, className = "", enableSmartBack = false }: Props) {
+export default function Breadcrumbs({
+  items,
+  className = "",
+  enableSmartBack = false,
+}: Props) {
   const navigate = useNavigate();
   const location = useLocation();
-
   if (!items?.length) return null;
 
-  // Compute smart back targets once
   const fromPath =
     (location.state as any)?.fromPath ||
     sessionStorage.getItem("last-products-url") ||
@@ -49,7 +43,10 @@ export default function Breadcrumbs({ items, className = "", enableSmartBack = f
     try {
       if (!document.referrer) return false;
       const u = new URL(document.referrer);
-      return u.origin === window.location.origin && u.pathname.startsWith("/products");
+      return (
+        u.origin === window.location.origin &&
+        u.pathname.startsWith("/products")
+      );
     } catch {
       return false;
     }
@@ -57,13 +54,8 @@ export default function Breadcrumbs({ items, className = "", enableSmartBack = f
 
   const smartBack: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     e.preventDefault();
-    if (cameFromProducts && window.history.length > 1) {
-      navigate(-1);
-    } else {
-      // If we have a concrete URL in sessionStorage, use that;
-      // otherwise fall back to plain /products.
-      navigate(fromPath, { replace: true });
-    }
+    if (cameFromProducts && window.history.length > 1) navigate(-1);
+    else navigate(fromPath, { replace: true });
   };
 
   const renderNode = (item: Crumb, isLast: boolean, index: number) => {
@@ -71,8 +63,8 @@ export default function Breadcrumbs({ items, className = "", enableSmartBack = f
       <span
         className={`inline-flex items-center gap-1 rounded-md px-2 py-1 transition-colors ${
           isLast
-            ? "bg-gray-100 text-gray-900 font-medium"
-            : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+            ? "bg-black/85 text-white font-medium"
+            : "text-white/80 hover:text-white hover:bg-white/10"
         }`}
         itemProp="name"
         title={item.label}
@@ -84,19 +76,12 @@ export default function Breadcrumbs({ items, className = "", enableSmartBack = f
       </span>
     );
 
-    // Current / active page: no link
     if (!item.to || isLast) {
-      return (
-        <span itemProp="item">
-          {content}
-        </span>
-      );
+      return <span itemProp="item">{content}</span>;
     }
 
-    // If caller provided a custom onClick, respect it
     if (item.onClick) {
-      const href =
-        typeof item.to === "string" ? item.to : (item.to.pathname || "/");
+      const href = typeof item.to === "string" ? item.to : item.to.pathname || "/";
       return (
         <a href={href} onClick={item.onClick} itemProp="item">
           {content}
@@ -104,10 +89,9 @@ export default function Breadcrumbs({ items, className = "", enableSmartBack = f
       );
     }
 
-    // Smart back for /products if enabled
     if (enableSmartBack && isProductsPath(item.to)) {
       const href =
-        typeof item.to === "string" ? item.to : (item.to.pathname || "/products");
+        typeof item.to === "string" ? item.to : item.to.pathname || "/products";
       return (
         <a href={href} onClick={smartBack} itemProp="item">
           {content}
@@ -115,7 +99,6 @@ export default function Breadcrumbs({ items, className = "", enableSmartBack = f
       );
     }
 
-    // Default router link; pass through optional state
     return (
       <Link to={item.to as any} state={item.state} itemProp="item">
         {content}
@@ -126,7 +109,7 @@ export default function Breadcrumbs({ items, className = "", enableSmartBack = f
   return (
     <nav aria-label="Breadcrumb" className={`mb-6 ${className}`}>
       <ol
-        className="flex items-center flex-wrap gap-1 text-sm"
+        className="flex items-center flex-wrap gap-1 text-sm text-white"
         itemScope
         itemType="https://schema.org/BreadcrumbList"
       >

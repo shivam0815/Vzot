@@ -5,6 +5,7 @@ import { Heart, ShoppingCart, Trash2, Share2, Filter, Grid, List, ArrowLeft } fr
 import { useWishlistContext } from "../context/WishlistContext";
 import { useCartContext } from "../context/CartContext";
 import toast from "react-hot-toast";
+import VZOTBackground from '../components/Layout/VZOTBackground';
 
 const Wishlist: React.FC = () => {
   const { items, removeFromWishlist, clearWishlist, isLoading, getTotalItems, refreshWishlist } =
@@ -67,7 +68,8 @@ const Wishlist: React.FC = () => {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        
         <div className="text-center">
           <Heart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold">Your wishlist is empty</h2>
@@ -81,6 +83,8 @@ const Wishlist: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+       
+      <VZOTBackground />
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center">

@@ -47,12 +47,16 @@ const computeInStock = (p: any): boolean => {
   return true;
 };
 
+/* ----- Buttons on dark theme ----- */
 const btnBase =
   'inline-flex items-center justify-center rounded-lg font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 h-9 px-3 text-sm sm:h-10 sm:px-3';
-const btnPrimary = 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50';
-const btnDark = 'bg-gray-900 text-white hover:bg-black focus:outline-none focus:ring-2 focus:ring-gray-900/40';
+const btnPrimary =
+  'bg-sky-600 text-white hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500/40';
+const btnDark =
+  'bg-white/10 text-white hover:bg-white/15 border border-white/15 focus:outline-none focus:ring-2 focus:ring-white/20';
 const btnMinW = 'w-[112px] sm:w-[132px]';
-const btnGhost = 'border border-gray-300 text-gray-700 hover:text-red-600 hover:border-red-300 focus:outline-none focus:ring-2 focus:ring-red-300/40';
+const btnGhost =
+  'border border-white/15 text-white/90 hover:text-red-400 hover:border-red-300/40 focus:outline-none focus:ring-2 focus:ring-red-300/20';
 
 const slugify = (s?: string) =>
   (s || '')
@@ -100,12 +104,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
     [avgRating]
   );
 
-  // Build detail URL: your FE route is /product/:handle (singular)
+  // detail URL
   const slug = slugify((product as any).slug || (product as any).name);
   const handle = slug || (isValidObjectId(productId) ? productId : '');
   const detailPath = handle ? `/product/${handle}` : '/products';
 
-  // Preserve exact list URL for back
+  // Preserve list URL for back
   const fromPath = `${location.pathname}${location.search}`;
 
   const isUserLoggedIn = () => {
@@ -185,7 +189,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   return (
     <Link
       to={detailPath}
-      state={{ fromPath }}           // ← CRITICAL
+      state={{ fromPath }}
       onClick={guardNav}
       className="block group"
       data-product-id={productId || ''}
@@ -194,18 +198,29 @@ const ProductCard: React.FC<ProductCardProps> = ({
         whileHover={{ y: -5 }}
         className={
           (isList
-            ? 'bg-plaine-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 flex gap-4 p-4'
-            : 'bg-plaine-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300') +
+            ? 'rounded-xl overflow-hidden transition-all duration-300 flex gap-4 p-4 ' +
+              'bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/7.5'
+            : 'rounded-xl overflow-hidden transition-all duration-300 ' +
+              'bg-white/5 border border-white/10 backdrop-blur-sm hover:bg-white/7.5') +
           (className ? ` ${className}` : '')
         }
       >
         {/* Image */}
-        <div className={isList ? 'w-28 h-28 flex-shrink-0 relative overflow-hidden bg-gray-100 rounded-md' : 'relative aspect-square overflow-hidden bg-gray-100'}>
+        <div
+          className={
+            isList
+              ? 'w-28 h-28 flex-shrink-0 relative overflow-hidden rounded-md bg-slate-800/60'
+              : 'relative aspect-square overflow-hidden rounded-t-xl sm:rounded-xl bg-slate-800/60'
+          }
+        >
           {imageUrl && !imageError ? (
             <>
               {imageLoading && (
-                <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center" aria-label="Loading image">
-                  <div className="text-gray-400">Loading...</div>
+                <div
+                  className="absolute inset-0 bg-slate-700/40 animate-pulse flex items-center justify-center"
+                  aria-label="Loading image"
+                >
+                  <div className="text-white/60 text-xs">Loading…</div>
                 </div>
               )}
               <img
@@ -226,8 +241,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
               />
             </>
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-              <div className="text-center text-gray-500">
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
+              <div className="text-center text-white/60">
                 <div className="text-3xl mb-1">📦</div>
                 <div className="text-xs font-medium">No Image</div>
               </div>
@@ -235,7 +250,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           )}
 
           {hasDiscount && (
-            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded-md text-xs font-semibold z-10">
+            <div className="absolute top-2 left-2 bg-rose-600/90 backdrop-blur px-2 py-1 rounded-md text-[11px] font-semibold text-white z-10">
               {discountPct}% OFF
             </div>
           )}
@@ -246,12 +261,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
               whileTap={{ scale: 0.95 }}
               onClick={handleWishlistToggle}
               disabled={wishlistLoading}
-              className={`absolute top-2 right-2 inline-flex ${btnGhost} h-9 w-9 p-0 min-w-[2.25rem] sm:h-10 sm:w-10 bg-white/90 backdrop-blur z-20`}
+              className={`absolute top-2 right-2 inline-flex ${btnGhost} h-9 w-9 p-0 min-w-[2.25rem] sm:h-10 sm:w-10 bg-black/30 backdrop-blur z-20`}
               title={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
               aria-pressed={inWishlist}
               aria-label={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
             >
-              <Heart className={'h-4 w-4 ' + (inWishlist ? 'fill-current text-red-600' : '')} />
+              <Heart className={'h-4 w-4 ' + (inWishlist ? 'fill-current text-rose-400' : 'text-white/90')} />
             </motion.button>
           )}
 
@@ -264,7 +279,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Content */}
         <div className={isList ? 'flex-1 min-w-0' : 'p-4'}>
-          <h3 className={'text-lg font-semibold text-gray-900 mb-2 line-clamp-2 ' + (isList ? 'mt-0' : '')}>
+          <h3
+            className={
+              'text-lg font-semibold text-white mb-2 line-clamp-2 ' + (isList ? 'mt-0' : '')
+            }
+          >
             {product.name}
           </h3>
 
@@ -273,26 +292,30 @@ const ProductCard: React.FC<ProductCardProps> = ({
               {[...Array(5)].map((_, i) => (
                 <Star
                   key={i}
-                  className={'h-4 w-4 ' + (i < Math.floor(roundedAvg) ? 'text-yellow-400 fill-current' : 'text-gray-300')}
+                  className={
+                    'h-4 w-4 ' + (i < Math.floor(roundedAvg) ? 'text-yellow-400 fill-current' : 'text-white/20')
+                  }
                 />
               ))}
             </div>
-            <span className="text-sm text-gray-600 ml-2">({revCount} reviews)</span>
+            <span className="text-sm text-white/70 ml-2">({revCount} reviews)</span>
           </div>
 
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-baseline space-x-2">
-              <span className="text-xl font-bold text-gray-900">{fmtPrice(product.price, currency)}</span>
+              <span className="text-xl font-bold text-white">{fmtPrice(product.price, currency)}</span>
               {hasDiscount && (
-                <span className="text-sm text-gray-500 line-through" aria-label="MRP">
+                <span className="text-sm text-white/50 line-through" aria-label="MRP">
                   {fmtPrice(comparePrice, currency)}
                 </span>
               )}
             </div>
             <span
               className={
-                'text-xs px-2 py-1 rounded ' +
-                (inStock === false ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800')
+                'text-[11px] px-2 py-1 rounded ' +
+                (inStock === false
+                  ? 'bg-rose-500/15 text-rose-300 border border-rose-400/20'
+                  : 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/20')
               }
             >
               {inStock === false ? 'Out of Stock' : 'In Stock'}

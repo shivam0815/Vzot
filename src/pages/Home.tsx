@@ -1,4 +1,4 @@
-// src/pages/Home.tsx
+// src/pages/Home.tsx (VZOT — 3D green/black gradient + glassmorphism)
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -40,7 +40,8 @@ const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(e.trim
 const API_BASE =
   (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
 
-type Product = {
+/* ——————————————————— Types ——————————————————— */
+export type Product = {
   _id: string;
   name: string;
   slug?: string;
@@ -61,6 +62,7 @@ const priceOffPct = (price?: number, original?: number) => {
   return Math.round(((original - price) / original) * 100);
 };
 
+/* ——————————————————— Page ——————————————————— */
 const Home: React.FC = () => {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const { user, isAuthenticated } = useAuth();
@@ -100,13 +102,13 @@ const Home: React.FC = () => {
   const [loadingTws, setLoadingTws] = useState(false);
 
   const categories = [
-    { id: 'Bluetooth Neckbands', name: 'Bluetooth Neckband', icon: '🎧', gradient: 'from-neutral-900 to-neutral-900', description: 'Premium wireless neckbands', color: 'bg-neutral-900' },
-    { id: 'TWS', name: 'True Wireless Stereo', icon: '🎵', gradient: 'from-neutral-900 to-neutral-900', description: 'High-quality TWS earbuds', color: 'bg-neutral-900' },
-    { id: 'Data Cables', name: 'Data Cable', icon: '🔌', gradient: 'from-neutral-900 to-neutral-900', description: 'Fast charging & sync cables', color: 'bg-neutral-900' },
-    { id: 'Mobile Chargers', name: 'Wall Charger', icon: '⚡', gradient: 'from-neutral-900 to-neutral-900', description: 'Quick & safe charging', color: 'bg-neutral-900' },
-    { id: 'Car Chargers', name: 'Car Charger', icon: '🚗', gradient: 'from-neutral-900 to-neutral-900', description: 'On-the-go charging', color: 'bg-neutral-900' },
-    { id: 'ICs', name: 'Mobile IC', icon: '🔧', gradient: 'from-neutral-900 to-neutral-900', description: 'Integrated circuits', color: 'bg-neutral-900' },
-    { id: 'Power Banks', name: 'Power Banks', icon: '📱', gradient: 'from-neutral-900 to-neutral-900', description: 'Extra power anywhere', color: 'bg-neutral-900' },
+    { id: 'Bluetooth Neckbands', name: 'Bluetooth Neckband', icon: '🎧', description: 'Premium wireless neckbands' },
+    { id: 'TWS', name: 'True Wireless Stereo', icon: '🎵', description: 'High-quality TWS earbuds' },
+    { id: 'Data Cables', name: 'Data Cable', icon: '🔌', description: 'Fast charging & sync cables' },
+    { id: 'Mobile Chargers', name: 'Wall Charger', icon: '⚡', description: 'Quick & safe charging' },
+    { id: 'Car Chargers', name: 'Car Charger', icon: '🚗', description: 'On-the-go charging' },
+    { id: 'ICs', name: 'Mobile IC', icon: '🔧', description: 'Integrated circuits' },
+    { id: 'Power Banks', name: 'Power Banks', icon: '📱', description: 'Extra power anywhere' },
   ];
 
   const testimonials = [
@@ -302,18 +304,12 @@ const Home: React.FC = () => {
     }
   };
 
-  // Product Card
-  const Card: React.FC<{ p: Product; badge?: React.ReactNode; compact?: boolean }> = ({
-    p,
-    badge,
-    compact,
-  }) => {
+  // Card (glass)
+  const Card: React.FC<{ p: Product; badge?: React.ReactNode; compact?: boolean }> = ({ p, badge, compact }) => {
     const raw = useMemo(() => pickPrimaryImage(p), [p]);
     const optimized = raw ? getOptimizedImageUrl(raw, 700, 700) : undefined;
     const [imgSrc, setImgSrc] = useState<string | undefined>(optimized ?? raw);
-    useEffect(() => {
-      setImgSrc(optimized ?? raw);
-    }, [optimized, raw]);
+    useEffect(() => { setImgSrc(optimized ?? raw); }, [optimized, raw]);
 
     const off = priceOffPct(p.price, p.originalPrice);
 
@@ -321,47 +317,47 @@ const Home: React.FC = () => {
       <article className={`group ${compact ? 'w-[240px] shrink-0' : ''}`}>
         <button
           onClick={() => navigate(`/products/${p.slug || p._id}`)}
-          className="relative block w-full overflow-hidden rounded-3xl border border-neutral-200 bg-white"
+          className="relative block w-full overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
           aria-label={p.name}
         >
           {imgSrc ? (
             <img
               src={imgSrc}
               alt={p.name}
-              className="aspect-square w-full object-contain bg-white transition-transform duration-500 group-hover:scale-[1.02]"
+              className="aspect-square w-full object-contain bg-transparent transition-transform duration-500 group-hover:scale-[1.02]"
               loading="lazy"
               onError={() => setImgSrc(imgSrc !== raw ? raw : undefined)}
             />
           ) : (
-            <div className="aspect-square w-full bg-neutral-100" />
+            <div className="aspect-square w-full bg-white/5" />
           )}
           {off > 0 && (
-            <span className="absolute top-3 left-3 inline-flex items-center gap-1 text-xs font-semibold bg-black text-white px-2 py-1 rounded-full">
+            <span className="absolute top-3 left-3 inline-flex items-center gap-1 text-xs font-semibold bg-black/80 text-white px-2 py-1 rounded-full">
               <BadgePercent className="w-3 h-3" /> {off}% OFF
             </span>
           )}
           {badge && <span className="absolute top-3 right-3">{badge}</span>}
         </button>
 
-        <div className="mt-3">
+        <div className="mt-3 text-white/90">
           <h3 className="line-clamp-2 text-[17px] font-medium leading-tight">{p.name}</h3>
-          <div className="mt-1 text-[14px] text-neutral-500">{p.brand ?? 'VZOT'}</div>
+          <div className="mt-1 text-[14px] text-white/70">{p.brand ?? 'VZOT'}</div>
           <div className="mt-2 flex items-center gap-2">
             <div className="text-[17px] font-semibold">₹{(p.price ?? 0).toLocaleString()}</div>
             {p.originalPrice && p.originalPrice > p.price && (
-              <div className="text-neutral-400 line-through">₹{p.originalPrice.toLocaleString()}</div>
+              <div className="text-white/50 line-through">₹{p.originalPrice.toLocaleString()}</div>
             )}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Link
               to={`/products/${p.slug || p._id}`}
-              className="rounded-full bg-black px-3 py-2 text-sm font-semibold text-white text-center hover:opacity-90"
+              className="rounded-full bg-black/80 px-3 py-2 text-sm font-semibold text-white text-center hover:bg-black"
             >
               View
             </Link>
             <Link
               to={`/products/${p.slug || p._id}`}
-              className="rounded-full border border-neutral-200 px-3 py-2 text-sm font-semibold text-neutral-800 hover:bg-black/5 text-center"
+              className="rounded-full border border-white/20 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10 text-center"
             >
               Details
             </Link>
@@ -371,15 +367,15 @@ const Home: React.FC = () => {
     );
   };
 
-  // Skeletons
+  // Skeletons (glass)
   const SkeletonGrid: React.FC<{ count: number }> = ({ count }) => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="rounded-3xl border border-neutral-200 p-4">
-          <div className="aspect-square w-full rounded-2xl bg-neutral-100 animate-pulse" />
-          <div className="mt-4 h-5 w-3/4 bg-neutral-100 rounded animate-pulse" />
-          <div className="mt-2 h-4 w-1/2 bg-neutral-100 rounded animate-pulse" />
-          <div className="mt-4 h-9 w-full bg-neutral-100 rounded-full animate-pulse" />
+        <div key={i} className="rounded-3xl border border-white/10 p-4 bg-white/5 backdrop-blur-xl">
+          <div className="aspect-square w-full rounded-2xl bg-white/10 animate-pulse" />
+          <div className="mt-4 h-5 w-3/4 bg-white/10 rounded animate-pulse" />
+          <div className="mt-2 h-4 w-1/2 bg-white/10 rounded animate-pulse" />
+          <div className="mt-4 h-9 w-full bg-white/10 rounded-full animate-pulse" />
         </div>
       ))}
     </div>
@@ -388,41 +384,87 @@ const Home: React.FC = () => {
   const SkeletonScrollGrid: React.FC<{ count: number }> = ({ count }) => (
     <div className="flex gap-6 overflow-x-auto">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="w-[240px] shrink-0 rounded-3xl border border-neutral-200 p-4">
-          <div className="aspect-square w-full rounded-2xl bg-neutral-100 animate-pulse" />
-          <div className="mt-4 h-5 w-3/4 bg-neutral-100 rounded animate-pulse" />
-          <div className="mt-2 h-4 w-1/2 bg-neutral-100 rounded animate-pulse" />
-          <div className="mt-4 h-9 w-full bg-neutral-100 rounded-full animate-pulse" />
+        <div key={i} className="w-[240px] shrink-0 rounded-3xl border border-white/10 p-4 bg-white/5 backdrop-blur-xl">
+          <div className="aspect-square w-full rounded-2xl bg-white/10 animate-pulse" />
+          <div className="mt-4 h-5 w-3/4 bg-white/10 rounded animate-pulse" />
+          <div className="mt-2 h-4 w-1/2 bg-white/10 rounded animate-pulse" />
+          <div className="mt-4 h-9 w-full bg-white/10 rounded-full animate-pulse" />
         </div>
       ))}
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-white text-neutral-900">
+    <div className="relative min-h-screen text-white">
+      {/* 3D gradient background (logo colors) */}
+      <div className="fixed inset-0 -z-10">
+        {/* Base radial + conic layers */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(1200px 700px at 20% 10%, rgba(0,255,180,0.18), transparent 60%),\
+               radial-gradient(900px 600px at 85% 20%, rgba(3,180,140,0.18), transparent 60%),\
+               radial-gradient(1000px 700px at 50% 100%, rgba(0,0,0,0.55), rgba(0,0,0,0.85))',
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-70"
+          style={{
+            background:
+              'conic-gradient(from 210deg at 70% 40%, rgba(18,170,120,0.20), rgba(0,0,0,0.2), rgba(0,140,110,0.25), rgba(0,0,0,0.25), rgba(18,170,120,0.20))',
+            filter: 'saturate(1.1)',
+          }}
+        />
+        {/* Soft noise for depth */}
+        <div className="absolute inset-0 mix-blend-overlay opacity-[0.08] pointer-events-none" style={{ backgroundImage: 'url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2P4//8/AwAI/AL+qY8QxQAAAABJRU5ErkJggg==)' }} />
+        {/* Highlight blobs */}
+        <div className="absolute -top-20 -left-20 h-[420px] w-[420px] rounded-full blur-[90px] opacity-60" style={{ background: 'linear-gradient(140deg, #25F4B7, #0B7C67)' }} />
+        <div className="absolute top-40 right-[-120px] h-[520px] w-[520px] rounded-full blur-[100px] opacity-50" style={{ background: 'linear-gradient(160deg, #0A1E28, #0D2E3A)' }} />
+      </div>
+
       <div ref={overlayRef} className="pointer-events-none fixed inset-0 z-[60]" aria-hidden="true" />
       <SEO
         title="Home"
         description="Shop mobile accessories—TWS, neckbands, chargers, cables, ICs & more."
         canonicalPath="/"
-        jsonLd={{ '@context': 'https://schema.org', '@type': 'Organization', name: 'vzot', url: 'https://localhost:5000', logo: '/favicon-512.png' }}
+        jsonLd={{ '@context': 'https://schema.org', '@type': 'Organization', name: 'VZOT', url: 'https://localhost:5000', logo: '/favicon-512.png' }}
       />
 
-      {/* Store header + categories (Apple-like) */}
-      <section className="bg-[#f5f5f7]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+      {/* HERO / Store header */}
+      <section className="pt-16 md:pt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 items-start gap-8">
             <div className="lg:col-span-5">
-              <h1 className="text-[44px] leading-[1.05] font-semibold tracking-tight text-neutral-900">Store</h1>
-            </div>
-            <div className="lg:col-span-7">
-              <p className="text-[22px] leading-snug text-neutral-800">The best way to buy the accessories you love.</p>
-              <Link to="/contact" className="inline-block mt-2 text-sm font-semibold text-blue-600 hover:opacity-80">
+              <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/5 backdrop-blur-xl px-4 py-2 mb-4">
+                <Sparkles className="h-4 w-4" />
+                <span className="text-sm">Premium Mobile Accessories</span>
+              </div>
+              <h1 className="text-[44px] md:text-[56px] leading-[1.05] font-semibold tracking-tight">Store</h1>
+              <p className="mt-3 text-lg text-white/80">The best way to buy the accessories you love.</p>
+              <Link to="/contact" className="inline-block mt-4 text-sm font-semibold text-teal-300 hover:opacity-80">
                 Talk to us →
               </Link>
             </div>
+            <div className="lg:col-span-7">
+              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 md:p-8 shadow-[0_15px_50px_rgba(0,0,0,0.25)]">
+                <div className="absolute -top-10 -right-10 h-52 w-52 rounded-full blur-2xl opacity-60" style={{ background: 'radial-gradient(closest-side,#1ee5b2,transparent)' }} />
+                <div className="flex items-center gap-4">
+                  <img src="/logo.webp" alt="VZOT" className="h-14 w-auto" />
+                  <div>
+                    <p className="text-white/80">Finish that looks and lasts. Service that keeps you running.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      
+                      <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs">Bulk B2B</span>
+                      <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs">Pan‑India Shipping</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
+          {/* Quick categories (glass chips) */}
           <div className="mt-10 lg:mt-14">
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-6 md:gap-8">
               {[
@@ -438,7 +480,7 @@ const Home: React.FC = () => {
                 <button
                   key={c.slug}
                   onClick={() => navigate(`/products?category=${encodeURIComponent(c.slug)}`)}
-                  className="group rounded-2xl bg-white border border-neutral-200 px-4 py-6 flex flex-col items-center hover:shadow-[0_12px_40px_rgba(0,0,0,0.06)] hover:-translate-y-0.5 transition-all"
+                  className="group rounded-2xl bg-white/5 border border-white/10 px-4 py-6 flex flex-col items-center hover:bg-white/10 hover:-translate-y-0.5 transition-all backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.15)]"
                   aria-label={c.label}
                 >
                   <span className="inline-flex h-20 w-20 md:h-24 md:w-24 items-center justify-center">
@@ -449,7 +491,7 @@ const Home: React.FC = () => {
                       loading="lazy"
                     />
                   </span>
-                  <span className="mt-3 text-[13px] md:text-[14px] text-neutral-700">{c.label}</span>
+                  <span className="mt-3 text-[13px] md:text-[14px] text-white/80">{c.label}</span>
                 </button>
               ))}
             </div>
@@ -458,29 +500,29 @@ const Home: React.FC = () => {
       </section>
 
       {/* Mobile Accessories rail */}
-      <section className="py-16 bg-[#fafafa]">
+      <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full border border-neutral-200 flex items-center justify-center">
-                <Smartphone className="h-5 w-5 text-neutral-900" />
+              <div className="h-10 w-10 rounded-full border border-white/15 bg-white/5 flex items-center justify-center backdrop-blur-xl">
+                <Smartphone className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-semibold">Mobile Accesoories</h2>
-                <p className="text-neutral-500">Best Mobile Accessories with varied features</p>
+                <h2 className="text-2xl md:text-3xl font-semibold">Mobile Accessories</h2>
+                <p className="text-white/70">Best Mobile Accessories with varied features</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Link
                 to="/products?category=neckband&category=tws&category=Data-Cables&category=chargers&category=Car-Charger"
-                className="text-sm font-semibold hover:opacity-70 mr-2"
+                className="text-sm font-semibold hover:opacity-80 mr-2"
               >
                 View all →
               </Link>
-              <button onClick={mobileAccessoriesRef.scrollLeft} className="rounded-full border border-neutral-200 p-2 hover:bg-black/5" aria-label="Prev">
+              <button onClick={mobileAccessoriesRef.scrollLeft} className="rounded-full border border-white/15 bg-white/5 p-2 hover:bg-white/10" aria-label="Prev">
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <button onClick={mobileAccessoriesRef.scrollRight} className="rounded-full border border-neutral-200 p-2 hover:bg-black/5" aria-label="Next">
+              <button onClick={mobileAccessoriesRef.scrollRight} className="rounded-full border border-white/15 bg-white/5 p-2 hover:bg-white/10" aria-label="Next">
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
@@ -489,7 +531,7 @@ const Home: React.FC = () => {
           {loadingMobileAccessories && mobileAccessories.length === 0 ? (
             <SkeletonScrollGrid count={8} />
           ) : mobileAccessories.length === 0 ? (
-            <div className="text-sm text-neutral-500">Items will appear here soon.</div>
+            <div className="text-sm text-white/70">Items will appear here soon.</div>
           ) : (
             <div ref={mobileAccessoriesRef.ref} className="flex gap-6 overflow-x-auto scroll-smooth no-scrollbar py-1">
               {mobileAccessories.slice(0, 12).map((p) => (
@@ -501,26 +543,26 @@ const Home: React.FC = () => {
       </section>
 
       {/* TWS rail */}
-      <section className="py-14 bg-white">
+      <section className="py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center">
-                <BadgeCheck className="h-5 w-5 text-indigo-600" />
+              <div className="h-10 w-10 rounded-lg border border-white/15 bg-white/5 flex items-center justify-center backdrop-blur-xl">
+                <BadgeCheck className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-bold text-gray-900">TWS Earbuds</h2>
-                <p className="text-gray-500">True wireless. Compact. Powerful.</p>
+                <h2 className="text-2xl md:text-3xl font-bold">TWS Earbuds</h2>
+                <p className="text-white/70">True wireless. Compact. Powerful.</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link to="/products?category=tws" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">
+              <Link to="/products?category=tws" className="text-teal-300 hover:text-teal-200 font-semibold mr-4">
                 View all →
               </Link>
-              <button onClick={twsRef.scrollLeft} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Prev">
+              <button onClick={twsRef.scrollLeft} className="rounded-full border border-white/15 bg-white/5 p-2 hover:bg-white/10" aria-label="Prev">
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <button onClick={twsRef.scrollRight} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Next">
+              <button onClick={twsRef.scrollRight} className="rounded-full border border-white/15 bg-white/5 p-2 hover:bg-white/10" aria-label="Next">
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
@@ -529,7 +571,7 @@ const Home: React.FC = () => {
           {loadingTws && tws.length === 0 ? (
             <SkeletonScrollGrid count={8} />
           ) : tws.length === 0 ? (
-            <div className="text-sm text-gray-600">TWS earbuds will appear here soon.</div>
+            <div className="text-sm text-white/70">TWS earbuds will appear here soon.</div>
           ) : (
             <div ref={twsRef.ref} className="flex gap-4 overflow-x-auto scroll-smooth no-scrollbar py-1">
               {tws.slice(0, 12).map((p) => (
@@ -541,19 +583,19 @@ const Home: React.FC = () => {
       </section>
 
       {/* New Arrivals */}
-      <section className="py-16 bg-white">
+      <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full border border-neutral-200 flex items-center justify-center">
-                <Banknote className="h-5 w-5 text-neutral-900" />
+              <div className="h-10 w-10 rounded-full border border-white/15 bg-white/5 flex items-center justify-center backdrop-blur-xl">
+                <Banknote className="h-5 w-5" />
               </div>
               <div>
                 <h2 className="text-2xl md:text-3xl font-semibold">New Arrivals</h2>
-                <p className="text-neutral-500">Fresh drops — updated often</p>
+                <p className="text-white/70">Fresh drops — updated often</p>
               </div>
             </div>
-            <Link to="/products?sort=new" className="text-sm font-semibold hover:opacity-70">
+            <Link to="/products?sort=new" className="text-sm font-semibold hover:opacity-80">
               View all →
             </Link>
           </div>
@@ -561,7 +603,7 @@ const Home: React.FC = () => {
           {loadingNew && newArrivals.length === 0 ? (
             <SkeletonGrid count={8} />
           ) : newArrivals.length === 0 ? (
-            <div className="text-sm text-neutral-500">New arrivals will appear here soon.</div>
+            <div className="text-sm text-white/70">New arrivals will appear here soon.</div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
               {newArrivals.slice(0, 8).map((p) => (
@@ -573,26 +615,26 @@ const Home: React.FC = () => {
       </section>
 
       {/* Mobile Chargers rail */}
-      <section className="py-14 bg-gray-50">
+      <section className="py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-yellow-50 border border-yellow-200 flex items-center justify-center">
-                <Bolt className="h-5 w-5 text-yellow-600" />
+              <div className="h-10 w-10 rounded-lg border border-white/15 bg-white/5 flex items-center justify-center backdrop-blur-xl">
+                <Bolt className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Mobile Chargers</h2>
-                <p className="text-gray-500">Fast, reliable, and safe charging</p>
+                <h2 className="text-2xl md:text-3xl font-bold">Mobile Chargers</h2>
+                <p className="text-white/70">Fast, reliable, and safe charging</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Link to="/products?category=chargers" className="text-indigo-600 hover:text-indigo-700 font-semibold mr-4">
+              <Link to="/products?category=chargers" className="text-teal-300 hover:text-teal-200 font-semibold mr-4">
                 View all →
               </Link>
-              <button onClick={chargerRef.scrollLeft} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Prev">
+              <button onClick={chargerRef.scrollLeft} className="rounded-full border border-white/15 bg-white/5 p-2 hover:bg-white/10" aria-label="Prev">
                 <ChevronLeft className="w-5 h-5" />
               </button>
-              <button onClick={chargerRef.scrollRight} className="rounded-full border p-2 hover:bg-gray-50" aria-label="Next">
+              <button onClick={chargerRef.scrollRight} className="rounded-full border border-white/15 bg-white/5 p-2 hover:bg-white/10" aria-label="Next">
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
@@ -601,7 +643,7 @@ const Home: React.FC = () => {
           {loadingChargers && chargers.length === 0 ? (
             <SkeletonScrollGrid count={8} />
           ) : chargers.length === 0 ? (
-            <div className="text-sm text-gray-600">Chargers will appear here soon.</div>
+            <div className="text-sm text-white/70">Chargers will appear here soon.</div>
           ) : (
             <div ref={chargerRef.ref} className="flex gap-4 overflow-x-auto scroll-smooth no-scrollbar py-1">
               {chargers.slice(0, 12).map((p) => (
@@ -613,19 +655,19 @@ const Home: React.FC = () => {
       </section>
 
       {/* Hot Deals */}
-      <section className="py-16 bg-white">
+      <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full border border-neutral-200 flex items-center justify-center">
-                <BadgePercent className="h-5 w-5 text-neutral-900" />
+              <div className="h-10 w-10 rounded-full border border-white/15 bg-white/5 flex items-center justify-center backdrop-blur-xl">
+                <BadgePercent className="h-5 w-5" />
               </div>
               <div>
                 <h2 className="text-2xl md:text-3xl font-semibold">Hot Deals</h2>
-                <p className="text-neutral-500">Top discounts across categories</p>
+                <p className="text-white/70">Top discounts across categories</p>
               </div>
             </div>
-            <Link to="/products?sort=trending" className="text-sm font-semibold hover:opacity-70">
+            <Link to="/products?sort=trending" className="text-sm font-semibold hover:opacity-80">
               View all →
             </Link>
           </div>
@@ -643,11 +685,11 @@ const Home: React.FC = () => {
       </section>
 
       {/* Shop by Category */}
-      <section className="py-16 border-t border-neutral-200/70 bg-white">
+      <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-semibold mb-3">Shop by Category</h2>
-            <p className="text-neutral-500 max-w-2xl mx-auto">
+            <p className="text-white/70 max-w-2xl mx-auto">
               Explore our collection of mobile accessories organized for quick decisions.
             </p>
           </div>
@@ -661,18 +703,18 @@ const Home: React.FC = () => {
                 onMouseLeave={() => setHoveredCategory(null)}
               >
                 <div
-                  className={`relative bg-white rounded-3xl p-6 border border-neutral-200 transition-all duration-300 ${
+                  className={`relative rounded-3xl p-6 border border-white/10 bg-white/5 backdrop-blur-xl transition-all duration-300 ${
                     hoveredCategory === category.id
-                      ? 'shadow-[0_20px_60px_rgba(0,0,0,0.06)] -translate-y-1'
-                      : 'hover:shadow-[0_12px_40px_rgba(0,0,0,0.05)]'
+                      ? 'shadow-[0_20px_60px_rgba(0,0,0,0.35)] -translate-y-1'
+                      : 'hover:shadow-[0_12px_40px_rgba(0,0,0,0.25)]'
                   }`}
                 >
                   <div className="relative text-4xl mb-4">{category.icon}</div>
                   <h3 className="text-lg font-medium">{category.name}</h3>
-                  <p className="text-sm text-neutral-500 mb-4">{category.description}</p>
+                  <p className="text-sm text-white/70 mb-4">{category.description}</p>
                   <button
                     onClick={() => handleCategoryClick(category.id)}
-                    className="inline-flex items-center text-sm font-semibold rounded-full px-3 py-1 border border-neutral-200 hover:bg-black/5"
+                    className="inline-flex items-center text-sm font-semibold rounded-full px-3 py-1 border border-white/15 bg-white/5 hover:bg-white/10"
                   >
                     Explore
                     <ArrowRight className="ml-1 w-4 h-4" />
@@ -685,14 +727,18 @@ const Home: React.FC = () => {
       </section>
 
       {/* Secondary promos */}
-      <PromoSlider />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-2">
+          <PromoSlider />
+        </div>
+      </div>
 
       {/* Why Choose Us */}
-      <section className="py-16 border-t border-neutral-200/70 bg-white">
+      <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl font-semibold mb-3">Why Choose Us?</h2>
-            <p className="text-neutral-500">We focus on finish, reliability and service.</p>
+            <p className="text-white/70">We focus on finish, reliability and service.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -718,12 +764,12 @@ const Home: React.FC = () => {
                 description: 'Competitive wholesale pricing with bulk discounts.',
               },
             ].map((b, i) => (
-              <div key={i} className="text-center">
-                <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-neutral-200">
+              <div key={i} className="text-center rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-8">
+                <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-white/15 bg-white/5">
                   {b.icon}
                 </div>
                 <h3 className="text-lg font-medium mb-2">{b.title}</h3>
-                <p className="text-neutral-600">{b.description}</p>
+                <p className="text-white/80">{b.description}</p>
               </div>
             ))}
           </div>
@@ -731,15 +777,15 @@ const Home: React.FC = () => {
       </section>
 
       {/* Testimonials */}
-      <section className="py-16 bg-[#fafafa]">
+      <section className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-semibold mb-3">What Our Customers Say</h2>
-            <p className="text-neutral-500">Real feedback.</p>
+            <p className="text-white/70">Real feedback.</p>
           </div>
 
           <div className="relative max-w-4xl mx-auto">
-            <div className="rounded-3xl border border-neutral-200 bg-white p-8 md:p-10">
+            <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 md:p-10">
               <motion.div
                 key={currentTestimonial}
                 initial={{ opacity: 0, x: 50 }}
@@ -747,13 +793,13 @@ const Home: React.FC = () => {
                 exit={{ opacity: 0, x: -50 }}
                 className="text-center"
               >
-                <Quote className="h-10 w-10 text-neutral-900 mx-auto mb-6" />
-                <p className="text-xl text-neutral-800 mb-6 italic">
+                <Quote className="h-10 w-10 mx-auto mb-6" />
+                <p className="text-xl text-white/90 mb-6 italic">
                   "{testimonials[currentTestimonial].content}"
                 </p>
                 <div className="flex items-center justify-center mb-4">
                   {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="h-5 w-5 text-black fill-current" />
+                    <Star key={i} className="h-5 w-5 fill-current" />
                   ))}
                 </div>
                 <div className="flex items-center justify-center">
@@ -764,7 +810,7 @@ const Home: React.FC = () => {
                   />
                   <div>
                     <h4 className="font-semibold">{testimonials[currentTestimonial].name}</h4>
-                    <p className="text-neutral-500">{testimonials[currentTestimonial].role}</p>
+                    <p className="text-white/70">{testimonials[currentTestimonial].role}</p>
                   </div>
                 </div>
               </motion.div>
@@ -774,15 +820,15 @@ const Home: React.FC = () => {
               onClick={() =>
                 setCurrentTestimonial((prev) => (prev === 0 ? testimonials.length - 1 : prev - 1))
               }
-              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 rounded-full border border-neutral-200 bg-white p-3 hover:bg-black/5"
+              className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 rounded-full border border-white/15 bg-white/5 p-3 hover:bg-white/10"
             >
-              <ChevronLeft className="h-5 w-5 text-neutral-700" />
+              <ChevronLeft className="h-5 w-5" />
             </button>
             <button
               onClick={() => setCurrentTestimonial((prev) => (prev + 1) % testimonials.length)}
-              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 rounded-full border border-neutral-200 bg-white p-3 hover:bg-black/5"
+              className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 rounded-full border border-white/15 bg-white/5 p-3 hover:bg-white/10"
             >
-              <ChevronRight className="h-5 w-5 text-neutral-700" />
+              <ChevronRight className="h-5 w-5" />
             </button>
 
             <div className="flex justify-center mt-8 space-x-2">
@@ -791,7 +837,7 @@ const Home: React.FC = () => {
                   key={i}
                   onClick={() => setCurrentTestimonial(i)}
                   className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                    currentTestimonial === i ? 'bg-black' : 'bg-neutral-300'
+                    currentTestimonial === i ? 'bg-white' : 'bg-white/40'
                   }`}
                 />
               ))}
@@ -803,14 +849,14 @@ const Home: React.FC = () => {
       {/* OEM CTA */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <div className="rounded-3xl border border-neutral-200 p-10 md:p-14">
-            <div className="mb-4 inline-block rounded-full border border-neutral-200 px-5 py-2 text-sm font-semibold">
+          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-10 md:p-14">
+            <div className="mb-4 inline-block rounded-full border border-white/15 bg-white/5 px-5 py-2 text-sm font-semibold">
               🏭 OEM Services Available
             </div>
             <h2 className="text-3xl md:text-4xl font-semibold mb-4">
               Need Bulk Orders or Custom Branding?
             </h2>
-            <p className="text-lg text-neutral-600 mb-8 max-w-3xl mx-auto">
+            <p className="text-lg text-white/80 mb-8 max-w-3xl mx-auto">
               Bulk manufacturing, custom branding, and packaging solutions for businesses.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -818,14 +864,14 @@ const Home: React.FC = () => {
                 href="https://nakodamobile.in/oem"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-full bg-black text-white px-8 py-3 font-semibold hover:opacity-90 inline-flex items-center justify-center"
+                className="rounded-full bg-black/80 text-white px-8 py-3 font-semibold hover:bg-black inline-flex items-center justify-center"
               >
                 <span>Learn More</span>
                 <ArrowRight className="ml-2 h-4 w-4" />
               </a>
               <a
                 href="https://nakodamobile.in/oem#contact-form"
-                className="rounded-full border border-neutral-200 px-8 py-3 font-semibold hover:bg-black/5"
+                className="rounded-full border border-white/15 bg-white/5 px-8 py-3 font-semibold hover:bg-white/10"
               >
                 Get Quote
               </a>
@@ -835,14 +881,14 @@ const Home: React.FC = () => {
       </section>
 
       {/* Newsletter */}
-      <section className="py-20 bg-[#fafafa]">
+      <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl border border-neutral-200 p-10 md:p-14 text-center bg-white">
+          <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-10 md:p-14 text-center">
             <h2 className="text-3xl font-semibold mb-3">Stay Updated</h2>
-            <p className="text-neutral-600 mb-8">New products, early deals. No spam.</p>
+            <p className="text-white/80 mb-8">New products, early deals. No spam.</p>
 
             {subscribed && (
-              <div className="max-w-md mx-auto mb-4 text-sm bg-green-600/10 text-green-700 border border-green-400/30 rounded-md px-4 py-3">
+              <div className="max-w-md mx-auto mb-4 text-sm bg-emerald-400/15 text-emerald-200 border border-emerald-300/20 rounded-md px-4 py-3">
                 Thanks. Please check your email to confirm.
               </div>
             )}
@@ -865,7 +911,7 @@ const Home: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
-                className="flex-1 rounded-full border border-neutral-200 px-5 py-3 text-neutral-900 focus:ring-2 focus:ring-black/10 focus:outline-none disabled:opacity-60"
+                className="flex-1 rounded-full border border-white/15 bg-white/5 px-5 py-3 text-white placeholder:text-white/50 focus:ring-2 focus:ring-white/20 focus:outline-none disabled:opacity-60"
                 aria-label="Email address"
                 autoCapitalize="off"
                 autoCorrect="off"
@@ -874,7 +920,7 @@ const Home: React.FC = () => {
               />
               <motion.button
                 type="submit"
-                className="rounded-full bg-black text-white px-6 py-3 font-semibold hover:opacity-90 disabled:opacity-60"
+                className="rounded-full bg-black/80 text-white px-6 py-3 font-semibold hover:bg-black disabled:opacity-60"
                 whileHover={{ scale: loading ? 1 : 1.02 }}
                 whileTap={{ scale: loading ? 1 : 0.98 }}
                 disabled={loading}
@@ -883,9 +929,9 @@ const Home: React.FC = () => {
               </motion.button>
             </form>
 
-            <p className="text-xs text-neutral-500 mt-3">
+            <p className="text-xs text-white/70 mt-3">
               By subscribing, you agree to our{' '}
-              <Link to="/privacy" className="underline hover:text-neutral-700">
+              <Link to="/privacy" className="underline hover:text-white">
                 Privacy Policy
               </Link>
               .
@@ -894,7 +940,7 @@ const Home: React.FC = () => {
             <div className="flex justify-center space-x-4 mt-8">
               <a
                 href="https://www.facebook.com/jitukumarkothari/"
-                className="text-neutral-400 hover:text-neutral-800"
+                className="text-white/60 hover:text-white"
                 rel="noreferrer"
                 aria-label="Facebook"
               >
@@ -902,7 +948,7 @@ const Home: React.FC = () => {
               </a>
               <a
                 href="https://x.com/_nakodamobile_?t=yJpXFZwym_u7fbB_3ORckQ&s=08"
-                className="text-neutral-400 hover:text-neutral-800"
+                className="text-white/60 hover:text-white"
                 rel="noreferrer"
                 aria-label="Twitter"
               >
@@ -910,7 +956,7 @@ const Home: React.FC = () => {
               </a>
               <a
                 href="https://www.instagram.com/v2m_nakoda_mobile/"
-                className="text-neutral-400 hover:text-neutral-800"
+                className="text-white/60 hover:text-white"
                 rel="noreferrer"
                 aria-label="Instagram"
               >

@@ -1,4 +1,4 @@
-// src/pages/ProductDetail.tsx — B2C detail page with full SEO + smart back
+// src/pages/ProductDetail.tsx — dark glass B2C detail page
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -24,7 +24,7 @@ import toast from 'react-hot-toast';
 import SEO from '../components/Layout/SEO';
 import Reviews from '../components/Layout/Reviews';
 import Breadcrumbs from './Breadcrumbs';
-
+import VZOTBackground from '../components/Layout/VZOTBackground';
 /* ------------------------- Helpers ------------------------- */
 const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   if (!raw) return {};
@@ -269,10 +269,10 @@ const ProductDetail: React.FC = () => {
   /* Guards */
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-black">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading product details</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500 mx-auto mb-4"></div>
+          <p className="text-white/70">Loading product details</p>
         </div>
       </div>
     );
@@ -281,7 +281,7 @@ const ProductDetail: React.FC = () => {
   if (error) {
     const invalidId = error.includes('Invalid product ID') || error.includes('Cast to ObjectId');
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-black">
         <SEO
           title="Shop Products"
           description="Browse TWS, Bluetooth neckbands, data cables, chargers, ICs, and tools."
@@ -293,26 +293,33 @@ const ProductDetail: React.FC = () => {
             url: 'https://nakodamobile.com/products',
           }}
         />
-        <div className="text-center max-w-md mx-auto p-6">
-          <div className="text-6xl mb-4">{invalidId ? '🔍' : '⚠️'}</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            {invalidId ? 'Invalid Product ID' : 'Oops! Something went wrong'}
+        <div className="text-center max-w-md mx-auto p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-white mb-2">
+            {invalidId ? 'Invalid Product ID' : 'Something went wrong'}
           </h2>
-          <p className="text-red-600 mb-6">{error}</p>
+          <p className="text-rose-300 mb-6">{error}</p>
           {invalidId && (
-            <div className="bg-blue-50 p-4 rounded-lg mb-4 text-left">
-              <h4 className="font-semibold text-blue-800 mb-2">Valid Product ID Format:</h4>
-              <p className="text-blue-700 text-sm">
-                Product IDs must be 24-character MongoDB ObjectIds like:
-                <code className="bg-blue-100 px-1 rounded ml-1">6889d318a654a6aef33eb902</code>
+            <div className="bg-sky-500/10 border border-sky-500/20 text-sky-200 p-4 rounded-lg mb-4 text-left">
+              <h4 className="font-semibold mb-2">Valid Product ID Format</h4>
+              <p className="text-sm">
+                24-character MongoDB ObjectId, e.g.
+                <code className="bg-sky-500/10 px-1 rounded ml-1 text-sky-100">6889d318a654a6aef33eb902</code>
               </p>
             </div>
           )}
           <div className="space-y-3">
-            <button onClick={() => window.location.reload()} className="w-full bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full bg-sky-600 text-white px-6 py-2 rounded-lg hover:bg-sky-700"
+            >
               Try Again
             </button>
-            <a href={backTarget} onClick={smartBack} className="block w-full bg-gray-100 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-200 text-center">
+            <a
+              href={backTarget}
+              onClick={smartBack}
+              className="block w-full bg-white/10 text-white px-6 py-2 rounded-lg hover:bg-white/15 border border-white/15"
+            >
               Back to Products
             </a>
           </div>
@@ -323,12 +330,16 @@ const ProductDetail: React.FC = () => {
 
   if (!product) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md mx-auto p-6">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-950 to-black">
+        <div className="text-center max-w-md mx-auto p-6 bg-white/5 border border-white/10 rounded-xl backdrop-blur">
           <div className="text-6xl mb-4">🔍</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Product Not Found</h2>
-          <p className="text-gray-600 mb-6">The product you're looking for doesn't exist or has been removed.</p>
-          <a href={backTarget} onClick={smartBack} className="inline-flex items-center bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+          <h2 className="text-2xl font-bold text-white mb-2">Product Not Found</h2>
+          <p className="text-white/70 mb-6">The product you’re looking for doesn’t exist or has been removed.</p>
+          <a
+            href={backTarget}
+            onClick={smartBack}
+            className="inline-flex items-center bg-sky-600 text-white px-6 py-2 rounded-lg hover:bg-sky-700"
+          >
             <ChevronLeft className="h-4 w-4 mr-2" />
             Back to Products
           </a>
@@ -347,7 +358,8 @@ const ProductDetail: React.FC = () => {
   const reviewCount = Number((product as any)?.reviewsCount) || Number((product as any)?.reviewCount) || undefined;
 
   const seoTitle = `${product.name} Price in India | Buy Online`;
-  const seoDesc = (product.description || '').replace(/\s+/g, ' ').slice(0, 155) ||
+  const seoDesc =
+    (product.description || '').replace(/\s+/g, ' ').slice(0, 155) ||
     `${product.name} available at Nakoda Mobile. Fast delivery. GST invoice.`;
 
   const productJsonLd: any = {
@@ -356,7 +368,7 @@ const ProductDetail: React.FC = () => {
     name: product.name,
     image: (validImages || []).map((i: string) => safeImage(i)).slice(0, 8),
     description: product.description || undefined,
-    sku: productId || undefined,
+    sku: (product as any)?._id || (product as any)?.id || undefined,
     mpn: (product as any)?.mpn || undefined,
     brand: (product as any)?.brand ? { '@type': 'Brand', name: (product as any).brand } : undefined,
     category: product.category || undefined,
@@ -384,7 +396,8 @@ const ProductDetail: React.FC = () => {
 
   /* -------------------------------- Render -------------------------------- */
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 sm:pb-10">
+     <div className="relative min-h-screen text-white">
+      <VZOTBackground />
       <SEO
         title={seoTitle}
         description={seoDesc}
@@ -401,13 +414,14 @@ const ProductDetail: React.FC = () => {
             { label: 'Products', to: backTarget, onClick: smartBack },
             { label: product.name },
           ]}
+          className="text-white/70"
         />
 
-        <div className="bg-white rounded-xl shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
+        <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
             {/* Gallery */}
             <div className="space-y-3 sm:space-y-4">
-              <div className="aspect-[4/4] sm:aspect-square bg-gray-100 rounded-xl overflow-hidden relative">
+              <div className="aspect-[4/4] sm:aspect-square bg-slate-800/60 rounded-xl overflow-hidden relative">
                 {currentImage ? (
                   <img
                     src={safeImage(currentImage)}
@@ -416,7 +430,7 @@ const ProductDetail: React.FC = () => {
                     onError={(e) => { (e.target as HTMLImageElement).src = safeImage(undefined); }}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">
+                  <div className="w-full h-full flex items-center justify-center text-white/50">
                     <div className="text-center">
                       <div className="text-5xl sm:text-6xl mb-2">📷</div>
                       <div>No Image Available</div>
@@ -431,7 +445,11 @@ const ProductDetail: React.FC = () => {
                     <button
                       key={index}
                       onClick={() => setSelectedImage(index)}
-                      className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all snap-start ${selectedImage === index ? 'border-blue-500 shadow-md' : 'border-gray-200 hover:border-gray-300'}`}
+                      className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all snap-start ${
+                        selectedImage === index
+                          ? 'border-sky-500 shadow-md'
+                          : 'border-white/15 hover:border-white/25'
+                      }`}
                       aria-label={`View image ${index + 1}`}
                     >
                       <img
@@ -449,19 +467,23 @@ const ProductDetail: React.FC = () => {
             {/* Info */}
             <div className="space-y-4 sm:space-y-6">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-snug">{product.name}</h1>
-                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600">
-                  <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{product.category}</span>
-                  {(product as any).brand && <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">{(product as any).brand}</span>}
+                <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2 leading-snug">{product.name}</h1>
+                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-white/70">
+                  <span className="bg-sky-500/15 text-sky-200 border border-sky-400/20 px-2 py-0.5 rounded-full">{product.category}</span>
+                  {(product as any).brand && (
+                    <span className="bg-white/10 text-white/80 border border-white/15 px-2 py-0.5 rounded-full">
+                      {(product as any).brand}
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div className="flex items-center flex-wrap gap-2 sm:gap-4">
-                <span className="text-2xl sm:text-3xl font-bold text-gray-900">₹{product.price?.toLocaleString('en-IN')}</span>
+                <span className="text-2xl sm:text-3xl font-bold text-white">₹{product.price?.toLocaleString('en-IN')}</span>
                 {(product as any).originalPrice && (product as any).originalPrice > (product.price ?? 0) && (
                   <>
-                    <span className="text-lg sm:text-xl text-gray-500 line-through">₹{(product as any).originalPrice.toLocaleString('en-IN')}</span>
-                    <span className="bg-red-100 text-red-800 text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-full">
+                    <span className="text-lg sm:text-xl text-white/60 line-through">₹{(product as any).originalPrice.toLocaleString('en-IN')}</span>
+                    <span className="bg-rose-600/20 text-rose-200 border border-rose-400/30 text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-full">
                       {Math.round((((product as any).originalPrice - (product.price ?? 0)) / (product as any).originalPrice) * 100)}% OFF
                     </span>
                   </>
@@ -470,12 +492,12 @@ const ProductDetail: React.FC = () => {
 
               {(product as any).inStock && (
                 <div className="flex items-center gap-3 sm:gap-4">
-                  <label className="text-gray-700 text-sm sm:text-base font-medium">Qty</label>
-                  <div className="flex items-center border border-gray-300 rounded-lg">
+                  <label className="text-white/90 text-sm sm:text-base font-medium">Qty</label>
+                  <div className="flex items-center rounded-lg border border-white/15 bg-white/5">
                     <button
                       onClick={() => commitQty((quantity || 1) - 1)}
                       disabled={quantity <= 1}
-                      className="p-2 sm:p-2.5 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-2 sm:p-2.5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-white"
                       aria-label="Decrease quantity"
                     >
                       <Minus className="h-4 w-4" />
@@ -501,14 +523,14 @@ const ProductDetail: React.FC = () => {
                         if (e.key === 'Enter') { (e.currentTarget as HTMLInputElement).blur(); }
                         if (e.key === 'Escape') { setRawQty(String(quantity)); }
                       }}
-                      className="w-14 sm:w-16 text-center text-sm sm:text-base border-0 focus:ring-0 focus:outline-none"
+                      className="w-14 sm:w-16 text-center text-sm sm:text-base bg-transparent text-white border-0 focus:ring-0 focus:outline-none"
                       aria-label="Quantity"
                     />
 
                     <button
                       onClick={() => commitQty((quantity || 1) + 1)}
                       disabled={!maxQty || quantity >= maxQty}
-                      className="p-2 sm:p-2.5 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="p-2 sm:p-2.5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-white"
                       aria-label="Increase quantity"
                     >
                       <Plus className="h-4 w-4" />
@@ -524,7 +546,7 @@ const ProductDetail: React.FC = () => {
                   onClick={handleAddToCart}
                   disabled={!(product as any).inStock || isLoading}
                   className={`col-span-2 sm:col-auto h-11 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 transition-all ${
-                    (product as any).inStock && !isLoading ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    (product as any).inStock && !isLoading ? 'bg-sky-600 text-white hover:bg-sky-700 shadow-md hover:shadow-lg' : 'bg-white/10 text-white/50 cursor-not-allowed'
                   }`}
                   aria-label="Add to Cart"
                 >
@@ -537,7 +559,7 @@ const ProductDetail: React.FC = () => {
                   whileTap={{ scale: 0.95 }}
                   onClick={handleBuyNow}
                   disabled={!(product as any).inStock || isLoading}
-                  className="col-span-2 sm:col-auto h-11 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 bg-gray-900 text-white hover:bg-black disabled:opacity-60"
+                  className="col-span-2 sm:col-auto h-11 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 bg-white/10 text-white hover:bg-white/15 border border-white/15 disabled:opacity-60"
                   aria-label="Buy Now"
                 >
                   <CreditCard className="h-5 w-5" />
@@ -551,7 +573,9 @@ const ProductDetail: React.FC = () => {
                     onClick={handleWishlistToggle}
                     disabled={wishlistLoading}
                     className={`w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center p-0 border rounded-lg ${
-                      inWishlist ? 'border-red-300 bg-red-50 text-red-600 hover:bg-red-100' : 'border-gray-300 hover:bg-gray-50'
+                      inWishlist
+                        ? 'border-rose-400/30 bg-rose-500/15 text-rose-300 hover:bg-rose-500/20'
+                        : 'border-white/15 text-white hover:bg-white/10'
                     }`}
                     title={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
                     aria-label={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
@@ -562,7 +586,7 @@ const ProductDetail: React.FC = () => {
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center p-0 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center p-0 border border-white/15 rounded-lg hover:bg-white/10 text-white"
                     onClick={() => {
                       const url = window.location.href;
                       const text = `${product.name} - ${product.description ?? ''}`.slice(0, 180);
@@ -586,7 +610,7 @@ const ProductDetail: React.FC = () => {
                     href={`https://wa.me/?text=${encodeURIComponent(`${product.name} ${window.location.href}`)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center p-0 border border-green-300 rounded-lg hover:bg-green-50 text-green-700"
+                    className="w-10 h-10 sm:w-11 sm:h-11 inline-flex items-center justify-center p-0 border border-emerald-400/30 rounded-lg hover:bg-emerald-500/10 text-emerald-300"
                     title="Chat on WhatsApp"
                     aria-label="Chat on WhatsApp"
                   >
@@ -595,22 +619,22 @@ const ProductDetail: React.FC = () => {
                 </div>
               </div>
 
-              <div className="border-t pt-4 sm:pt-6">
+              <div className="border-t border-white/10 pt-4 sm:pt-6">
                 <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
                   <div className="flex flex-col items-center space-y-1.5 sm:space-y-2">
-                    <div className="bg-blue-100 p-2 rounded-full"><Truck className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" /></div>
-                    <span className="text-xs sm:text-sm font-medium text-gray-700">Free Delivery</span>
-                    <span className="text-[11px] sm:text-xs text-gray-500">On orders above ₹1999</span>
+                    <div className="bg-sky-500/15 border border-sky-400/20 p-2 rounded-full"><Truck className="h-5 w-5 sm:h-6 sm:w-6 text-sky-300" /></div>
+                    <span className="text-xs sm:text-sm font-medium text-white">Free Delivery</span>
+                    <span className="text-[11px] sm:text-xs text-white/70">On orders above ₹1999</span>
                   </div>
                   <div className="flex flex-col items-center space-y-1.5 sm:space-y-2">
-                    <div className="bg-green-100 p-2 rounded-full"><Shield className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" /></div>
-                    <span className="text-xs sm:text-sm font-medium text-gray-700">1 Year Warranty</span>
-                    <span className="text-[11px] sm:text-xs text-gray-500">Manufacturer warranty</span>
+                    <div className="bg-emerald-500/15 border border-emerald-400/20 p-2 rounded-full"><Shield className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-300" /></div>
+                    <span className="text-xs sm:text-sm font-medium text-white">1 Year Warranty</span>
+                    <span className="text-[11px] sm:text-xs text-white/70">Manufacturer warranty</span>
                   </div>
                   <div className="flex flex-col items-center space-y-1.5 sm:space-y-2">
-                    <div className="bg-orange-100 p-2 rounded-full"><RotateCcw className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600" /></div>
-                    <span className="text-xs sm:text-sm font-medium text-gray-700">Easy Returns</span>
-                    <span className="text-[11px] sm:text-xs text-gray-500">7 day return policy</span>
+                    <div className="bg-orange-500/15 border border-orange-400/20 p-2 rounded-full"><RotateCcw className="h-5 w-5 sm:h-6 sm:w-6 text-orange-300" /></div>
+                    <span className="text-xs sm:text-sm font-medium text-white">Easy Returns</span>
+                    <span className="text-[11px] sm:text-xs text-white/70">7 day return policy</span>
                   </div>
                 </div>
               </div>
@@ -618,14 +642,16 @@ const ProductDetail: React.FC = () => {
           </div>
 
           {/* Tabs */}
-          <div className="border-t">
-            <div className="flex border-b overflow-x-auto sticky top-0 sm:top-[60px] z-10 bg-white">
+          <div className="border-t border-white/10">
+            <div className="flex border-b border-white/10 overflow-x-auto sticky top-0 sm:top-[60px] z-10 bg-black/20 backdrop-blur">
               {(['description', 'specifications', 'reviews'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-medium capitalize transition-colors whitespace-nowrap ${
-                    activeTab === tab ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    activeTab === tab
+                      ? 'border-b-2 border-sky-500 text-sky-300 bg-sky-500/10'
+                      : 'text-white/70 hover:text-white hover:bg-white/5'
                   }`}
                 >
                   {tab}
@@ -636,18 +662,18 @@ const ProductDetail: React.FC = () => {
             <div className="p-4 sm:p-6">
               {activeTab === 'description' && (
                 <div className="prose max-w-none">
-                  <div className="text-gray-700 leading-relaxed whitespace-pre-line text-sm sm:text-base">
+                  <div className="text-white/85 leading-relaxed whitespace-pre-line text-sm sm:text-base">
                     {product.description || 'No description available for this product.'}
                   </div>
 
                   {(product as any).features && (product as any).features.length > 0 && (
                     <div className="mt-6 sm:mt-8">
-                      <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-gray-900">Key Features</h3>
+                      <h3 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4 text-white">Key Features</h3>
                       <div className="grid gap-2 sm:gap-3">
                         {(product as any).features.map((feature: string, index: number) => (
                           <div key={index} className="flex items-start gap-2 sm:gap-3">
-                            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
-                            <span className="text-gray-700 text-sm sm:text-base">{feature}</span>
+                            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-sky-400 rounded-full mt-2 flex-shrink-0"></div>
+                            <span className="text-white/85 text-sm sm:text-base">{feature}</span>
                           </div>
                         ))}
                       </div>
@@ -661,12 +687,12 @@ const ProductDetail: React.FC = () => {
                   {(product as any).specifications && Object.keys((product as any).specifications).length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm sm:text-base">
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-white/10">
                           {Object.entries((product as any).specifications as Record<string, unknown>).map(
                             ([key, value]: [string, unknown]) => (
-                              <tr key={key} className="hover:bg-gray-50">
-                                <td className="py-2 sm:py-3 px-3 sm:px-4 font-medium text-gray-900 bg-gray-50 w-1/3">{prettyKey(key)}</td>
-                                <td className="py-2 sm:py-3 px-3 sm:px-4 text-gray-700">{renderSpecValue(value)}</td>
+                              <tr key={key} className="hover:bg-white/5">
+                                <td className="py-2 sm:py-3 px-3 sm:px-4 font-medium text-white bg-white/5 w-1/3">{prettyKey(key)}</td>
+                                <td className="py-2 sm:py-3 px-3 sm:px-4 text-white/85">{renderSpecValue(value)}</td>
                               </tr>
                             )
                           )}
@@ -675,9 +701,9 @@ const ProductDetail: React.FC = () => {
                     </div>
                   ) : (
                     <div className="text-center py-10 sm:py-12">
-                      <div className="text-gray-400 text-5xl sm:text-6xl mb-3 sm:mb-4">📋</div>
-                      <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-1 sm:mb-2">No Specifications</h3>
-                      <p className="text-gray-600 text-sm sm:text-base">Technical specifications are not available for this product.</p>
+                      <div className="text-white/40 text-5xl sm:text-6xl mb-3 sm:mb-4">📋</div>
+                      <h3 className="text-base sm:text-lg font-medium text-white mb-1 sm:mb-2">No Specifications</h3>
+                      <p className="text-white/70 text-sm sm:text-base">Technical specifications are not available for this product.</p>
                     </div>
                   )}
                 </div>
@@ -686,19 +712,21 @@ const ProductDetail: React.FC = () => {
               {activeTab === 'reviews' && (
                 <div id="reviews">
                   <div className="flex items-center justify-between mb-3 sm:mb-4">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">Customer Reviews</h3>
+                    <h3 className="text-base sm:text-lg font-semibold text-white">Customer Reviews</h3>
                     <button
                       onClick={() => {
                         setActiveTab('reviews');
                         window.location.hash = '#reviews';
                         setTimeout(() => { document.getElementById('review-textarea')?.focus(); }, 250);
                       }}
-                      className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                      className="bg-sky-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-sky-700 transition-colors font-medium text-sm"
                     >
                       Write a Review
                     </button>
                   </div>
-                  <Reviews productId={productId!} productName={product.name} />
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                    <Reviews productId={productId!} productName={product.name} />
+                  </div>
                 </div>
               )}
             </div>
@@ -707,7 +735,7 @@ const ProductDetail: React.FC = () => {
 
         {/* Highlights */}
         {highlightImages.length > 0 && (
-          <section id="highlights" className="border-t bg-white mt-6 sm:mt-10">
+          <section id="highlights" className="border-t border-white/10 bg-white/5 rounded-xl mt-6 sm:mt-10">
             <div className="max-w-[1280px] mx-auto sm:px-6 py-0">
               <h2 className="sr-only">Product Highlights</h2>
               <div>
@@ -732,17 +760,17 @@ const ProductDetail: React.FC = () => {
       </div>
 
       {/* Sticky mobile checkout bar */}
-      <div className="fixed inset-x-0 bottom-0 sm:hidden border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60 z-40">
+      <div className="fixed inset-x-0 bottom-0 sm:hidden border-t border-white/10 bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-black/40 z-40">
         <div className="max-w-7xl mx-auto px-4 py-2 flex items-center gap-3">
           <div className="flex-1">
-            <div className="text-xs text-gray-500">Total</div>
-            <div className="text-lg font-semibold text-gray-900">₹{product.price?.toLocaleString('en-IN')}</div>
+            <div className="text-xs text-white/70">Total</div>
+            <div className="text-lg font-semibold text-white">₹{product.price?.toLocaleString('en-IN')}</div>
           </div>
           <button
             onClick={handleAddToCart}
             disabled={!(product as any).inStock || isLoading}
             className={`h-10 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 ${
-              (product as any).inStock && !isLoading ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-500'
+              (product as any).inStock && !isLoading ? 'bg-sky-600 text-white' : 'bg-white/10 text-white/50'
             }`}
           >
             <ShoppingCart className="h-4 w-4" /> Add
@@ -750,7 +778,7 @@ const ProductDetail: React.FC = () => {
           <button
             onClick={handleBuyNow}
             disabled={!(product as any).inStock || isLoading}
-            className="h-10 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 bg-gray-900 text-white"
+            className="h-10 px-4 rounded-lg font-medium inline-flex items-center justify-center gap-2 bg-white/10 text-white border border-white/15"
           >
             <CreditCard className="h-4 w-4" /> Buy
           </button>

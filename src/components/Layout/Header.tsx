@@ -23,7 +23,7 @@ type Category = {
   alt?: string;
 };
 
-// ---- Categories (update image paths to your assets) ----
+// ---- Categories ----
 const CATEGORIES: Category[] = [
   { label: 'Chargers', slug: 'chargers', img: '/Charger1.webp' },
   { label: 'Car Charger', slug: 'Car-Charger', img: '/CarCharger.webp' },
@@ -64,6 +64,7 @@ const Header: React.FC = () => {
   const searchResultsRef = useRef<HTMLDivElement>(null);
   const categoriesRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // reflect OAuth token
   useEffect(() => {
@@ -74,11 +75,12 @@ const Header: React.FC = () => {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // debounce search
+  // debounce + cancellable search
   useEffect(() => {
     const t = setTimeout(() => {
       if (searchTerm.trim().length > 2) void performSearch(searchTerm);
       else {
+        abortRef.current?.abort();
         setSearchResults([]);
         setShowResults(false);
       }
@@ -95,20 +97,47 @@ const Header: React.FC = () => {
     return () => clearInterval(t);
   }, [searchTerm]);
 
+  // close popovers on outside click + Esc
+  useEffect(() => {
+    const onDocClick = (ev: MouseEvent) => {
+      const target = ev.target as Node;
+      if (searchResultsRef.current && !searchResultsRef.current.contains(target)) setShowResults(false);
+      if (categoriesRef.current && !categoriesRef.current.contains(target)) setIsCategoriesOpen(false);
+      if (moreRef.current && !moreRef.current.contains(target)) setIsMoreOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowResults(false);
+        setIsCategoriesOpen(false);
+        setIsMoreOpen(false);
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
   const performSearch = async (query: string) => {
     setIsSearching(true);
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
-      const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      const data = await resp.json();
+      const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: ctrl.signal });
+      const data = await resp.json().catch(() => ({}));
       if (resp.ok) {
-        setSearchResults(data.results || []);
+        setSearchResults(Array.isArray(data.results) ? data.results : []);
         setShowResults(true);
       } else {
-        console.error('Search failed:', data.error);
+        console.error('Search failed:', data?.error || resp.statusText);
         setSearchResults([]);
       }
     } catch (err) {
-      console.error('Search error:', err);
+      if ((err as any)?.name !== 'AbortError') console.error('Search error:', err);
       setSearchResults([]);
     } finally {
       setIsSearching(false);
@@ -137,32 +166,15 @@ const Header: React.FC = () => {
     setSearchTerm('');
   };
 
-  // close popovers on outside click
-  useEffect(() => {
-    const onDocClick = (ev: MouseEvent) => {
-      if (searchResultsRef.current && !searchResultsRef.current.contains(ev.target as Node)) {
-        setShowResults(false);
-      }
-      if (categoriesRef.current && !categoriesRef.current.contains(ev.target as Node)) {
-        setIsCategoriesOpen(false);
-      }
-      if (moreRef.current && !moreRef.current.contains(ev.target as Node)) {
-        setIsMoreOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, []);
-
   return (
-    <header className="bg-sky-200/80 backdrop-blur border-b border-sky-300 sticky top-0 z-50">
+    <header className="bg-white/80 backdrop-blur border-b border-slate-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Top Row */}
-        <div className="grid grid-cols-[auto,1fr,auto] items-center h-15 gap-6">
+        <div className="grid grid-cols-[auto,1fr,auto] items-center min-h-16 gap-6 py-2">
           {/* Logo */}
-          <Link to="/" className="flex items-center space-x-2">
+          <Link to="/" className="flex items-center space-x-2" aria-label="VZOT Home">
             <motion.div whileHover={{ rotate: 360 }} transition={{ duration: 0.5 }} className="p-1 rounded-lg">
-              <img src="/logo.webp" alt="Logo" className="w-auto h-18 md:h-16 object-contain" />
+              <img src="/logo.webp" alt="VZOT" className="h-12 md:h-12 w-auto object-contain" />
             </motion.div>
           </Link>
 
@@ -182,13 +194,15 @@ const Header: React.FC = () => {
               >
                 <button
                   className="text-slate-800/90 hover:text-slate-900 text-base font-semibold"
-                  aria-haspopup="true"
+                  aria-haspopup="menu"
                   aria-expanded={isCategoriesOpen}
                   onFocus={() => setIsCategoriesOpen(true)}
                   onClick={() => setIsCategoriesOpen((v) => !v)}
                 >
-                  Categories
-                  <motion.span animate={{ rotate: isCategoriesOpen ? 180 : 0 }} className="inline-block">▾</motion.span>
+                  Categories{' '}
+                  <motion.span aria-hidden="true" animate={{ rotate: isCategoriesOpen ? 180 : 0 }} className="inline-block">
+                    ▾
+                  </motion.span>
                 </button>
 
                 <AnimatePresence>
@@ -246,7 +260,7 @@ const Header: React.FC = () => {
                 Contact
               </Link>
 
-              {/* More dropdown replacing Blog */}
+              {/* More dropdown */}
               <div
                 ref={moreRef}
                 className="relative"
@@ -255,13 +269,15 @@ const Header: React.FC = () => {
               >
                 <button
                   className="text-slate-800/90 hover:text-slate-900 text-base font-semibold"
-                  aria-haspopup="true"
+                  aria-haspopup="menu"
                   aria-expanded={isMoreOpen}
                   onFocus={() => setIsMoreOpen(true)}
                   onClick={() => setIsMoreOpen((v) => !v)}
                 >
-                  More
-                  <motion.span animate={{ rotate: isMoreOpen ? 180 : 0 }} className="inline-block">▾</motion.span>
+                  More{' '}
+                  <motion.span aria-hidden="true" animate={{ rotate: isMoreOpen ? 180 : 0 }} className="inline-block">
+                    ▾
+                  </motion.span>
                 </button>
 
                 <AnimatePresence>
@@ -300,7 +316,7 @@ const Header: React.FC = () => {
 
             {/* Desktop Search */}
             <div className="relative flex-1 max-w-xl" ref={searchResultsRef}>
-              <form onSubmit={handleSearchSubmit} className="relative">
+              <form onSubmit={handleSearchSubmit} className="relative" role="search" aria-label="Site search">
                 <input
                   ref={desktopSearchRef}
                   type="text"
@@ -310,8 +326,9 @@ const Header: React.FC = () => {
                   className="w-full pl-10 pr-10 py-2 text-sm rounded-full border border-slate-300/60
                              bg-white/70 shadow-inner placeholder:text-slate-400
                              focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                  aria-label="Search products"
                 />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true">
                   {isSearching ? (
                     <Loader2 className="h-4 w-4 text-slate-400 animate-spin" />
                   ) : (
@@ -340,12 +357,18 @@ const Header: React.FC = () => {
                         key={result.id}
                         onClick={() => handleResultClick(result.id)}
                         className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === 'Enter' && handleResultClick(result.id)}
+                        aria-label={`Go to ${result.name}`}
                       >
                         <img src={result.image} alt={result.name} className="w-12 h-12 object-cover rounded-md mr-3" />
                         <div className="flex-1">
                           <h4 className="text-sm font-medium text-gray-900 truncate">{result.name}</h4>
                           <p className="text-xs text-gray-500">{result.category}</p>
-                          <p className="text-sm font-semibold text-sky-700">₹{result.price.toLocaleString()}</p>
+                          <p className="text-sm font-semibold text-sky-700">
+                            ₹{Number(result.price || 0).toLocaleString()}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -371,7 +394,7 @@ const Header: React.FC = () => {
           <div className="flex items-center justify-self-end space-x-2 sm:space-x-3">
             {/* Mobile Search toggle */}
             <button
-              onClick={() => setIsSearchOpen(!isSearchOpen)}
+              onClick={() => setIsSearchOpen((v) => !v)}
               className="lg:hidden p-2 rounded-full text-slate-800 hover:bg-black/5"
               aria-label="Open search"
             >
@@ -380,7 +403,7 @@ const Header: React.FC = () => {
 
             {/* Wishlist */}
             <Link to="/wishlist" className="p-2 rounded-full text-slate-800 hover:bg-black/5" aria-label="Wishlist">
-              <Heart className="6-5 w-6" />
+              <Heart className="h-6 w-6" />
             </Link>
 
             {/* Cart */}
@@ -400,7 +423,7 @@ const Header: React.FC = () => {
             {/* Account */}
             {user ? (
               <div className="relative group">
-                <button className="flex items-center space-x-2 p-2 rounded-full text-slate-800 hover:bg-black/5">
+                <button className="flex items-center space-x-2 p-2 rounded-full text-slate-800 hover:bg-black/5" aria-haspopup="menu" aria-expanded="false">
                   <User className="h-6 w-6" />
                   <span className="hidden sm:block text-sm">{user.name}</span>
                 </button>
@@ -447,7 +470,7 @@ const Header: React.FC = () => {
               exit={{ opacity: 0, height: 0 }}
               className="lg:hidden py-3 border-t"
             >
-              <form onSubmit={handleSearchSubmit} className="relative">
+              <form onSubmit={handleSearchSubmit} className="relative" role="search" aria-label="Site search mobile">
                 <input
                   ref={mobileSearchRef}
                   type="text"
@@ -456,8 +479,9 @@ const Header: React.FC = () => {
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-slate-300/60 rounded-full bg-white/80
                              focus:ring-2 focus:ring-sky-400 focus:border-transparent text-sm placeholder:text-slate-400"
+                  aria-label="Search products"
                 />
-                <button type="submit" className="absolute left-3 top-2.5">
+                <button type="submit" className="absolute left-3 top-2.5" aria-label="Search">
                   {isSearching ? (
                     <Loader2 className="h-5 w-5 text-slate-400 animate-spin" />
                   ) : (
@@ -479,11 +503,17 @@ const Header: React.FC = () => {
                         key={result.id}
                         onClick={() => handleResultClick(result.id)}
                         className="flex items-center p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === 'Enter' && handleResultClick(result.id)}
+                        aria-label={`Go to ${result.name}`}
                       >
                         <img src={result.image} alt={result.name} className="w-10 h-10 object-cover rounded-md mr-3" />
                         <div className="flex-1">
                           <h4 className="text-sm font-medium text-gray-900 truncate">{result.name}</h4>
-                          <p className="text-sm font-semibold text-sky-700">₹{result.price.toLocaleString()}</p>
+                          <p className="text-sm font-semibold text-sky-700">
+                            ₹{Number(result.price || 0).toLocaleString()}
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -520,7 +550,7 @@ const Header: React.FC = () => {
                     aria-expanded={isCategoriesOpen}
                   >
                     <span className="font-medium">Categories</span>
-                    <motion.span animate={{ rotate: isCategoriesOpen ? 180 : 0 }}>▾</motion.span>
+                    <motion.span aria-hidden="true" animate={{ rotate: isCategoriesOpen ? 180 : 0 }}>▾</motion.span>
                   </button>
                   <AnimatePresence initial={false}>
                     {isCategoriesOpen && (
@@ -564,13 +594,13 @@ const Header: React.FC = () => {
                 </Link>
                 <Link
                   to="/contact"
-                  className="px-3 py-2 text-slate-800 hover:text-slate-900 hover:bg_black/5 rounded-lg"
+                  className="px-3 py-2 text-slate-800 hover:text-slate-900 hover:bg-black/5 rounded-lg"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Contact
                 </Link>
 
-                {/* More accordion (Blog + Explore B2B) */}
+                {/* More accordion */}
                 <div className="border border-gray-200 rounded-lg overflow-hidden">
                   <button
                     className="w-full flex items-center justify-between px-3 py-2 text-slate-800"
@@ -578,7 +608,7 @@ const Header: React.FC = () => {
                     aria-expanded={isMoreOpen}
                   >
                     <span className="font-medium">More</span>
-                    <motion.span animate={{ rotate: isMoreOpen ? 180 : 0 }}>▾</motion.span>
+                    <motion.span aria-hidden="true" animate={{ rotate: isMoreOpen ? 180 : 0 }}>▾</motion.span>
                   </button>
                   <AnimatePresence initial={false}>
                     {isMoreOpen && (

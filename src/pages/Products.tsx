@@ -1,3 +1,4 @@
+// src/pages/Products.tsx — dark gradient + glassmorphism
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -8,7 +9,7 @@ import { productService } from '../services/productService';
 import type { Product } from '../types';
 import SEO from '../components/Layout/SEO';
 import { useBulkReviews } from '../hooks/useBulkReviews';
-
+import VZOTBackground from '../components/Layout/VZOTBackground';
 /* ───────────────── helpers ───────────────── */
 const CATEGORY_ALIAS_TO_NAME: Record<string, string> = {
   tws: 'TWS',
@@ -127,13 +128,11 @@ const Products: React.FC = () => {
   const [limit] = useState(24);
   const [total, setTotal] = useState(0);
 
-  /* keep session return URL always fresh */
   useEffect(() => {
     const url = `${location.pathname}${location.search}`;
     sessionStorage.setItem('last-products-url', url);
   }, [location.pathname, location.search]);
 
-  /* derive page from URL and sync into state */
   const pageFromUrl = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
   useEffect(() => {
     if (page !== pageFromUrl) setPage(pageFromUrl);
@@ -162,7 +161,6 @@ const Products: React.FC = () => {
 
   const normalizedCategoryForApi = selectedCategory || normalizedFromUrl || '';
 
-  /* URL -> dropdown */
   useEffect(() => {
     if (normalizedFromUrl && normalizedFromUrl !== selectedCategory) {
       setSelectedCategory(normalizedFromUrl);
@@ -170,24 +168,18 @@ const Products: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedFromUrl]);
 
-  /* dropdown -> URL (only when user changes) */
   const onCategoryChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
     const nextHuman = e.target.value;
     setSelectedCategory(nextHuman);
     const nextSlug = nextHuman ? NAME_TO_SLUG[nextHuman] : '';
     const next = new URLSearchParams(searchParams);
-    if (nextSlug) {
-      next.set('category', nextSlug);
-    } else {
-      next.delete('category');
-    }
-    // reset page ONLY here (user intent)
+    if (nextSlug) next.set('category', nextSlug);
+    else next.delete('category');
     next.delete('page');
     setSearchParams(next, { replace: false });
     setPage(1);
   };
 
-  /* fetch categories (once) */
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -214,21 +206,16 @@ const Products: React.FC = () => {
         ui: typeof sortBy
       ): { sortBy: 'createdAt' | 'price' | 'rating' | 'trending'; sortOrder: 'asc' | 'desc' } => {
         switch (ui) {
-          case 'price-low':
-            return { sortBy: 'price', sortOrder: 'asc' };
-          case 'price-high':
-            return { sortBy: 'price', sortOrder: 'desc' };
-          case 'rating':
-            return { sortBy: 'rating', sortOrder: 'desc' };
+          case 'price-low': return { sortBy: 'price', sortOrder: 'asc' };
+          case 'price-high': return { sortBy: 'price', sortOrder: 'desc' };
+          case 'rating': return { sortBy: 'rating', sortOrder: 'desc' };
           case 'name':
-          default:
-            return { sortBy: 'createdAt', sortOrder: 'desc' };
+          default: return { sortBy: 'createdAt', sortOrder: 'desc' };
         }
       };
       Object.assign(filters, mapSort(sortBy));
 
       const params = { page, limit, ...filters, _t: forceRefresh ? Date.now() : undefined };
-
       const r = await productService.getProducts(params, forceRefresh);
 
       const list =
@@ -264,11 +251,7 @@ const Products: React.FC = () => {
           (Array.isArray(fallback?.data) && fallback.data) ||
           [];
         setProducts(arr as Product[]);
-        setTotal(
-          Number(fallback?.data?.total) ||
-            Number(fallback?.data?.meta?.total) ||
-            arr.length
-        );
+        setTotal(Number(fallback?.data?.total) || Number(fallback?.data?.meta?.total) || arr.length);
         setError('');
       } catch (fallbackErr) {
         console.error('❌ Fallback also failed:', fallbackErr);
@@ -279,25 +262,23 @@ const Products: React.FC = () => {
     }
   };
 
-  /* IMPORTANT: do NOT reset page here on dep changes */
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, normalizedCategoryForApi, sortBy, searchTerm]);
 
-  /* central pager that updates URL + sessionStorage */
   const goToPage = (n: number) => {
     const nextPage = Math.max(1, n);
     setPage(nextPage);
     const params = new URLSearchParams(searchParams);
     if (nextPage > 1) params.set('page', String(nextPage));
     else params.delete('page');
-    setSearchParams(params, { replace: false }); // push history
+    setSearchParams(params, { replace: false });
     const url = `${location.pathname}${params.toString() ? `?${params.toString()}` : ''}`;
     sessionStorage.setItem('last-products-url', url);
   };
 
-  // ---- Bulk review summaries (one call) ----
+  // ---- Bulk review summaries ----
   const filteredProducts = useMemo(() => {
     const list = Array.isArray(products) ? products : [];
     const q = (searchTerm || '').toLowerCase();
@@ -320,15 +301,11 @@ const Products: React.FC = () => {
       })
       .sort((a, b) => {
         switch (sortBy) {
-          case 'price-low':
-            return (a.price ?? 0) - (b.price ?? 0);
-          case 'price-high':
-            return (b.price ?? 0) - (a.price ?? 0);
-          case 'rating':
-            return (b.rating ?? 0) - (a.rating ?? 0);
+          case 'price-low': return (a.price ?? 0) - (b.price ?? 0);
+          case 'price-high': return (b.price ?? 0) - (a.price ?? 0);
+          case 'rating': return (b.rating ?? 0) - (a.rating ?? 0);
           case 'name':
-          default:
-            return (a.name || '').localeCompare(b.name || '');
+          default: return (a.name || '').localeCompare(b.name || '');
         }
       });
 
@@ -341,9 +318,6 @@ const Products: React.FC = () => {
   );
   const { data: reviewsMap = {} } = useBulkReviews(productIds);
 
-  const handleManualRefresh = () => fetchProducts(true);
-
-  // ────────────── SEO: canonical, robots, JSON-LD ──────────────
   const hasSearch = !!searchTerm.trim();
   const hasPriceFilter = !(priceRange[0] === 0 && priceRange[1] === 20000);
   const hasFilters = hasSearch || hasPriceFilter;
@@ -411,10 +385,10 @@ const Products: React.FC = () => {
   /* loading */
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto" />
-          <p className="mt-4 text-xl text-gray-600">Loading products...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400 mx-auto" />
+          <p className="mt-3 text-white/80">Loading products…</p>
         </div>
       </div>
     );
@@ -423,12 +397,12 @@ const Products: React.FC = () => {
   /* error */
   if (error && products.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
         <div className="text-center">
-          <div className="text-red-600 text-xl mb-4">{error}</div>
+          <div className="text-rose-300 text-lg mb-4">{error}</div>
           <button
             onClick={() => fetchProducts(true)}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-700"
           >
             Try Again
           </button>
@@ -438,7 +412,8 @@ const Products: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+     <div className="relative min-h-screen text-white">
+      <VZOTBackground />
       <SEO
         title={pageTitle}
         description={pageDesc}
@@ -455,26 +430,20 @@ const Products: React.FC = () => {
         {nextLink && <link rel="next" href={nextLink} />}
         <meta name="robots" content={robots} />
         {itemListJsonLd && (
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
-          />
+          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }} />
         )}
         {breadcrumbJsonLd && (
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
-          />
+          <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
         )}
       </>
 
       {/* Hero */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white py-16">
+      <div className="py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4">
+          <h1 className="text-4xl md:text-6xl font-bold mb-3">
             {normalizedCategoryForApi || 'Premium Tech Accessories'}
           </h1>
-          <p className="text-xl md:text-2xl mb-8">
+          <p className="text-lg md:text-xl text-white/80">
             {normalizedCategoryForApi
               ? `Discover ${normalizedCategoryForApi} from Nakoda Mobile`
               : 'Discover our curated collection of high-quality products'}
@@ -483,90 +452,85 @@ const Products: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8 flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+        {/* Filters (glass) */}
+        <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm p-6 mb-8 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           {/* Category */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            <label className="text-sm font-medium text-gray-700">Category:</label>
-            {/* ← only here we reset page */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label className="text-sm text-white/80">Category:</label>
             <select
               value={selectedCategory}
               onChange={onCategoryChange}
-              className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 rounded-md bg-white/10 border border-white/15 text-white focus:ring-2 focus:ring-sky-500"
             >
-              <option value="">All Categories</option>
+              <option className="bg-slate-800 text-white" value="">All Categories</option>
               {categories.map((c) => (
-                <option key={c} value={c}>
+                <option className="bg-slate-800 text-white" key={c} value={c}>
                   {c}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Price (max only for brevity) */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            <label className="text-sm font-medium text-gray-700">Price Range:</label>
-            <div className="flex items-center space-x-2">
+          {/* Price (max only) */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label className="text-sm text-white/80">Price Range:</label>
+            <div className="flex items-center gap-3">
               <input
                 type="range"
                 min={0}
                 max={20000}
                 value={priceRange[1]}
                 onChange={(e) =>
-                  setPriceRange(([lo]) => [
-                    Math.max(0, lo),
-                    Math.max(0, parseInt(e.target.value, 10) || 0),
-                  ])
+                  setPriceRange(([lo]) => [Math.max(0, lo), Math.max(0, parseInt(e.target.value, 10) || 0)])
                 }
-                className="w-32"
+                className="w-40 accent-sky-500"
               />
-              <span className="text-sm text-gray-600">₹0 - ₹{priceRange[1].toLocaleString()}</span>
+              <span className="text-sm text-white/80">₹0 – ₹{priceRange[1].toLocaleString()}</span>
             </div>
           </div>
 
           {/* Sort */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            <label className="text-sm font-medium text-gray-700">Sort by:</label>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label className="text-sm text-white/80">Sort by:</label>
             <select
               value={sortBy}
               onChange={(e) => {
                 const v = e.target.value as typeof sortBy;
                 setSortBy(v);
-                // Reset page on user-intent change
                 const next = new URLSearchParams(searchParams);
                 next.delete('page');
                 setSearchParams(next, { replace: false });
                 setPage(1);
               }}
-              className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 rounded-md bg-white/10 border border-white/15 text-white focus:ring-2 focus:ring-sky-500"
             >
-              <option value="name">Name</option>
-              <option value="price-low">Price: Low to High</option>
-              <option value="price-high">Price: High to Low</option>
-              <option value="rating">Rating</option>
+              <option className="bg-slate-800 text-white" value="name">Name</option>
+              <option className="bg-slate-800 text-white" value="price-low">Price: Low to High</option>
+              <option className="bg-slate-800 text-white" value="price-high">Price: High to Low</option>
+              <option className="bg-slate-800 text-white" value="rating">Rating</option>
             </select>
           </div>
 
           {/* View + Refresh */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-md ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              className={`p-2 rounded-md border ${viewMode === 'grid' ? 'bg-sky-600 text-white border-sky-500' : 'bg-white/10 text-white/80 border-white/15 hover:bg-white/15'}`}
               title="Grid view"
             >
               <Grid className="h-5 w-5" />
             </button>
             <button
               onClick={() => setViewMode('list')}
-              className={`p-2 rounded-md ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              className={`p-2 rounded-md border ${viewMode === 'list' ? 'bg-sky-600 text-white border-sky-500' : 'bg-white/10 text-white/80 border-white/15 hover:bg-white/15'}`}
               title="List view"
             >
               <List className="h-5 w-5" />
             </button>
             <button
               onClick={() => fetchProducts(true)}
-              className="p-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+              className="p-2 rounded-md bg-emerald-600 hover:bg-emerald-700"
               title="Refresh Products"
             >
               🔄
@@ -576,7 +540,7 @@ const Products: React.FC = () => {
 
         {/* Results meta */}
         <div className="mb-6">
-          <p className="text-gray-600">
+          <p className="text-white/70">
             Showing {filteredProducts.length} of {total || products.length} products
             {normalizedCategoryForApi && ` in ${normalizedCategoryForApi}`}
             {searchTerm && ` · matching "${searchTerm}"`}
@@ -607,6 +571,8 @@ const Products: React.FC = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
+                    // If your ProductCard is light themed, wrap with glass card:
+                    className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm"
                   >
                     <ProductCard
                       product={product}
@@ -631,7 +597,7 @@ const Products: React.FC = () => {
               })}
             </motion.div>
 
-            {/* Pager */}
+            {/* Pager (glass) */}
             {totalPages > 1 && (
               <div className="mt-10 flex items-center justify-center gap-2">
                 <button
@@ -640,7 +606,7 @@ const Products: React.FC = () => {
                     if (canPrev) goToPage(page - 1);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className={`px-3 py-2 rounded-md ${canPrev ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                  className={`px-3 py-2 rounded-md border ${canPrev ? 'bg-white/10 border-white/15 hover:bg-white/15' : 'bg-white/5 border-white/10 text-white/40 cursor-not-allowed'}`}
                 >
                   Prev
                 </button>
@@ -655,7 +621,7 @@ const Products: React.FC = () => {
                   }, [])
                   .map((n, i) =>
                     n === -1 ? (
-                      <span key={`gap-${i}`} className="px-2">…</span>
+                      <span key={`gap-${i}`} className="px-2 text-white/60">…</span>
                     ) : (
                       <button
                         key={n}
@@ -663,7 +629,7 @@ const Products: React.FC = () => {
                           goToPage(n);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className={`px-3 py-2 rounded-md ${n === page ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
+                        className={`px-3 py-2 rounded-md border ${n === page ? 'bg-sky-600 border-sky-500' : 'bg-white/10 border-white/15 hover:bg-white/15'}`}
                       >
                         {n}
                       </button>
@@ -676,7 +642,7 @@ const Products: React.FC = () => {
                     if (canNext) goToPage(page + 1);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
-                  className={`px-3 py-2 rounded-md ${canNext ? 'bg-gray-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                  className={`px-3 py-2 rounded-md border ${canNext ? 'bg-white/10 border-white/15 hover:bg-white/15' : 'bg-white/5 border-white/10 text-white/40 cursor-not-allowed'}`}
                 >
                   Next
                 </button>
@@ -685,9 +651,9 @@ const Products: React.FC = () => {
           </>
         ) : (
           <div className="text-center py-16">
-            <div className="text-gray-400 text-6xl mb-4">📦</div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No products found</h3>
-            <p className="text-gray-500 mb-4">Try adjusting your search criteria or browse all categories</p>
+            <div className="text-white/50 text-6xl mb-4">📦</div>
+            <h3 className="text-xl font-semibold mb-2">No products found</h3>
+            <p className="text-white/70 mb-4">Try adjusting your search criteria or browse all categories.</p>
             <div className="space-x-4">
               <button
                 onClick={() => {
@@ -700,13 +666,13 @@ const Products: React.FC = () => {
                   setSearchParams(next, { replace: false });
                   setPage(1);
                 }}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="px-6 py-3 rounded-lg bg-sky-600 hover:bg-sky-700"
               >
                 Clear Filters
               </button>
               <button
                 onClick={() => fetchProducts(true)}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                className="px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-700"
               >
                 Refresh Products
               </button>
