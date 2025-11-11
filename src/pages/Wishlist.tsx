@@ -114,7 +114,7 @@ const Wishlist: React.FC = () => {
           </button>
         </div>
       </div>
-
+{/* Items */}
       {/* Items */}
       {viewMode === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -126,7 +126,11 @@ const Wishlist: React.FC = () => {
               className="bg-white rounded shadow p-4"
             >
               <img src={item.image} alt={item.name} className="w-full h-48 object-cover mb-4" />
-              <h3 className="font-medium truncate">{item.name}</h3>
+              <h3 className="font-medium truncate text-gray-900 dark:text-black">
+  {item.name}
+</h3>
+
+
               <p className="text-blue-600 font-bold">₹{item.price.toLocaleString()}</p>
               <div className="mt-4 flex space-x-2">
                 <button

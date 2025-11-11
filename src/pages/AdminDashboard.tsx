@@ -31,9 +31,9 @@ interface AdminDashboardProps {
   onLogout?: () => void;
 }
 
-// ------------------------------
-// S3 Image Upload (drop-in)
-// ------------------------------
+/* =========================
+   S3 Image Upload (drop-in)
+========================= */
 const S3ImageUpload = memo<{
   onUploadSuccess: (images: S3UploadResult[]) => void;
   onUploadProgress?: (progress: number) => void;
@@ -96,7 +96,6 @@ const S3ImageUpload = memo<{
     try {
       let results: S3UploadResult[] = [];
       if (multiple) {
-        // multi upload with per-file progress -> merge to coarse overall
         let latestOverall = 0;
         results = await uploadMultipleToS3Browser(files, (_idx, p) => {
           latestOverall = Math.max(latestOverall, p);
@@ -216,9 +215,9 @@ const S3ImageUpload = memo<{
   );
 });
 
-// ------------------------------
-// Inventory Management
-// ------------------------------
+/* =========================
+   Inventory Management
+========================= */
 const InventoryManagement = memo<{
   showNotification: (message: string, type: 'success' | 'error') => void;
   checkNetworkStatus: () => boolean;
@@ -303,10 +302,14 @@ const InventoryManagement = memo<{
       category: product.category,
       description: product.description || '',
       status: product.status || 'active',
-      // NEW
+      // SEO
       sku: product.sku || '',
       metaTitle: product.metaTitle || '',
       metaDescription: product.metaDescription || '',
+      // WHOLESALE
+      wholesaleEnabled: Boolean(product.wholesaleEnabled),
+      wholesalePrice: product.wholesalePrice ?? '',
+      wholesaleMinQty: product.wholesaleMinQty ?? '',
     });
   };
 
@@ -317,14 +320,18 @@ const InventoryManagement = memo<{
     const cmpRaw = editFormData.compareAtPrice;
     const cmpNum = (cmpRaw === '' || cmpRaw === null || cmpRaw === undefined) ? null : Number(cmpRaw);
 
-    if (!Number.isFinite(priceNum) || priceNum < 0) {
-      showNotification('Price must be a valid non-negative number', 'error'); return;
-    }
-    if (!Number.isFinite(stockNum) || stockNum < 0) {
-      showNotification('Stock must be a valid non-negative number', 'error'); return;
-    }
-    if (cmpNum !== null && (!Number.isFinite(cmpNum) || !(cmpNum > priceNum))) {
-      showNotification('Compare-at price must be greater than Price', 'error'); return;
+    if (!Number.isFinite(priceNum) || priceNum < 0) { showNotification('Price must be a valid non-negative number', 'error'); return; }
+    if (!Number.isFinite(stockNum) || stockNum < 0) { showNotification('Stock must be a valid non-negative number', 'error'); return; }
+    if (cmpNum !== null && (!Number.isFinite(cmpNum) || !(cmpNum > priceNum))) { showNotification('Compare-at price must be greater than Price', 'error'); return; }
+
+    // wholesale
+    const wEnabled = Boolean(editFormData.wholesaleEnabled);
+    const wPriceNum = editFormData.wholesalePrice === '' ? null : Number(editFormData.wholesalePrice);
+    const wMinNum   = editFormData.wholesaleMinQty === '' ? null : Number(editFormData.wholesaleMinQty);
+
+    if (wEnabled) {
+      if (!Number.isFinite(wPriceNum!) || !(wPriceNum! > 0)) { showNotification('Wholesale price must be > 0 when enabled', 'error'); return; }
+      if (!Number.isFinite(wMinNum!) || !(wMinNum! > 0)) { showNotification('Wholesale min qty must be > 0 when enabled', 'error'); return; }
     }
 
     const payload: any = {
@@ -334,10 +341,11 @@ const InventoryManagement = memo<{
       category: editFormData.category,
       description: editFormData.description || '',
       status: editFormData.status,
-      // NEW
       sku: editFormData.sku?.trim() || undefined,
       metaTitle: (editFormData.metaTitle || '').trim().slice(0, 60) || undefined,
       metaDescription: (editFormData.metaDescription || '').trim().slice(0, 160) || undefined,
+      wholesaleEnabled: wEnabled,
+      ...(wEnabled ? { wholesalePrice: wPriceNum!, wholesaleMinQty: wMinNum! } : { wholesalePrice: null, wholesaleMinQty: null }),
     };
     if (cmpNum === null) payload.compareAtPrice = null;
     else if (Number.isFinite(cmpNum)) payload.compareAtPrice = cmpNum;
@@ -361,7 +369,7 @@ const InventoryManagement = memo<{
   const handleCancelEdit = () => { setEditingProduct(null); setEditFormData({}); };
 
   const handleDeleteProduct = async (productId: string) => {
-    if (!window.confirm('Are you sure you want to delete this product?')) return;
+    if (!window.confirm('Delete this product?')) return;
     try {
       const response = await deleteProduct(productId);
       if (response.success) {
@@ -385,7 +393,7 @@ const InventoryManagement = memo<{
 
   const handleBulkAction = async () => {
     if (!bulkAction || selectedProducts.length === 0) {
-      showNotification('Please select products and action', 'error'); return;
+      showNotification('Select products and action', 'error'); return;
     }
     setIsBulkProcessing(true);
     try {
@@ -416,7 +424,10 @@ const InventoryManagement = memo<{
   };
 
   const handleExportCSV = () => {
-    const headers = ['Name','Price','CompareAtPrice','Stock','Category','Status','Description','SKU','MetaTitle','MetaDescription'];
+    const headers = [
+      'Name','Price','CompareAtPrice','Stock','Category','Status','Description','SKU','MetaTitle','MetaDescription',
+      'WholesaleEnabled','WholesalePrice','WholesaleMinQty'
+    ];
     const csvData = [
       headers.join(','),
       ...products.map(product => [
@@ -430,6 +441,9 @@ const InventoryManagement = memo<{
         `"${String(product.sku || '').replace(/"/g,'""')}"`,
         `"${String(product.metaTitle || '').slice(0,60).replace(/"/g,'""')}"`,
         `"${String(product.metaDescription || '').slice(0,160).replace(/"/g,'""')}"`,
+        product.wholesaleEnabled ? 'true' : 'false',
+        product.wholesalePrice ?? '',
+        product.wholesaleMinQty ?? ''
       ].join(','))
     ].join('\n');
     const blob = new Blob([csvData], { type: 'text/csv' });
@@ -540,6 +554,10 @@ const InventoryManagement = memo<{
                 <th>Compare</th>
                 <th onClick={() => handleSort('stock')} className="sortable">Stock {sortBy === 'stock' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
                 <th>Category</th>
+                {/* WHOLESALE */}
+                <th>Wholesale?</th>
+                <th>WS Price</th>
+                <th>MOQ</th>
                 <th>Spec</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -558,16 +576,15 @@ const InventoryManagement = memo<{
                   </td>
                   <td>
                     <div className="product-image">
-  {(() => {
-    const img = product.imageUrl || product.images?.[0] || product.image;
-    return img ? (
-      <img src={img} alt={product.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
-    ) : (
-      <div className="no-image">📦</div>
-    );
-  })()}
-</div>
-
+                      {(() => {
+                        const img = product.imageUrl || product.images?.[0] || product.image;
+                        return img ? (
+                          <img src={img} alt={product.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 6 }} />
+                        ) : (
+                          <div className="no-image">📦</div>
+                        );
+                      })()}
+                    </div>
                   </td>
                   <td>
                     {editingProduct === product._id ? (
@@ -580,7 +597,6 @@ const InventoryManagement = memo<{
                           placeholder="Name"
                           style={{marginBottom:6}}
                         />
-                        {/* NEW mini SEO strip */}
                         <div style={{display:'grid', gap:6}}>
                           <input
                             type="text"
@@ -674,6 +690,61 @@ const InventoryManagement = memo<{
                       <span className="category">{product.category}</span>
                     )}
                   </td>
+
+                  {/* WHOLESALE? */}
+                  <td>
+                    {editingProduct === product._id ? (
+                      <label style={{display:'flex',alignItems:'center',gap:8}}>
+                        <input
+                          type="checkbox"
+                          checked={!!editFormData.wholesaleEnabled}
+                          onChange={(e)=>setEditFormData({...editFormData, wholesaleEnabled: e.target.checked})}
+                        />
+                        <span>Enabled</span>
+                      </label>
+                    ) : (
+                      <span>{product.wholesaleEnabled ? 'Yes' : 'No'}</span>
+                    )}
+                  </td>
+
+                  {/* WS Price */}
+                  <td>
+                    {editingProduct === product._id ? (
+                      <input
+                        type="number"
+                        value={editFormData.wholesalePrice}
+                        onChange={(e)=>setEditFormData({...editFormData, wholesalePrice: e.target.value})}
+                        className="edit-input"
+                        min="0"
+                        step="0.01"
+                        disabled={!editFormData.wholesaleEnabled}
+                      />
+                    ) : (
+                      product.wholesaleEnabled && product.wholesalePrice
+                        ? <span className="price">₹{product.wholesalePrice}</span>
+                        : <span style={{color:'#888'}}>—</span>
+                    )}
+                  </td>
+
+                  {/* MOQ */}
+                  <td>
+                    {editingProduct === product._id ? (
+                      <input
+                        type="number"
+                        value={editFormData.wholesaleMinQty}
+                        onChange={(e)=>setEditFormData({...editFormData, wholesaleMinQty: e.target.value})}
+                        className="edit-input"
+                        min="1"
+                        step="1"
+                        disabled={!editFormData.wholesaleEnabled}
+                      />
+                    ) : (
+                      product.wholesaleEnabled && product.wholesaleMinQty
+                        ? <span>{product.wholesaleMinQty}</span>
+                        : <span style={{color:'#888'}}>—</span>
+                    )}
+                  </td>
+
                   <td>
                     {product.specifications && typeof product.specifications === 'object' ? (
                       <details>
@@ -727,7 +798,7 @@ const InventoryManagement = memo<{
           {products.length === 0 && (
             <div className="empty-state">
               <p>📦 No products found</p>
-              <p>Try adjusting your search or filters</p>
+              <p>Adjust search or filters</p>
             </div>
           )}
         </div>
@@ -762,9 +833,9 @@ const InventoryManagement = memo<{
   );
 });
 
-// ------------------------------
-// Product Management (single + bulk) using S3
-// ------------------------------
+/* =========================
+   Product Management
+========================= */
 const ProductManagement = memo<{
   onStatsRefresh: () => void;
   showNotification: (message: string, type: 'success' | 'error') => void;
@@ -777,10 +848,14 @@ const ProductManagement = memo<{
     stock: '',
     category: '',
     description: '',
-    // NEW
+    // SEO
     sku: '',
     metaTitle: '',
     metaDescription: '',
+    // WHOLESALE
+    wholesaleEnabled: false as boolean,
+    wholesalePrice: '' as string | number,
+    wholesaleMinQty: '' as string | number,
   });
   const [uploadedImages, setUploadedImages] = useState<S3UploadResult[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -792,9 +867,7 @@ const ProductManagement = memo<{
 
   const handleSpecificationsChange = (value: string) => {
     setSpecificationsText(value);
-    if (!value.trim()) {
-      setSpecificationsError(null); setSpecificationsObj(null); return;
-    }
+    if (!value.trim()) { setSpecificationsError(null); setSpecificationsObj(null); return; }
     try {
       const parsed = JSON.parse(value);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
@@ -896,6 +969,13 @@ const ProductManagement = memo<{
           return "";
         };
 
+        const pickBool = (v:any) => {
+          const s = String(v ?? '').trim().toLowerCase();
+          if (['true','1','yes','y'].includes(s)) return true;
+          if (['false','0','no','n'].includes(s)) return false;
+          return false;
+        };
+
         const products = rows
           .map((raw, index) => {
             const row: Record<string, any> = {};
@@ -915,10 +995,13 @@ const ProductManagement = memo<{
               description: pick(row, ["description", "desc"]),
               specifications: pick(row, ["specifications", "specs"]),
               images: pick(row, ["images", "image urls", "image"]),
-              // NEW
               sku: pick(row, ["sku"]),
               metaTitle: pick(row, ["meta title","metatitle","meta_title"]),
               metaDescription: pick(row, ["meta description","metadescription","meta_description"]),
+              // WHOLESALE
+              wholesaleEnabled: pickBool(pick(row, ['wholesaleenabled','wholesale enabled','wholesale'])),
+              wholesalePrice: pick(row, ['wholesaleprice','wholesale price','ws price']),
+              wholesaleMinQty: pick(row, ['wholesaleminqty','wholesale min qty','moq','minqty','min qty']),
               errors: [],
               isValid: true,
             };
@@ -965,10 +1048,23 @@ const ProductManagement = memo<{
               product.images = splitImages(product.images);
             }
 
-            // clamp new SEO fields
+            // clamp SEO fields
             if (typeof product.metaTitle === 'string') product.metaTitle = product.metaTitle.trim().slice(0, 60);
             if (typeof product.metaDescription === 'string') product.metaDescription = product.metaDescription.trim().slice(0, 160);
             if (typeof product.sku === 'string') product.sku = product.sku.trim();
+
+            // wholesale coercion + validation
+            if (product.wholesalePrice !== '') product.wholesalePrice = toNumber(product.wholesalePrice);
+            if (product.wholesaleMinQty !== '') product.wholesaleMinQty = toNumber(product.wholesaleMinQty);
+
+            if (product.wholesaleEnabled) {
+              if (!Number.isFinite(product.wholesalePrice) || !(product.wholesalePrice > 0)) {
+                product.errors.push('WholesalePrice > 0 required when WholesaleEnabled');
+              }
+              if (!Number.isFinite(product.wholesaleMinQty) || !(product.wholesaleMinQty > 0)) {
+                product.errors.push('WholesaleMinQty > 0 required when WholesaleEnabled');
+              }
+            }
 
             product.isValid = product.errors.length === 0;
             return product;
@@ -1002,6 +1098,12 @@ const ProductManagement = memo<{
       showNotification('Please fill all required fields', 'error');
       return;
     }
+    if (formData.wholesaleEnabled) {
+      const wPrice = Number(formData.wholesalePrice);
+      const wMin = Number(formData.wholesaleMinQty);
+      if (!Number.isFinite(wPrice) || !(wPrice > 0)) { showNotification('Wholesale price must be > 0 when enabled', 'error'); return; }
+      if (!Number.isFinite(wMin) || !(wMin > 0)) { showNotification('Wholesale min qty must be > 0 when enabled', 'error'); return; }
+    }
     if (!checkNetworkStatus()) return;
 
     setIsSubmitting(true);
@@ -1018,10 +1120,17 @@ const ProductManagement = memo<{
       uploadData.append('description', formData.description.trim());
       if (specificationsObj) uploadData.append('specifications', JSON.stringify(specificationsObj));
 
-      // NEW — SEO + SKU
+      // SEO + SKU
       if (formData.sku) uploadData.append('sku', formData.sku.trim());
       if (formData.metaTitle) uploadData.append('metaTitle', formData.metaTitle.trim().slice(0, 60));
       if (formData.metaDescription) uploadData.append('metaDescription', formData.metaDescription.trim().slice(0, 160));
+
+      // WHOLESALE
+      uploadData.append('wholesaleEnabled', String(!!formData.wholesaleEnabled));
+      if (formData.wholesaleEnabled) {
+        uploadData.append('wholesalePrice', String(formData.wholesalePrice));
+        uploadData.append('wholesaleMinQty', String(formData.wholesaleMinQty));
+      }
 
       // S3 image URLs + keys
       if (uploadedImages.length > 0) {
@@ -1036,8 +1145,8 @@ const ProductManagement = memo<{
       if (response && response.success) {
         setFormData({
           name: '', price: '', stock: '', category: '', compareAtPrice: '', description: '',
-          // reset new fields
           sku: '', metaTitle: '', metaDescription: '',
+          wholesaleEnabled: false, wholesalePrice: '', wholesaleMinQty: '',
         });
         setUploadedImages([]);
         setUploadProgress(0);
@@ -1055,13 +1164,9 @@ const ProductManagement = memo<{
   };
 
   const handleBulkSubmit = async () => {
-    if (bulkProducts.length === 0) {
-      showNotification('No products to upload', 'error'); return;
-    }
+    if (bulkProducts.length === 0) { showNotification('No products to upload', 'error'); return; }
     const validProducts = bulkProducts.filter(p => p.isValid);
-    if (validProducts.length === 0) {
-      showNotification('No valid products to upload', 'error'); return;
-    }
+    if (validProducts.length === 0) { showNotification('No valid products to upload', 'error'); return; }
     if (!checkNetworkStatus()) return;
 
     setIsBulkSubmitting(true);
@@ -1084,15 +1189,20 @@ const ProductManagement = memo<{
           .split(/[;,]/).map((s: string) => s.trim()).filter(Boolean),
         status: product.status || "active",
         isActive: true,
-        // NEW
         sku: product.sku || undefined,
         metaTitle: product.metaTitle || undefined,
         metaDescription: product.metaDescription || undefined,
+        // WHOLESALE
+        wholesaleEnabled: !!product.wholesaleEnabled,
+        ...(product.wholesaleEnabled ? {
+          wholesalePrice: Number(product.wholesalePrice),
+          wholesaleMinQty: Number(product.wholesaleMinQty),
+        } : {}),
       }));
 
       const response = await bulkUploadProducts(productsData);
       if (response && response.success) {
-        showNotification(`✅ Successfully uploaded ${response.successCount} products!`, 'success');
+        showNotification(`✅ Successfully uploaded ${response.successCount ?? productsData.length} products!`, 'success');
         if (response.failureCount && response.failureCount > 0) {
           showNotification(`⚠️ ${response.failureCount} products failed to upload`, 'error');
         }
@@ -1111,9 +1221,9 @@ const ProductManagement = memo<{
 
   const downloadSampleCSV = () => {
     const sampleData = [
-      'name,price,compare at price,stock,category,description,specifications,images,sku,meta title,meta description',
-      'Sample TWS Earbuds,1299,1500,50,TWS,"High-quality wireless earbuds","{""input"":""AC 100-240V"",""warranty"":""6 months""}","https://img1.jpg|https://img2.jpg",NKD-TWS-01,"Nakoda TWS Earbuds with ENC","Wireless earbuds with ENC, deep bass, 6-month warranty."',
-      'Sample Data Cable,299,399,100,Data Cables,"Fast charging USB cable","{""length"":""1m"",""type"":""USB-C""}","https://img.jpg",NKD-CBL-1M,"Nakoda USB-C Fast Cable 1m","1m fast-charge Type-C cable; durable & reliable."'
+      'name,price,compare at price,stock,category,description,specifications,images,sku,meta title,meta description,wholesaleenabled,wholesaleprice,wholesaleminqty',
+      'Sample TWS Earbuds,1299,1500,50,TWS,"High-quality wireless earbuds","{""warranty"":""6 months"",""bt"":""5.3""}","https://img1.jpg|https://img2.jpg",VZ-TWS-01,"VZOT TWS Earbuds with ENC","Wireless earbuds with ENC, deep bass.",true,1099,10',
+      'Sample Data Cable,299,399,100,Data Cables,"Fast charging USB-C cable","{""length"":""1m"",""type"":""USB-C""}","https://img.jpg",VZ-CBL-1M,"VZOT USB-C Fast Cable 1m","Durable 1m fast-charge cable.",false,,'
     ].join('\n');
     const blob = new Blob([sampleData], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -1174,9 +1284,7 @@ const ProductManagement = memo<{
                   <option value="Power Banks">Power Bank</option>
                   <option value="Mobile ICs">Mobile ICs</option>
                   <option value="Mobile Accessories">Mobile Accessories</option>
-                  <option value="Stencil"> Stencils</option>
-
-
+                  <option value="Stencil">Stencils</option>
                   <option value="Others">Other</option>
                 </select>
               </div>
@@ -1186,29 +1294,29 @@ const ProductManagement = memo<{
               <label htmlFor="description">Description</label>
               <textarea id="description" name="description" value={formData.description} onChange={handleInputChange} disabled={isSubmitting} placeholder="Enter product description" rows={3} />
             </div>
+
             {/* Specifications */}
-<div className="form-group">
-  <label htmlFor="specifications">Specifications (JSON object)</label>
-  <textarea
-    id="specifications"
-    name="specifications"
-    value={specificationsText}
-    onChange={(e) => handleSpecificationsChange(e.target.value)}
-    disabled={isSubmitting}
-    placeholder='e.g. {"warranty":"6 months","connector":"USB-C","length":"1m"}'
-    rows={3}
-  />
-  {specificationsError ? (
-    <small style={{ color: '#e00' }}>❌ {specificationsError}</small>
-  ) : specificationsText.trim() ? (
-    <small style={{ color: '#2c7' }}>✅ JSON OK</small>
-  ) : (
-    <small style={{ color: '#666' }}>Enter valid JSON. Must be an object.</small>
-  )}
-</div>
+            <div className="form-group">
+              <label htmlFor="specifications">Specifications (JSON object)</label>
+              <textarea
+                id="specifications"
+                name="specifications"
+                value={specificationsText}
+                onChange={(e) => handleSpecificationsChange(e.target.value)}
+                disabled={isSubmitting}
+                placeholder='e.g. {"warranty":"6 months","connector":"USB-C","length":"1m"}'
+                rows={3}
+              />
+              {specificationsError ? (
+                <small style={{ color: '#e00' }}>❌ {specificationsError}</small>
+              ) : specificationsText.trim() ? (
+                <small style={{ color: '#2c7' }}>✅ JSON OK</small>
+              ) : (
+                <small style={{ color: '#666' }}>Enter valid JSON. Must be an object.</small>
+              )}
+            </div>
 
-
-            {/* NEW — SEO + SKU */}
+            {/* SEO + SKU */}
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="sku">SKU</label>
@@ -1219,7 +1327,7 @@ const ProductManagement = memo<{
                   value={formData.sku}
                   onChange={handleInputChange}
                   disabled={isSubmitting}
-                  placeholder="e.g. NKD-CHG-2PORT-BLK"
+                  placeholder="e.g. VZ-CHG-1PORT-BLK"
                   maxLength={64}
                 />
                 <small style={{color:'#666'}}>Unique product code used for admin/ops.</small>
@@ -1260,6 +1368,54 @@ const ProductManagement = memo<{
                 maxLength={160}
               />
               <small style={{color:'#666'}}>Aim ~155–160 chars, mention compatibility/benefits.</small>
+            </div>
+
+            {/* WHOLESALE BLOCK */}
+            <div className="form-row">
+              <div className="form-group" style={{alignItems:'center'}}>
+                <label>Wholesale Mode</label>
+                <label style={{display:'flex',alignItems:'center',gap:8}}>
+                  <input
+                    type="checkbox"
+                    name="wholesaleEnabled"
+                    checked={!!formData.wholesaleEnabled}
+                    onChange={(e)=>setFormData(prev=>({...prev, wholesaleEnabled: e.target.checked}))}
+                    disabled={isSubmitting}
+                  />
+                  <span>Enable single wholesale price</span>
+                </label>
+                <small style={{color:'#666'}}>Admin decides MOQ. No tiered pricing.</small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="wholesalePrice">Wholesale Price</label>
+                <input
+                  type="number"
+                  id="wholesalePrice"
+                  name="wholesalePrice"
+                  value={formData.wholesalePrice}
+                  onChange={handleInputChange}
+                  disabled={isSubmitting || !formData.wholesaleEnabled}
+                  placeholder="0.00"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="wholesaleMinQty">Wholesale MOQ</label>
+                <input
+                  type="number"
+                  id="wholesaleMinQty"
+                  name="wholesaleMinQty"
+                  value={formData.wholesaleMinQty}
+                  onChange={handleInputChange}
+                  disabled={isSubmitting || !formData.wholesaleEnabled}
+                  placeholder="e.g. 5"
+                  min="1"
+                  step="1"
+                />
+              </div>
             </div>
 
             {/* S3 Image Upload */}
@@ -1347,6 +1503,9 @@ const ProductManagement = memo<{
                         <th>SKU</th>
                         <th>Meta Title</th>
                         <th>Meta Description</th>
+                        <th>Wholesale?</th>
+                        <th>WS Price</th>
+                        <th>MOQ</th>
                         <th>Validity</th>
                       </tr>
                     </thead>
@@ -1362,6 +1521,9 @@ const ProductManagement = memo<{
                           <td>{product.sku || '—'}</td>
                           <td>{product.metaTitle || '—'}</td>
                           <td>{product.metaDescription || '—'}</td>
+                          <td>{product.wholesaleEnabled ? 'Yes' : 'No'}</td>
+                          <td>{product.wholesaleEnabled && product.wholesalePrice ? `₹${product.wholesalePrice}` : '—'}</td>
+                          <td>{product.wholesaleEnabled && product.wholesaleMinQty ? product.wholesaleMinQty : '—'}</td>
                           <td>
                             {product.isValid ? (
                               <span className="status-valid">✅ Valid</span>
@@ -1394,9 +1556,9 @@ const ProductManagement = memo<{
   );
 });
 
-// ------------------------------
-// Overview (unchanged)
-// ------------------------------
+/* =========================
+   Overview (unchanged)
+========================= */
 const Overview = React.memo<{
   stats: any;
   onOpenPending: () => void;
@@ -1425,14 +1587,9 @@ const Overview = React.memo<{
   </div>
 ));
 
-// ------------------------------
-// Navigation (unchanged)
-// ------------------------------
-
-
-// ------------------------------
-// Main Admin Dashboard
-// ------------------------------
+/* =========================
+   Main Admin Dashboard
+========================= */
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminData, onLogout }) => {
   const [activeTab, setActiveTab] = useState<
     'overview' | 'products' | 'inventory' | 'orders' | 'returns' | 'reviews' | 'payments' | 'blog' |
@@ -1485,18 +1642,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminData, onLogout }) 
     return true;
   }, [showNotification]);
 
-  // Socket wiring (centralized here)
+  // Socket
   useEffect(() => {
     const socket = io("http://localhost:5000", { withCredentials: true });
     socket.emit("join", { role: "admin" });
-    socket.on("orderCreated", (order) => {
-      console.log("📦 New order:", order);
-      window.dispatchEvent(new Event('orders:changed'));
-    });
-    socket.on("orderStatusUpdated", (order) => {
-      console.log("✅ Order updated:", order);
-      window.dispatchEvent(new Event('orders:changed'));
-    });
+    socket.on("orderCreated", (_order) => { window.dispatchEvent(new Event('orders:changed')); });
+    socket.on("orderStatusUpdated", (_order) => { window.dispatchEvent(new Event('orders:changed')); });
     return () => {
       socket.off("orderCreated");
       socket.off("orderStatusUpdated");
@@ -1546,35 +1697,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminData, onLogout }) 
     }
   };
 
- // in AdminDashboard render:
-return (
-  <div className="admin-shell">
-    <SlideBar
-      activeTab={activeTab}
-      setActiveTab={setActiveTab as (t: string) => void}
-      adminData={adminData}
-      onLogout={onLogout}
-    />
-    <main className="admin-content">{renderActiveComponent()}</main>
-    <style>{`
-        .admin-shell {
-    display: flex;
-    min-height: 100vh;
-    background: #ffffff; /* full white page */
-    color: #000;
-  }
-     @media (min-width:1024px){
-          .admin-main{ margin-left:240px }
-  .admin-content {
-    flex: 1;
-    min-width: 0;
-    padding: 24px;
-    background: #ffffff; /* white background for main content */
-  }
-    `}</style>
-  </div>
-);
-
+  return (
+    <div className="admin-shell">
+      <SlideBar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab as (t: string) => void}
+        adminData={adminData}
+        onLogout={onLogout}
+      />
+      <main className="admin-content">{renderActiveComponent()}</main>
+      <style>{`
+        .admin-shell { display: flex; min-height: 100vh; background: #ffffff; color: #000; }
+        @media (min-width:1024px){ .admin-main{ margin-left:240px } .admin-content { flex: 1; min-width: 0; padding: 24px; background: #ffffff; } }
+      `}</style>
+    </div>
+  );
 };
 
 export default AdminDashboard;

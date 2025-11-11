@@ -1,4 +1,4 @@
-// src/pages/ProductDetail.tsx — dark glass B2C detail page
+// src/pages/ProductDetail.tsx — dark glass B2C detail page with pricing mode + MOQ
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -25,6 +25,8 @@ import SEO from '../components/Layout/SEO';
 import Reviews from '../components/Layout/Reviews';
 import Breadcrumbs from './Breadcrumbs';
 import VZOTBackground from '../components/Layout/VZOTBackground';
+import { usePricingMode } from '../context/PricingModeProvider';
+
 /* ------------------------- Helpers ------------------------- */
 const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   if (!raw) return {};
@@ -45,8 +47,7 @@ const normalizeSpecifications = (raw: unknown): Record<string, unknown> => {
   return {};
 };
 
-const fullImage = (src?: string | null) =>
-  resolveImageUrl(src ?? undefined) || (src ?? '');
+const fullImage = (src?: string | null) => resolveImageUrl(src ?? undefined) || (src ?? '');
 
 const safeImage = (src?: string | null, w = 400, h = 400) => {
   const resolved = resolveImageUrl(src ?? undefined);
@@ -77,11 +78,17 @@ const slugify = (s?: string) =>
 const productHandle = (p: any) => slugify(p?.slug || p?.name) || (p?._id || p?.id) || '';
 const productUrlAbs = (p: any) => `https://nakodamobile.com/product/${productHandle(p)}`;
 
+const num = (v: any): number | undefined => {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 /* ------------------------------ Component ------------------------------ */
 const ProductDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>(); // can be id or slug; route path should be /product/:id
+  const { id } = useParams<{ id: string }>(); // slug or id; route path: /product/:id
   const navigate = useNavigate();
   const location = useLocation();
+  const { mode } = usePricingMode(); // <<< single source of truth for pricing mode
 
   // smart back plumbing
   const backTarget =
@@ -111,6 +118,7 @@ const ProductDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<number>(0);
 
+  // quantity reflects MOQ when wholesale is active
   const [quantity, setQuantity] = useState<number>(1);
   const [rawQty, setRawQty] = useState<string>('1');
 
@@ -168,23 +176,35 @@ const ProductDetail: React.FC = () => {
     fetchProduct();
   }, [id]);
 
-  /* Qty helpers */
-  const clampQty = (raw: unknown, max: number) => {
-    const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
-    if (!Number.isFinite(n) || n <= 0) return 1;
-    return Math.max(1, Math.min(max, n));
-  };
-  const maxQty = (product as any)?.inStock ? Math.max(1, Number((product as any).stockQuantity) || 99) : 0;
+  /* Pricing mode + wholesale bindings (from context) */
+  const wholesaleEnabled = Boolean((product as any)?.wholesaleEnabled);
+  const wholesalePrice = num((product as any)?.wholesalePrice);
+  const wholesaleMinQty = num((product as any)?.wholesaleMinQty) ?? 1;
+  const wholesaleActive = mode === 'wholesale' && wholesaleEnabled && typeof wholesalePrice === 'number';
 
+  const unitPrice: number | undefined = wholesaleActive ? (wholesalePrice as number) : (product as any)?.price;
+  const minQty = wholesaleActive ? wholesaleMinQty : 1;
+
+  /* Qty helpers with MOQ awareness */
+  const maxQty = (product as any)?.inStock ? Math.max(minQty, Number((product as any).stockQuantity) || minQty) : 0;
+
+  const clampQty = (raw: unknown, max: number, min: number) => {
+    const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
+    if (!Number.isFinite(n)) return min;
+    return Math.max(min, Math.min(max, n));
+  };
+
+  // reset qty when product, minQty, maxQty, or mode changes
   useEffect(() => {
     if (!product) return;
-    const init = clampQty(quantity, maxQty || 1);
+    const init = clampQty(minQty, maxQty || minQty, minQty);
     setQuantity(init);
     setRawQty(String(init));
-  }, [product, maxQty]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, minQty, maxQty, mode]);
 
   const commitQty = (v: string | number) => {
-    const final = clampQty(v, maxQty || 1);
+    const final = clampQty(v, maxQty || minQty, minQty);
     setQuantity(final);
     setRawQty(String(final));
     return final;
@@ -203,20 +223,19 @@ const ProductDetail: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'description' | 'specifications' | 'reviews'>('description');
 
-  const { addToWishlist: addWish, removeFromWishlist: remWish } = { addToWishlist, removeFromWishlist };
-
   /* Actions */
+  const isUserLoggedIn = () => {
+    try {
+      const ls = localStorage;
+      const hasToken = ls.getItem('nakoda-token');
+      const hasUser = ls.getItem('nakoda-user');
+      return Boolean(hasToken && hasUser);
+    } catch {
+      return false;
+    }
+  };
+
   const handleAddToCart = async () => {
-    const isUserLoggedIn = () => {
-      try {
-        const ls = localStorage;
-        const hasToken = ls.getItem('nakoda-token');
-        const hasUser = ls.getItem('nakoda-user');
-        return Boolean(hasToken && hasUser);
-      } catch {
-        return false;
-      }
-    };
     if (!isUserLoggedIn()) {
       toast.error('Please log in to add items to your cart');
       navigate('/login', { state: { from: location } });
@@ -227,9 +246,21 @@ const ProductDetail: React.FC = () => {
     try {
       const productId: string = (product as any)._id || (product as any).id;
       if (!productId) { toast.error('Product ID not found'); return; }
-      const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
+
+      // enforce MOQ and stock
+      const finalQty = commitQty(rawQty === '' ? minQty : rawQty);
+      if (finalQty < minQty) {
+        toast.error(`MOQ is ${minQty} in wholesale mode`);
+        return;
+      }
+      const stock = Math.max(minQty, Number((product as any).stockQuantity ?? 0));
+      if (stock < finalQty) {
+        toast.error(`Only ${stock} in stock`);
+        return;
+      }
+
       await addToCart(productId, finalQty);
-      toast.success(`Added ${finalQty} ${finalQty === 1 ? 'item' : 'items'} to cart`);
+      toast.success(`Added ${finalQty}${wholesaleActive ? ' (Wholesale)' : ''}`);
     } catch (err: any) {
       toast.error(err.message || 'Failed to add to cart');
     }
@@ -240,7 +271,18 @@ const ProductDetail: React.FC = () => {
     try {
       const productId: string = (product as any)._id || (product as any).id;
       if (!productId) { toast.error('Product ID not found'); return; }
-      const finalQty = commitQty(rawQty === '' ? 1 : rawQty);
+
+      const finalQty = commitQty(rawQty === '' ? minQty : rawQty);
+      if (finalQty < minQty) {
+        toast.error(`MOQ is ${minQty} in wholesale mode`);
+        return;
+      }
+      const stock = Math.max(minQty, Number((product as any).stockQuantity ?? 0));
+      if (stock < finalQty) {
+        toast.error(`Only ${stock} in stock`);
+        return;
+      }
+
       await addToCart(productId, finalQty);
       navigate('/checkout');
     } catch (err: any) {
@@ -254,9 +296,9 @@ const ProductDetail: React.FC = () => {
       const productId: string = (product as any)._id || (product as any).id;
       if (!productId) { toast.error('Product ID not found'); return; }
       if (isInWishlist(productId)) {
-        await remWish(productId);
+        await removeFromWishlist(productId);
       } else {
-        await addWish(productId);
+        await addToWishlist(productId);
       }
     } catch (err: any) {
       toast.error(err.message || 'Wishlist operation failed');
@@ -354,13 +396,13 @@ const ProductDetail: React.FC = () => {
 
   /* SEO data */
   const canonicalPath = `/product/${productHandle(product)}`;
-  const avgRating = Number((product as any)?.rating) || Number((product as any)?.averageRating) || undefined;
-  const reviewCount = Number((product as any)?.reviewsCount) || Number((product as any)?.reviewCount) || undefined;
+  const avgRatingSEO = Number((product as any)?.rating) || Number((product as any)?.averageRating) || undefined;
+  const reviewCountSEO = Number((product as any)?.reviewsCount) || Number((product as any)?.reviewCount) || undefined;
 
   const seoTitle = `${product.name} Price in India | Buy Online`;
   const seoDesc =
     (product.description || '').replace(/\s+/g, ' ').slice(0, 155) ||
-    `${product.name} available at Nakoda Mobile. Fast delivery. GST invoice.`;
+    `${product.name} available at Vzot. Fast delivery. GST invoice.`;
 
   const productJsonLd: any = {
     '@context': 'https://schema.org',
@@ -377,12 +419,12 @@ const ProductDetail: React.FC = () => {
       '@type': 'Offer',
       availability: (product as any).inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
       priceCurrency: 'INR',
-      price: product.price ?? undefined,
+      price: unitPrice ?? undefined,
       url: productUrlAbs(product),
     },
   };
-  if (avgRating && reviewCount) {
-    productJsonLd.aggregateRating = { '@type': 'AggregateRating', ratingValue: String(avgRating), reviewCount: String(reviewCount) };
+  if (avgRatingSEO && reviewCountSEO) {
+    productJsonLd.aggregateRating = { '@type': 'AggregateRating', ratingValue: String(avgRatingSEO), reviewCount: String(reviewCountSEO) };
   }
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
@@ -396,7 +438,7 @@ const ProductDetail: React.FC = () => {
 
   /* -------------------------------- Render -------------------------------- */
   return (
-     <div className="relative min-h-screen text-white">
+    <div className="relative min-h-screen text-white">
       <VZOTBackground />
       <SEO
         title={seoTitle}
@@ -470,24 +512,36 @@ const ProductDetail: React.FC = () => {
                 <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2 leading-snug">{product.name}</h1>
                 <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-white/70">
                   <span className="bg-sky-500/15 text-sky-200 border border-sky-400/20 px-2 py-0.5 rounded-full">{product.category}</span>
-                  {(product as any).brand && (
-                    <span className="bg-white/10 text-white/80 border border-white/15 px-2 py-0.5 rounded-full">
-                      {(product as any).brand}
+                 
+                    
+                  {wholesaleActive && (
+                    <span className="bg-emerald-500/15 text-emerald-200 border border-emerald-400/20 px-2 py-0.5 rounded-full">
+                      Wholesale • MOQ {minQty}
                     </span>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center flex-wrap gap-2 sm:gap-4">
-                <span className="text-2xl sm:text-3xl font-bold text-white">₹{product.price?.toLocaleString('en-IN')}</span>
-                {(product as any).originalPrice && (product as any).originalPrice > (product.price ?? 0) && (
-                  <>
-                    <span className="text-lg sm:text-xl text-white/60 line-through">₹{(product as any).originalPrice.toLocaleString('en-IN')}</span>
-                    <span className="bg-rose-600/20 text-rose-200 border border-rose-400/30 text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-full">
-                      {Math.round((((product as any).originalPrice - (product.price ?? 0)) / (product as any).originalPrice) * 100)}% OFF
-                    </span>
-                  </>
-                )}
+                <span className="text-2xl sm:text-3xl font-bold text-white">
+                  ₹{(unitPrice ?? 0).toLocaleString('en-IN')}
+                  {wholesaleActive && <span className="ml-1 text-xs text-white/70">/pc</span>}
+                </span>
+                {(() => {
+                  const cmp = num((product as any).originalPrice) ?? num((product as any).compareAtPrice);
+                  if (cmp && unitPrice && cmp > unitPrice) {
+                    const pct = Math.round(((cmp - unitPrice) / cmp) * 100);
+                    return (
+                      <>
+                        <span className="text-lg sm:text-xl text-white/60 line-through">₹{cmp.toLocaleString('en-IN')}</span>
+                        <span className="bg-rose-600/20 text-rose-200 border border-rose-400/30 text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-full">
+                          {pct}% OFF
+                        </span>
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {(product as any).inStock && (
@@ -495,8 +549,8 @@ const ProductDetail: React.FC = () => {
                   <label className="text-white/90 text-sm sm:text-base font-medium">Qty</label>
                   <div className="flex items-center rounded-lg border border-white/15 bg-white/5">
                     <button
-                      onClick={() => commitQty((quantity || 1) - 1)}
-                      disabled={quantity <= 1}
+                      onClick={() => commitQty((quantity || minQty) - 1)}
+                      disabled={quantity <= minQty}
                       className="p-2 sm:p-2.5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-white"
                       aria-label="Decrease quantity"
                     >
@@ -506,10 +560,10 @@ const ProductDetail: React.FC = () => {
                     <input
                       type="number"
                       inputMode="numeric"
-                      min={1}
-                      max={maxQty || 1}
+                      min={minQty}
+                      max={maxQty || minQty}
                       value={rawQty}
-                      placeholder="1"
+                      placeholder={String(minQty)}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v === '') { setRawQty(''); return; }
@@ -518,7 +572,7 @@ const ProductDetail: React.FC = () => {
                           setQuantity(parseInt(v, 10));
                         }
                       }}
-                      onBlur={() => commitQty(rawQty === '' ? 1 : rawQty)}
+                      onBlur={() => commitQty(rawQty === '' ? minQty : rawQty)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') { (e.currentTarget as HTMLInputElement).blur(); }
                         if (e.key === 'Escape') { setRawQty(String(quantity)); }
@@ -528,7 +582,7 @@ const ProductDetail: React.FC = () => {
                     />
 
                     <button
-                      onClick={() => commitQty((quantity || 1) + 1)}
+                      onClick={() => commitQty((quantity || minQty) + 1)}
                       disabled={!maxQty || quantity >= maxQty}
                       className="p-2 sm:p-2.5 hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-white"
                       aria-label="Increase quantity"
@@ -536,6 +590,9 @@ const ProductDetail: React.FC = () => {
                       <Plus className="h-4 w-4" />
                     </button>
                   </div>
+                  {wholesaleActive && (
+                    <span className="text-xs text-white/70">Min {minQty}</span>
+                  )}
                 </div>
               )}
 
@@ -764,7 +821,9 @@ const ProductDetail: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 py-2 flex items-center gap-3">
           <div className="flex-1">
             <div className="text-xs text-white/70">Total</div>
-            <div className="text-lg font-semibold text-white">₹{product.price?.toLocaleString('en-IN')}</div>
+            <div className="text-lg font-semibold text-white">
+              ₹{((unitPrice ?? 0) * (quantity || minQty)).toLocaleString('en-IN')}
+            </div>
           </div>
           <button
             onClick={handleAddToCart}

@@ -1,6 +1,7 @@
 // src/models/Product.ts (B2C)
 import mongoose, { Schema, Document, Model } from 'mongoose';
 import istVirtuals from './plugins/istVirtuals';
+
 export interface IProduct extends Document {
   _id: mongoose.Types.ObjectId;
   // core
@@ -53,14 +54,18 @@ export interface IProduct extends Document {
   isTrending?: boolean;          // manual override
   isPopular?: boolean;           // manual override
 
+  // wholesale (single price + admin-defined MOQ)
+  wholesaleEnabled?: boolean;
+  wholesalePrice?: number;       // required if wholesaleEnabled = true
+  wholesaleMinQty?: number;      // required if wholesaleEnabled = true
+
   // virtuals
   discountPercent?: number;
   isHotDeal?: boolean;
   primaryImage?: string;
 
-    metaTitle?: string;        // <= 60 chars recommended
+  metaTitle?: string;        // <= 60 chars recommended
   metaDescription?: string;  // <= 160 chars recommended
-
 }
 
 interface IProductModel extends Model<IProduct> {
@@ -140,7 +145,7 @@ const productSchema = new Schema<IProduct, IProductModel>(
     specifications: { type: Map, of: Schema.Types.Mixed, default: {} },
 
     tags: { type: [String], default: [] },
-     metaTitle:       { type: String, trim: true, maxlength: 160 },
+    metaTitle:       { type: String, trim: true, maxlength: 160 },
     metaDescription: { type: String, trim: true, maxlength: 160 },
     isActive: { type: Boolean, default: true },
     status: { type: String, enum: ['active', 'inactive', 'draft'], default: 'active' },
@@ -165,6 +170,11 @@ const productSchema = new Schema<IProduct, IProductModel>(
     views7d: { type: Number, default: 0 },
     isTrending: { type: Boolean, default: false, index: true },
     isPopular: { type: Boolean, default: false, index: true },
+
+    // ───────────── Wholesale (single price + admin-defined MOQ) ─────────────
+    wholesaleEnabled: { type: Boolean, default: false, index: true },
+    wholesalePrice: { type: Number, min: [0, 'Wholesale price cannot be negative'] },
+    wholesaleMinQty: { type: Number, min: [1, 'Wholesale min qty must be >= 1'] },
   },
   {
     timestamps: true,
@@ -231,18 +241,37 @@ productSchema.pre('save', function (next) {
 
 /** optional: ensure slug defaults from name if not provided */
 productSchema.pre('validate', function (next) {
+  // @ts-ignore
   if (!this.slug && this.name) {
+    // @ts-ignore
     this.slug = String(this.name)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '')
       .slice(0, 120);
   }
+
+  // enforce wholesale fields only when enabled
+  // @ts-ignore
+  if (this.wholesaleEnabled) {
+    // @ts-ignore
+    if (!(this.wholesalePrice > 0)) {
+      // @ts-ignore
+      this.invalidate('wholesalePrice', 'wholesalePrice is required when wholesaleEnabled is true');
+    }
+    // @ts-ignore
+    if (!(this.wholesaleMinQty > 0)) {
+      // @ts-ignore
+      this.invalidate('wholesaleMinQty', 'wholesaleMinQty is required when wholesaleEnabled is true');
+    }
+  }
+
   next();
 });
 
 /** ───────────────────────── Statics (helper for controller) ───────────────────────── */
 productSchema.plugin(istVirtuals);
+
 productSchema.statics.getSortedFor = function ({
   sort = 'new',
   limit = 24,

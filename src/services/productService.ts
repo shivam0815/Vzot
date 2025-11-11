@@ -42,6 +42,13 @@ const coerceNumber = (v: any): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+const coerceBool = (v: any): boolean | undefined => {
+  if (typeof v === 'boolean') return v;
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  return undefined;
+};
+
 const extractUrlLike = (x: any): string => {
   if (!x) return '';
   if (typeof x === 'string') return x;
@@ -58,7 +65,9 @@ const extractUrlLike = (x: any): string => {
   }
   return '';
 };
+
 const isObjectId = (s: string) => /^[a-f\d]{24}$/i.test(s);
+
 function normalizeImages(p: any): { imageUrl?: string; images: string[] } {
   const arrayCandidates: any[] =
     (Array.isArray(p?.images) && p.images) ||
@@ -114,6 +123,7 @@ function normalizeSpecifications(input: any): Record<string, any> {
   return {};
 }
 
+/** Normalize a single product and ensure wholesale fields exist */
 function normalizeProduct(p: any): Product {
   const avg =
     coerceNumber(p?.averageRating) ??
@@ -132,16 +142,46 @@ function normalizeProduct(p: any): Product {
 
   const { imageUrl, images } = normalizeImages(p);
 
+  // Defensive wholesale normalization
+  const wholesaleEnabled =
+    coerceBool(p?.wholesaleEnabled) ?? false;
+  const wholesalePrice =
+    coerceNumber(p?.wholesalePrice);
+  const wholesaleMinQty =
+    coerceNumber(p?.wholesaleMinQty) ?? (wholesaleEnabled ? 10 : undefined);
+
+  const price = coerceNumber(p?.price);
+
+  // Stock flags
+  const stockQuantity = coerceNumber(p?.stockQuantity);
+  const inStock =
+    typeof p?.inStock === 'boolean'
+      ? p.inStock
+      : typeof stockQuantity === 'number'
+        ? stockQuantity > 0
+        : true;
+
   return {
     ...p,
+    // rating mirrors
     averageRating: avg,
     rating: avg,
     ratingsCount: count,
     reviewCount: count,
     reviewsCount: count,
+    // images
     imageUrl,
     images,
+    // specs
     specifications: normalizeSpecifications(p?.specifications),
+    // price + stock
+    price,
+    inStock,
+    stockQuantity,
+    // wholesale fields present for typing
+    wholesaleEnabled,
+    wholesalePrice,
+    wholesaleMinQty,
   } as Product;
 }
 
@@ -281,22 +321,27 @@ export const productService = {
 
   /* Single product: accept ObjectId OR slug/sku */
   async getProduct(idOrSlug: string): Promise<{ success: boolean; product: Product; message?: string }> {
-  try {
-    if (!idOrSlug) throw new Error('Missing product id');
+    try {
+      if (!idOrSlug) throw new Error('Missing product id');
 
-    const path = isObjectId(idOrSlug)
-      ? `/products/${idOrSlug}`
-      : `/products/slug/${encodeURIComponent(idOrSlug)}`;
+      // Prefer /:id for ObjectId, else /slug/:slug
+      const path = isObjectId(idOrSlug)
+        ? `/products/${idOrSlug}`
+        : `/products/slug/${encodeURIComponent(idOrSlug)}`;
 
-    const response = await api.get(path);
-    const product = normalizeProduct(response?.data?.product);
-    return { success: true, product, message: response?.data?.message };
-  } catch (error: any) {
-    console.error('❌ Failed to fetch single product:', error);
-    if (error.response?.status === 404) throw new Error('Product not found or has been removed.');
-    throw new Error(error.response?.data?.message || 'Failed to load product details. Please try again.');
-  }
-},
+      const response = await api.get(path);
+
+      // Some backends wrap under { product }, others return object directly.
+      const raw = response?.data?.product ?? response?.data;
+      const product = normalizeProduct(raw);
+
+      return { success: true, product, message: response?.data?.message };
+    } catch (error: any) {
+      console.error('❌ Failed to fetch single product:', error);
+      if (error.response?.status === 404) throw new Error('Product not found or has been removed.');
+      throw new Error(error.response?.data?.message || 'Failed to load product details. Please try again.');
+    }
+  },
 
   /* Convenience list returning only array */
   async list(filters: ProductFilters = {}, limit = filters.limit ?? DEFAULT_LIMIT): Promise<Product[]> {

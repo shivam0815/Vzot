@@ -1,3 +1,4 @@
+// src/pages/CheckoutPage.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -79,10 +80,48 @@ const ONLINE_FEE_GST_RATE = 0.18;
 const formatINR = (n: number) => `₹${Math.max(0, Math.round(n)).toLocaleString()}`;
 
 const CheckoutPage: React.FC = () => {
-  const { cartItems, getTotalPrice, clearCart, isLoading: cartLoading } = useCart();
+  const { cartItems, clearCart, isLoading: cartLoading } = useCart();
   const { user, isAuthenticated } = useAuth();
   const { processPayment, isProcessing } = usePayment();
   const navigate = useNavigate();
+
+  // current pricing mode from header toggle
+  const pricingMode: 'retail' | 'wholesale' =
+    (localStorage.getItem('pricingMode') as any) === 'wholesale' ? 'wholesale' : 'retail';
+
+  // ------ price resolver identical to Cart ------
+  const getEffectiveUnit = (it: any) => {
+    const p = it?.productId || {};
+    const retail = Number(it?.unitRetailPrice ?? it?.price ?? p?.price ?? 0);
+    const wsEnabled = Boolean(p?.wholesaleEnabled ?? it?.wholesaleEnabled);
+    const wsPrice = Number(it?.wholesalePrice ?? p?.wholesalePrice);
+    const moq = Number(it?.moqApplied ?? p?.wholesaleMinQty ?? 1);
+    const qty = Number(it?.quantity ?? 1);
+
+    const eligible =
+      pricingMode === 'wholesale' &&
+      wsEnabled &&
+      Number.isFinite(wsPrice) &&
+      qty >= Math.max(1, moq);
+
+    return {
+      unit: eligible ? wsPrice : retail,
+      eligibleWholesale: eligible,
+      wsMin: Math.max(1, moq),
+      wsEnabled,
+      retail,
+    };
+  };
+
+  // subtotal computed from effective unit prices
+  const subtotalEff = useMemo(
+    () =>
+      cartItems.reduce((sum: number, it: any) => {
+        const { unit } = getEffectiveUnit(it);
+        return sum + unit * Number(it?.quantity ?? 1);
+      }, 0),
+    [cartItems, pricingMode]
+  );
 
   const [shipping, setShipping] = useState<Address>({
     ...emptyAddress,
@@ -105,23 +144,20 @@ const CheckoutPage: React.FC = () => {
   });
   const [giftWrap, setGiftWrap] = useState(false);
 
-  const [couponInput, setCouponInput] = useState(''); // retained if you add UI later
+  const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<CouponResult | null>(null);
 
-  const rawSubtotal = useMemo(() => getTotalPrice(), [getTotalPrice, cartItems]);
-
-  // Discounts: only coupon-based. No first-order logic.
+  // Discounts (coupon only on frontend)
   const couponDiscount = appliedCoupon?.amount || 0;
   const monetaryDiscount = couponDiscount;
   const discountLabel = appliedCoupon ? `${appliedCoupon.code} discount` : '';
 
-  const effectiveSubtotal = Math.max(0, rawSubtotal - monetaryDiscount);
+  const effectiveSubtotal = Math.max(0, subtotalEff - monetaryDiscount);
 
-  // Shipping: ₹150 unless free-shipping coupon or threshold met
+  // Shipping calc on effective subtotal
   const qualifiesFreeShip =
     appliedCoupon?.freeShipping === true || effectiveSubtotal >= SHIPPING_FREE_THRESHOLD;
   const shippingFee = qualifiesFreeShip ? 0 : BASE_SHIPPING_FEE;
-  const shippingAddedPostPack = false;
 
   const giftWrapFee = giftWrap ? GIFT_WRAP_FEE : 0;
   const codCharges = method === 'cod' ? COD_FEE : 0;
@@ -149,6 +185,7 @@ const CheckoutPage: React.FC = () => {
     effectiveSubtotal + tax + shippingFee + codCharges + giftWrapFee + (method !== 'cod' ? totalProcessingFee : 0)
   );
 
+  // ---------- persist + validators ----------
   useEffect(() => {
     try {
       const saved = localStorage.getItem('checkout:shipping');
@@ -162,134 +199,152 @@ const CheckoutPage: React.FC = () => {
       setter((prev) => ({ ...prev, [field]: value }));
       setErrors((e) => ({ ...e, [field]: '' }));
     };
-    const addrComboLen = (a: Address) =>
-  ((a.addressLine1 || '') + (a.addressLine2 || '')).trim().length;
-const minCombo = 3; // must match server rule
 
+  const addrComboLen = (a: Address) => ((a.addressLine1 || '') + (a.addressLine2 || '')).trim().length;
+  const minCombo = 3;
 
   const withFallback = (ship: Address, bill: Address) => {
-  const s = addrComboLen(ship) < minCombo && addrComboLen(bill) >= minCombo ? { ...bill } : ship;
-  const b = addrComboLen(bill) < minCombo ? { ...s } : bill;
-  return { s, b };
-};
+    const s = addrComboLen(ship) < minCombo && addrComboLen(bill) >= minCombo ? { ...bill } : ship;
+    const b = addrComboLen(bill) < minCombo ? { ...s } : bill;
+    return { s, b };
+  };
 
-const validateFor = (s: Address, b: Address, same: boolean): boolean => {
-  const e: Record<string, string> = {};
-  const regPhone = /^\d{10}$/;
-  const regPin = /^\d{6}$/;
-  const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validateFor = (s: Address, b: Address, same: boolean): boolean => {
+    const e: Record<string, string> = {};
+    const regPhone = /^\d{10}$/;
+    const regPin = /^\d{6}$/;
+    const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  if (!s.fullName.trim()) e.fullName = 'Full name is required';
-  if (!regPhone.test(s.phoneNumber.replace(/\D/g, ''))) e.phoneNumber = 'Please enter a valid 10-digit phone number';
-  if (!regEmail.test(s.email)) e.email = 'Please enter a valid email address';
-  if (addrComboLen(s) < minCombo) e.addressLine1 = `Address must be at least ${minCombo} characters (line1 + line2)`;
-  if (!s.city.trim()) e.city = 'City is required';
-  if (!s.state.trim()) e.state = 'State is required';
-  if (!regPin.test(s.pincode)) e.pincode = 'Please enter a valid 6-digit pincode';
+    if (!s.fullName.trim()) e.fullName = 'Full name is required';
+    if (!regPhone.test(s.phoneNumber.replace(/\D/g, ''))) e.phoneNumber = 'Enter valid 10-digit phone';
+    if (!regEmail.test(s.email)) e.email = 'Enter valid email';
+    if (addrComboLen(s) < minCombo) e.addressLine1 = `Address must be at least ${minCombo} characters`;
+    if (!s.city.trim()) e.city = 'City is required';
+    if (!s.state.trim()) e.state = 'State is required';
+    if (!regPin.test(s.pincode)) e.pincode = 'Enter 6-digit pincode';
 
-  if (!same) {
-    if (!b.fullName.trim()) e.billing_fullName = 'Billing name required';
-    if (!regPhone.test(b.phoneNumber.replace(/\D/g, ''))) e.billing_phoneNumber = 'Valid 10-digit phone required';
-    if (!regEmail.test(b.email)) e.billing_email = 'Valid email required';
-    if (addrComboLen(b) < minCombo)
-      e.billing_addressLine1 = `Billing address must be at least ${minCombo} characters (line1 + line2)`;
-    if (!b.city.trim()) e.billing_city = 'Billing city required';
-    if (!b.state.trim()) e.billing_state = 'Billing state required';
-    if (!regPin.test(b.pincode)) e.billing_pincode = 'Valid 6-digit pincode required';
-  }
+    if (!same) {
+      if (!b.fullName.trim()) e.billing_fullName = 'Billing name required';
+      if (!regPhone.test(b.phoneNumber.replace(/\D/g, ''))) e.billing_phoneNumber = 'Valid phone required';
+      if (!regEmail.test(b.email)) e.billing_email = 'Valid email required';
+      if (addrComboLen(b) < minCombo) e.billing_addressLine1 = `Billing address must be at least ${minCombo} chars`;
+      if (!b.city.trim()) e.billing_city = 'Billing city required';
+      if (!b.state.trim()) e.billing_state = 'Billing state required';
+      if (!regPin.test(b.pincode)) e.billing_pincode = 'Valid pincode required';
+    }
 
-  if (wantGSTInvoice) {
-    const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
-    if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) e.gst_gstin = 'Please enter a valid 15-character GSTIN';
-    if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name is required';
-    if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply (state) is required';
-    if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email)) e.gst_email = 'Enter a valid email';
-  }
+    if (wantGSTInvoice) {
+      const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
+      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) e.gst_gstin = 'Enter valid 15-character GSTIN';
+      if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name required';
+      if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply required';
+      if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email)) e.gst_email = 'Enter valid email';
+    }
 
-  setErrors(e);
-  return Object.keys(e).length === 0;
-};
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const onSubmit = async (ev: React.FormEvent) => {
-  ev.preventDefault();
+    ev.preventDefault();
 
-  const { s: ship2, b: bill2 } = withFallback(shipping, billing);
+    const { s: ship2, b: bill2 } = withFallback(shipping, billing);
 
-  if (!validateFor(ship2, bill2, sameAsShipping)) {
-    toast.error('Please correct the errors below');
-    return;
-  }
+    if (!validateFor(ship2, bill2, sameAsShipping)) {
+      toast.error('Please correct the errors below');
+      return;
+    }
 
-  try {
-    localStorage.setItem('checkout:shipping', JSON.stringify(ship2));
+    try {
+      localStorage.setItem('checkout:shipping', JSON.stringify(ship2));
 
-    const orderData = {
-      items: cartItems.map((item: any) => ({
-        productId: item.productId || item.id,
-        name: item.name,
-        image: item.image || item.img,
-        quantity: item.quantity,
-        price: item.price,
-      })),
-      shippingAddress: ship2,
-      billingAddress: sameAsShipping ? ship2 : bill2,
-      // PaymentOrderData requires these top-level numeric fields
-      subtotal: rawSubtotal,
-      tax: tax,
-      shipping: shippingFee,
-      total: total,
-      extras: {
-        orderNotes: orderNotes.trim() || undefined,
-        wantGSTInvoice,
-        gst: wantGSTInvoice
-          ? {
-              gstin: gst.gstin.trim(),
-              legalName: gst.legalName.trim(),
-              placeOfSupply: gst.placeOfSupply,
-              email: gst.email?.trim() || undefined,
-              requestedAt: new Date().toISOString(),
-            }
-          : undefined,
-        giftWrap,
-      },
-      pricing: { /* unchanged */ 
-        rawSubtotal, discount: monetaryDiscount, discountLabel: discountLabel || undefined,
-        coupon: appliedCoupon?.code || undefined, couponFreeShipping: appliedCoupon?.freeShipping || false,
-        effectiveSubtotal, tax, shippingFee, shippingAddedPostPack, codCharges, giftWrapFee,
-        convenienceFee, convenienceFeeGst, convenienceFeeRate: ONLINE_FEE_RATE, convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
-        gstSummary: { requested: wantGSTInvoice, rate: 0.18, taxableValue: effectiveSubtotal, gstAmount: tax },
+      // build items with effective unit prices
+      const items = cartItems.map((it: any) => {
+        const { unit, eligibleWholesale, wsMin } = getEffectiveUnit(it);
+        const pid = it.productId?._id || it.productId?.id || it.productId || it.id;
+        return {
+          productId: pid,
+          name: it.productId?.name || it.name,
+          image: it.productId?.image || it.image,
+          quantity: Number(it.quantity || 1),
+          price: unit, // effective unit price that customer pays
+          pricingMode, // current mode snapshot
+          wholesaleApplied: Boolean(eligibleWholesale),
+          wholesaleMinQty: wsMin,
+        };
+      });
+
+      const orderData = {
+        items,
+        shippingAddress: ship2,
+        billingAddress: sameAsShipping ? ship2 : bill2,
+        subtotal: subtotalEff,                // effective subtotal BEFORE discounts
+        discount: monetaryDiscount,
+        tax,
+        shipping: shippingFee,
         total,
-      },
-    };
+        extras: {
+          orderNotes: orderNotes.trim() || undefined,
+          wantGSTInvoice,
+          gst: wantGSTInvoice
+            ? {
+                gstin: gst.gstin.trim(),
+                legalName: gst.legalName.trim(),
+                placeOfSupply: gst.placeOfSupply,
+                email: gst.email?.trim() || undefined,
+                requestedAt: new Date().toISOString(),
+              }
+            : undefined,
+          giftWrap,
+        },
+        pricing: {
+          mode: pricingMode,
+          rawSubtotalEffective: subtotalEff,
+          discount: monetaryDiscount,
+          discountLabel: discountLabel || undefined,
+          coupon: appliedCoupon?.code || undefined,
+          couponFreeShipping: appliedCoupon?.freeShipping || false,
+          effectiveSubtotal,
+          tax,
+          shippingFee,
+          codCharges,
+          giftWrapFee,
+          convenienceFee,
+          convenienceFeeGst,
+          convenienceFeeRate: ONLINE_FEE_RATE,
+          convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
+          gstSummary: { requested: wantGSTInvoice, rate: 0.18, taxableValue: effectiveSubtotal, gstAmount: tax },
+          total,
+        },
+      };
 
-    const userDetails = { name: ship2.fullName, email: ship2.email, phone: ship2.phoneNumber };
-    const result = (await processPayment(total, method, orderData, userDetails)) as PaymentResult;
+      const userDetails = { name: ship2.fullName, email: ship2.email, phone: ship2.phoneNumber };
+      const result = (await processPayment(total, method, orderData, userDetails)) as PaymentResult;
 
-    if (!result?.success || result.redirected) return;
+      if (!result?.success || result.redirected) return;
 
-    clearCart();
-    const ord = result.order || {};
-    const orderId = ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
+      clearCart();
+      const ord = result.order || {};
+      const orderId = ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
 
-    const successState = { orderId, order: ord, paymentMethod: result.method, paymentId: result.paymentId ?? null };
-    const snapshot = {
-      orderNumber: ord.orderNumber ?? orderId ?? undefined,
-      _id: ord._id ?? orderId ?? undefined,
-      total: ord.total ?? ord.amount ?? total,
-      createdAt: ord.createdAt ?? new Date().toISOString(),
-      items: Array.isArray(ord.items) && ord.items.length ? ord.items : orderData.items,
-      shippingAddress: ord.shippingAddress ?? ship2,
-    };
+      const successState = { orderId, order: ord, paymentMethod: result.method, paymentId: result.paymentId ?? null };
+      const snapshot = {
+        orderNumber: ord.orderNumber ?? orderId ?? undefined,
+        _id: ord._id ?? orderId ?? undefined,
+        total: ord.total ?? ord.amount ?? total,
+        createdAt: ord.createdAt ?? new Date().toISOString(),
+        items: Array.isArray(ord.items) && ord.items.length ? ord.items : items,
+        shippingAddress: ord.shippingAddress ?? ship2,
+      };
 
-    localStorage.setItem('lastOrderSuccess', JSON.stringify({ ...successState, snapshot }));
-    const qs = orderId ? `?id=${encodeURIComponent(orderId)}` : '';
-    navigate(`/order-success${qs}`, { state: successState, replace: true });
-  } catch (error: any) {
-    console.error('Checkout error:', error);
-    toast.error(error?.message || 'Checkout failed. Please try again.');
-  }
-};
-
+      localStorage.setItem('lastOrderSuccess', JSON.stringify({ ...successState, snapshot }));
+      const qs = orderId ? `?id=${encodeURIComponent(orderId)}` : '';
+      navigate(`/order-success${qs}`, { state: successState, replace: true });
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      toast.error(error?.message || 'Checkout failed. Please try again.');
+    }
+  };
 
   if (cartLoading) {
     return (
@@ -297,7 +352,7 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
         <div className="text-center bg-white p-8 rounded-2xl shadow-lg">
           <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Checkout</h3>
-          <p className="text-gray-600">Please wait while we prepare your order...</p>
+          <p className="text-gray-600">Please wait while we prepare your order…</p>
         </div>
       </div>
     );
@@ -310,10 +365,8 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Lock className="h-8 w-8 text-blue-600" />
           </div>
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Login Required</h2>
-          <p className="text-gray-600 mb-8 leading-relaxed">
-            Please log in to your account to proceed with secure checkout
-          </p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">Login Required</h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">Please log in to proceed with secure checkout</p>
           <button
             onClick={() => navigate('/login', { state: { from: { pathname: '/checkout' } } })}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
@@ -332,10 +385,8 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Package className="h-8 w-8 text-gray-600" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Your Cart is Empty</h2>
-          <p className="text-gray-600 mb-8 leading-relaxed">
-            Add some amazing products to your cart before checking out
-          </p>
+        <h2 className="text-3xl font-bold text-gray-900 mb-4">Your Cart is Empty</h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">Add products to your cart before checking out</p>
           <button
             onClick={() => navigate('/products')}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
@@ -362,7 +413,9 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
               Secure Checkout
             </h1>
-            <p className="text-gray-600 mt-1">Complete your purchase safely</p>
+            <p className="text-gray-600 mt-1">
+              {pricingMode === 'wholesale' ? 'Wholesale mode active' : 'Retail mode active'}
+            </p>
           </div>
           <div className="w-32" />
         </div>
@@ -378,27 +431,37 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
             </div>
 
             <div className="space-y-3 sm:space-y-4 max-h-60 sm:max-h-72 overflow-y-auto pr-2 mb-6">
-              {cartItems.map((item: any, index: number) => (
-                <div key={item?.id || index} className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                      {item?.name || 'Product'}
-                    </h4>
-                    <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                      Qty: {item?.quantity || 1} × {formatINR(item?.price || 0)}
-                    </p>
+              {cartItems.map((it: any, index: number) => {
+                const { unit, eligibleWholesale, wsMin } = getEffectiveUnit(it);
+                const qty = Number(it?.quantity ?? 1);
+                const name = it?.productId?.name || it?.name || 'Product';
+                return (
+                  <div key={it?.id || index} className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                        {name}
+                        {eligibleWholesale && (
+                          <span className="ml-2 text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300">
+                            Wholesale • MOQ {wsMin}
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Qty: {qty} × {formatINR(unit)} {eligibleWholesale ? '(WS)' : '(Retail)'}
+                      </p>
+                    </div>
+                    <span className="font-bold text-sm sm:text-lg text-gray-900 ml-2">
+                      {formatINR(unit * qty)}
+                    </span>
                   </div>
-                  <span className="font-bold text-sm sm:text-lg text-gray-900 ml-2">
-                    {formatINR((item?.price || 0) * (item?.quantity || 1))}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="border-t border-gray-200 pt-6 space-y-2 sm:space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal</span>
-                <span className="font-semibold">{formatINR(rawSubtotal)}</span>
+                <span className="font-semibold">{formatINR(subtotalEff)}</span>
               </div>
 
               {monetaryDiscount > 0 && (
@@ -413,7 +476,6 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                 <span className="font-semibold">{formatINR(tax)}</span>
               </div>
 
-              {/* Shipping line */}
               <div className="flex justify-between">
                 <span className="text-gray-600">
                   Shipping {qualifiesFreeShip && <span className="text-green-600 font-semibold">(Free)</span>}
@@ -439,10 +501,6 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                 <span>Total Amount</span>
                 <span className="text-blue-600">{formatINR(total)}</span>
               </div>
-
-              {monetaryDiscount > 0 && (
-                <p className="text-xs text-gray-500 mt-1">Best discount applied: {discountLabel}</p>
-              )}
             </div>
 
             <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
@@ -484,9 +542,7 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                     field="phoneNumber"
                     label="Phone Number *"
                     value={shipping.phoneNumber}
-                    onChange={(v) =>
-                      handleAddr(setShipping)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))
-                    }
+                    onChange={(v) => handleAddr(setShipping)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))}
                     placeholder="10-digit mobile number"
                     icon={Phone}
                     errors={errors}
@@ -555,9 +611,7 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                     field="pincode"
                     label="Pincode *"
                     value={shipping.pincode}
-                    onChange={(v) =>
-                      handleAddr(setShipping)('pincode', v.replace(/\D/g, '').slice(0, 6))
-                    }
+                    onChange={(v) => handleAddr(setShipping)('pincode', v.replace(/\D/g, '').slice(0, 6))}
                     placeholder="6-digit pincode"
                     errors={errors}
                   />
@@ -613,9 +667,7 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                       field="billing_phoneNumber"
                       label="Phone Number *"
                       value={billing.phoneNumber}
-                      onChange={(v) =>
-                        handleAddr(setBilling)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))
-                      }
+                      onChange={(v) => handleAddr(setBilling)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))}
                       placeholder="10-digit mobile number"
                       icon={Phone}
                       errors={errors}
@@ -660,7 +712,6 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                     placeholder="Near landmark, area, etc."
                     errors={errors}
                   />
-                  
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Input
@@ -686,9 +737,7 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                       field="billing_pincode"
                       label="Pincode *"
                       value={billing.pincode}
-                      onChange={(v) =>
-                        handleAddr(setBilling)('pincode', v.replace(/\D/g, '').slice(0, 6))
-                      }
+                      onChange={(v) => handleAddr(setBilling)('pincode', v.replace(/\D/g, '').slice(0, 6))}
                       placeholder="6-digit pincode"
                       errors={errors}
                     />
@@ -763,7 +812,7 @@ const validateFor = (s: Address, b: Address, same: boolean): boolean => {
                     value={orderNotes}
                     onChange={(e) => setOrderNotes(e.target.value)}
                     rows={3}
-                    placeholder="Delivery instructions, preferred time, message for gift card, etc."
+                    placeholder="Delivery instructions, preferred time, etc."
                     className="w-full px-4 py-3 border-2 rounded-xl bg-gray-50 border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                   />
                 </div>

@@ -452,7 +452,7 @@ const Home: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <img src="/logo.webp" alt="VZOT" className="h-14 w-auto" />
                   <div>
-                    <p className="text-white/80">Finish that looks and lasts. Service that keeps you running.</p>
+                    <p className="text-white/80">SMART ACCESSORIES, SMARTER YOU</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       
                       <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs">Bulk B2B</span>
@@ -465,17 +465,17 @@ const Home: React.FC = () => {
           </div>
 
           {/* Quick categories (glass chips) */}
-          <div className="mt-10 lg:mt-14">
+          <div className="mt-10 lg:mt-14">   
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-6 md:gap-8">
               {[
                 { label: 'Neckband', slug: 'neckband', img: '/Neckband-removebg-preview.png' },
-                { label: 'TWS', slug: 'tws', img: '/Earbud-removebg-preview.png' },
+                { label: 'TWS', slug: 'tws', img: '/Earbud-removebg-preview.png' }, 
                 { label: 'Chargers', slug: 'chargers', img: '/Charger1.webp' },
                 { label: 'Power Banks', slug: 'power-bank', img: '/Powerbank.webp' },
                 { label: 'Data Cables', slug: 'Data-Cables', img: '/cable.png' },
                 { label: 'Car Charger', slug: 'Car-Charger', img: '/CarCharger.webp' },
                 { label: 'Speakers', slug: 'bluetooth-speakers', img: '/Bluetooth-Speaker.webp' },
-                { label: 'Mobile ICs', slug: 'ICs', img: '/ics.webp' },
+             
               ].map((c) => (
                 <button
                   key={c.slug}

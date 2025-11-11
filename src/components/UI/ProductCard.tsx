@@ -1,3 +1,4 @@
+// src/components/Products/ProductCard.tsx
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -7,6 +8,7 @@ import { useCart } from '../../hooks/useCart';
 import { useWishlist } from '../../hooks/useWishlist';
 import { getFirstImageUrl } from '../../utils/imageUtils';
 import toast from 'react-hot-toast';
+import { usePricingMode } from '../../context/PricingModeProvider';
 
 export interface ProductCardProps {
   product: Product;
@@ -18,7 +20,7 @@ export interface ProductCardProps {
 
 const isValidObjectId = (s?: string) => !!s && /^[a-f\d]{24}$/i.test(s);
 const fmtPrice = (p?: number, currency = 'INR') => {
-  if (typeof p !== 'number') return 'Contact for price';
+  if (typeof p !== 'number' || !Number.isFinite(p)) return 'Contact for price';
   const symbol = currency === 'INR' ? '₹' : '';
   return `${symbol}${p.toLocaleString('en-IN')}`;
 };
@@ -79,6 +81,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const location = useLocation();
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
+  const { mode } = usePricingMode();
 
   const [imageError, setImageError] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -89,13 +92,21 @@ const ProductCard: React.FC<ProductCardProps> = ({
   const inWishlist = productId ? isInWishlist(productId) : false;
 
   const imageUrl = getFirstImageUrl(product.images);
+
+  // ----- Pricing mode + wholesale handling (single source of truth) -----
+  const wholesaleEnabled = Boolean((product as any).wholesaleEnabled);
+  const wholesalePrice = coerceNumber((product as any).wholesalePrice);
+  const wholesaleMinQty = coerceNumber((product as any).wholesaleMinQty) ?? 1;
+  const wholesaleActive = mode === 'wholesale' && wholesaleEnabled && typeof wholesalePrice === 'number';
+
+  const unitPrice = wholesaleActive ? (wholesalePrice as number) : product.price;
+  const minQty = wholesaleActive ? wholesaleMinQty : 1;
+
   const compareAt = (product as any).compareAtPrice ?? (product as any).originalPrice;
   const comparePrice = typeof compareAt === 'number' ? compareAt : Number(compareAt);
   const hasDiscount =
-    typeof product.price === 'number' &&
-    Number.isFinite(comparePrice) &&
-    comparePrice > product.price;
-  const discountPct = hasDiscount ? Math.round(((comparePrice - product.price) / comparePrice) * 100) : 0;
+    Number.isFinite(comparePrice) && Number.isFinite(unitPrice) && (comparePrice as number) > (unitPrice as number);
+  const discountPct = hasDiscount ? Math.round(((comparePrice - (unitPrice as number)) / comparePrice) * 100) : 0;
 
   const avgRating = reviewSummary?.averageRating ?? getInitialAverageRating(product);
   const revCount = reviewSummary?.reviewCount ?? getInitialReviewCount(product);
@@ -133,8 +144,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
         toast.error('Product ID not found or invalid link');
         return;
       }
-      await addToCart(productId, 1);
-      toast.success('Added to cart!');
+      // Enforce stock and MOQ
+      const stock = coerceNumber((product as any).stockQuantity) ?? 0;
+      if (stock < minQty) {
+        toast.error(`Insufficient stock. Required MOQ: ${minQty}`);
+        return;
+      }
+      await addToCart(productId, minQty); // MOQ respected
+      toast.success(wholesaleActive ? `Added ${minQty} (Wholesale)` : 'Added to cart');
     } catch (error: any) {
       toast.error(error?.message || 'Failed to add to cart');
     }
@@ -152,7 +169,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
         toast.error('Product ID not found or invalid link');
         return;
       }
-      await addToCart(productId, 1);
+      const stock = coerceNumber((product as any).stockQuantity) ?? 0;
+      if (stock < minQty) {
+        toast.error(`Insufficient stock. Required MOQ: ${minQty}`);
+        return;
+      }
+      await addToCart(productId, minQty);
       navigate('/cart');
     } catch (error: any) {
       toast.error(error?.message || 'Could not proceed to checkout');
@@ -255,13 +277,20 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
 
+          {/* Wholesale badge */}
+          {wholesaleActive && (
+            <div className="absolute top-2 right-2 bg-emerald-600/90 backdrop-blur px-2 py-1 rounded-md text-[11px] font-semibold text-white z-10">
+              Wholesale • MOQ {minQty}
+            </div>
+          )}
+
           {showWishlist && (
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleWishlistToggle}
               disabled={wishlistLoading}
-              className={`absolute top-2 right-2 inline-flex ${btnGhost} h-9 w-9 p-0 min-w-[2.25rem] sm:h-10 sm:w-10 bg-black/30 backdrop-blur z-20`}
+              className={`absolute ${wholesaleActive ? 'top-10' : 'top-2'} right-2 inline-flex ${btnGhost} h-9 w-9 p-0 min-w-[2.25rem] sm:h-10 sm:w-10 bg-black/30 backdrop-blur z-20`}
               title={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
               aria-pressed={inWishlist}
               aria-label={inWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
@@ -279,11 +308,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Content */}
         <div className={isList ? 'flex-1 min-w-0' : 'p-4'}>
-          <h3
-            className={
-              'text-lg font-semibold text-white mb-2 line-clamp-2 ' + (isList ? 'mt-0' : '')
-            }
-          >
+          <h3 className={'text-lg font-semibold text-white mb-2 line-clamp-2 ' + (isList ? 'mt-0' : '')}>
             {product.name}
           </h3>
 
@@ -292,9 +317,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               {[...Array(5)].map((_, i) => (
                 <Star
                   key={i}
-                  className={
-                    'h-4 w-4 ' + (i < Math.floor(roundedAvg) ? 'text-yellow-400 fill-current' : 'text-white/20')
-                  }
+                  className={'h-4 w-4 ' + (i < Math.floor(roundedAvg) ? 'text-yellow-400 fill-current' : 'text-white/20')}
                 />
               ))}
             </div>
@@ -303,7 +326,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-baseline space-x-2">
-              <span className="text-xl font-bold text-white">{fmtPrice(product.price, currency)}</span>
+              <span className="text-xl font-bold text-white">{fmtPrice(unitPrice, currency)}</span>
+
+              {wholesaleActive && (
+                <span className="ml-2 text-[11px] px-2 py-1 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">
+                  MOQ {minQty}
+                </span>
+              )}
+
               {hasDiscount && (
                 <span className="text-sm text-white/50 line-through" aria-label="MRP">
                   {fmtPrice(comparePrice, currency)}
@@ -321,6 +351,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
               {inStock === false ? 'Out of Stock' : 'In Stock'}
             </span>
           </div>
+
+          {wholesaleActive && (
+            <div className="text-[11px] text-white/70 mb-2">
+              Wholesale mode active. MOQ <span className="font-semibold text-white">{minQty}</span>.
+            </div>
+          )}
 
           <div className="mt-3 flex items-center gap-2">
             <motion.button

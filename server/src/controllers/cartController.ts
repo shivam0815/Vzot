@@ -8,7 +8,7 @@ import Product from "../models/Product";
 /* ────────────────────────────────────────────────────────────── */
 /* CACHE                                                          */
 /* ────────────────────────────────────────────────────────────── */
-const cartCache = new NodeCache({ stdTTL: 10, checkperiod: 20 }); // cache per user 10s
+const cartCache = new NodeCache({ stdTTL: 10, checkperiod: 20 }); // cache per user+mode 10s
 
 interface AuthenticatedUser {
   id: string;
@@ -16,6 +16,53 @@ interface AuthenticatedUser {
   email?: string;
   name?: string;
 }
+
+/* ────────────────────────────────────────────────────────────── */
+/* PRICING MODE HELPERS                                           */
+/* ────────────────────────────────────────────────────────────── */
+type PricingMode = "retail" | "wholesale";
+
+const getMode = (req: Request): PricingMode => {
+  const raw =
+    (req.headers["x-pricing-mode"] as string) ||
+    (req.query.pricingMode as string) ||
+    (req.body?.pricingMode as string) ||
+    "retail";
+  return String(raw).toLowerCase() === "wholesale" ? "wholesale" : "retail";
+};
+
+const unitPriceFor = (product: any, mode: PricingMode) =>
+  mode === "wholesale" &&
+  product?.wholesaleEnabled &&
+  Number(product?.wholesalePrice) > 0
+    ? Number(product.wholesalePrice)
+    : Number(product.price);
+
+const minQtyFor = (product: any, mode: PricingMode) =>
+  mode === "wholesale" &&
+  product?.wholesaleEnabled &&
+  Number(product?.wholesaleMinQty) > 0
+    ? Number(product.wholesaleMinQty)
+    : 1;
+
+const clampQty = (desired: number, minQty: number, stock: number) => {
+  if (stock < minQty) return 0; // cannot satisfy MOQ with available stock
+  if (desired < minQty) return minQty; // bump to MOQ
+  return Math.min(desired, stock);
+};
+
+const recomputeTotal = (cart: any) => {
+  cart.totalAmount = (cart.items || []).reduce(
+    (sum: number, it: any) =>
+      sum + Number(it.price || 0) * Number(it.quantity || 0),
+    0
+  );
+  return cart.totalAmount;
+};
+
+const delBothModeCaches = (userId: string) => {
+  cartCache.del([`cart:${userId}:retail`, `cart:${userId}:wholesale`]);
+};
 
 /* ────────────────────────────────────────────────────────────── */
 /* GET CART                                                       */
@@ -28,26 +75,56 @@ export const getCart = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const cacheKey = `cart:${user.id}`;
+    const mode = getMode(req);
+    const cacheKey = `cart:${user.id}:${mode}`;
     const cached = cartCache.get(cacheKey);
     if (cached) {
-      res.json({ cart: cached, cached: true });
+      res.json({ cart: cached, cached: true, mode });
       return;
     }
 
     const cart = await Cart.findOne({ userId: user.id }).populate("items.productId");
-    const cartData = cart || { items: [], totalAmount: 0 };
 
-    cartCache.set(cacheKey, cartData);
-    res.json({ cart: cartData, cached: false });
+    // Narrow the union and get a plain object safely
+    const base =
+      cart
+        ? (typeof (cart as any).toObject === "function"
+            ? (cart as any).toObject()
+            : (cart as any))
+        : { items: [], totalAmount: 0 };
+
+    // Build a mode-aware view without mutating DB
+    const items = (base.items || []).map((it: any) => {
+      const p = it.productId || {};
+      const unit = unitPriceFor(p, mode);
+      return {
+        ...(typeof it.toObject === "function" ? it.toObject() : it),
+        effectiveUnitPrice: unit,
+        productId: p,
+      };
+    });
+
+    const mapped = {
+      ...base,
+      items,
+      computedTotal: items.reduce(
+        (s: number, it: any) =>
+          s + Number(it.effectiveUnitPrice) * Number(it.quantity),
+        0
+      ),
+    };
+
+    cartCache.set(cacheKey, mapped);
+    res.json({ cart: mapped, cached: false, mode });
   } catch (error) {
     console.error("Get cart error:", error);
     res.status(500).json({ message: "Server error" });
   }
 };
 
+
 /* ────────────────────────────────────────────────────────────── */
-/* ADD TO CART (no MOQ / no max per line, only stock cap)        */
+/* ADD TO CART (MOQ + wholesale price enforced by server)         */
 /* ────────────────────────────────────────────────────────────── */
 export const addToCart = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -55,108 +132,109 @@ export const addToCart = async (req: Request, res: Response): Promise<void> => {
     const user = req.user as AuthenticatedUser;
 
     if (!productId || !user?.id) {
-      res.status(400).json({ message: "Product ID and user authentication required" });
+      res
+        .status(400)
+        .json({ message: "Product ID and user authentication required" });
       return;
     }
 
-    // Find product
-    let product: any;
-    if (mongoose.Types.ObjectId.isValid(productId)) {
-      product = await Product.findById(productId);
-    } else {
-      const allProducts = await Product.find({ isActive: true }).sort({ createdAt: 1 });
-      const productIndex = parseInt(productId, 10) - 1;
-      if (productIndex >= 0 && productIndex < allProducts.length) {
-        product = allProducts[productIndex];
-      }
-    }
+    const product = mongoose.Types.ObjectId.isValid(productId)
+      ? await Product.findById(productId)
+      : null;
 
     if (!product || !product.isActive || !product.inStock) {
       res.status(404).json({ message: "Product not found or unavailable" });
       return;
     }
 
+    const mode = getMode(req);
     const stock = Math.max(0, Number(product.stockQuantity ?? 0));
+    const minQty = minQtyFor(product, mode);
+    const unit = unitPriceFor(product, mode);
+
     if (stock < 1) {
-      res.status(400).json({
-        message: "Insufficient stock",
-        available: stock,
-        requested: Number(quantity) || 1,
-      });
+      res.status(400).json({ message: "Insufficient stock" });
+      return;
+    }
+    if (mode === "wholesale" && !product.wholesaleEnabled) {
+      res
+        .status(400)
+        .json({ message: "Wholesale mode not available for this product" });
       return;
     }
 
     let cart = await Cart.findOne({ userId: user.id });
+    if (!cart) cart = new Cart({ userId: user.id, items: [], totalAmount: 0 });
 
-    if (!cart) {
-      const desired = Math.max(1, Number(quantity) || 1);
-      const allowed = Math.min(desired, stock);
-      if (allowed < 1) {
+    const idx = cart.items.findIndex(
+      (it: any) => String(it.productId) === String(product._id)
+    );
+    if (idx > -1) {
+      const current = Number(cart.items[idx].quantity || 0);
+      const desired = current + Math.max(1, Number(quantity) || 1);
+      const allowed = clampQty(desired, minQty, stock);
+      if (allowed === 0 || allowed === current) {
         res.status(400).json({
-          message: "Insufficient stock",
+          message: "Cannot add more items - insufficient stock or below MOQ",
           available: stock,
-          requested: desired,
+          minQty,
         });
         return;
       }
-      cart = new Cart({
-        userId: user.id,
-        items: [{ productId: product._id, quantity: allowed, price: product.price }],
-      });
+      cart.items[idx].quantity = allowed;
+      cart.items[idx].price = unit; // set unit price for this mode
     } else {
-      const existingItemIndex = cart.items.findIndex(
-        (item) => item.productId.toString() === product._id.toString()
-      );
-
-      if (existingItemIndex > -1) {
-        const currentQty = Number(cart.items[existingItemIndex].quantity || 0);
-        const desired = currentQty + Math.max(1, Number(quantity) || 1);
-        const allowed = Math.min(desired, stock);
-
-        if (allowed === currentQty) {
-          res.status(400).json({
-            message: "Cannot add more items - insufficient stock",
-            available: stock,
-            currentInCart: currentQty,
-          });
-          return;
-        }
-        cart.items[existingItemIndex].quantity = allowed;
-        cart.items[existingItemIndex].price = product.price;
-      } else {
-        const desired = Math.max(1, Number(quantity) || 1);
-        const allowed = Math.min(desired, stock);
-        if (allowed < 1) {
-          res.status(400).json({
-            message: "Insufficient stock",
-            available: stock,
-            requested: desired,
-          });
-          return;
-        }
-        cart.items.push({ productId: product._id, quantity: allowed, price: product.price });
+      const desired = Math.max(1, Number(quantity) || 1);
+      const allowed = clampQty(desired, minQty, stock);
+      if (allowed === 0) {
+        res.status(400).json({
+          message: "Insufficient stock to meet MOQ",
+          available: stock,
+          minQty,
+        });
+        return;
       }
+      cart.items.push({
+        productId: product._id,
+        quantity: allowed,
+        price: unit,
+      });
     }
 
+    recomputeTotal(cart);
     await cart.save();
     await cart.populate("items.productId");
 
-    cartCache.del(`cart:${user.id}`); // invalidate cache
+    delBothModeCaches(user.id);
 
-    res.status(200).json({ success: true, message: "Item added to cart successfully", cart });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: "Item added to cart successfully",
+        cart,
+        mode,
+        minQty,
+      });
   } catch (error: any) {
     console.error("❌ Add to cart error:", error);
-    res.status(500).json({ success: false, message: error.message || "Internal server error" });
+    res
+      .status(500)
+      .json({ success: false, message: error.message || "Internal server error" });
   }
 };
 
 /* ────────────────────────────────────────────────────────────── */
-/* UPDATE CART ITEM (no MOQ / no max, only stock cap)            */
+/* UPDATE CART ITEM (MOQ + wholesale price enforced)              */
 /* ────────────────────────────────────────────────────────────── */
-export const updateCartItem = async (req: Request, res: Response): Promise<void> => {
+export const updateCartItem = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { productId, quantity } = req.body;
     const user = req.user as AuthenticatedUser;
+    const mode = getMode(req);
 
     const desired = Math.max(1, Number(quantity) || 1);
 
@@ -166,10 +244,10 @@ export const updateCartItem = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const itemIndex = cart.items.findIndex(
-      (item) => item.productId.toString() === String(productId)
+    const idx = cart.items.findIndex(
+      (it) => String(it.productId) === String(productId)
     );
-    if (itemIndex === -1) {
+    if (idx === -1) {
       res.status(404).json({ message: "Item not found in cart" });
       return;
     }
@@ -181,22 +259,27 @@ export const updateCartItem = async (req: Request, res: Response): Promise<void>
     }
 
     const stock = Math.max(0, Number(product.stockQuantity ?? 0));
-    if (stock < 1) {
-      res.status(400).json({ message: "Insufficient stock" });
+    const minQty = minQtyFor(product, mode);
+    const unit = unitPriceFor(product, mode);
+
+    const allowed = clampQty(desired, minQty, stock);
+    if (allowed === 0) {
+      res
+        .status(400)
+        .json({ message: "Insufficient stock to meet MOQ", available: stock, minQty });
       return;
     }
 
-    const allowed = Math.min(desired, stock);
+    cart.items[idx].quantity = allowed;
+    cart.items[idx].price = unit;
 
-    cart.items[itemIndex].quantity = allowed;
-    cart.items[itemIndex].price = product.price;
-
+    recomputeTotal(cart);
     await cart.save();
     await cart.populate("items.productId");
 
-    cartCache.del(`cart:${user.id}`); // invalidate cache
+    delBothModeCaches(user.id);
 
-    res.json({ message: "Cart updated", cart });
+    res.json({ message: "Cart updated", cart, mode, minQty });
   } catch (error: any) {
     console.error("Update cart error:", error);
     res.status(500).json({ message: error.message || "Server error" });
@@ -206,7 +289,10 @@ export const updateCartItem = async (req: Request, res: Response): Promise<void>
 /* ────────────────────────────────────────────────────────────── */
 /* REMOVE FROM CART                                               */
 /* ────────────────────────────────────────────────────────────── */
-export const removeFromCart = async (req: Request, res: Response): Promise<void> => {
+export const removeFromCart = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { productId } = req.params;
     const user = req.user as AuthenticatedUser;
@@ -217,12 +303,15 @@ export const removeFromCart = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    cart.items = cart.items.filter((item) => item.productId.toString() !== String(productId));
+    cart.items = cart.items.filter(
+      (item) => String(item.productId) !== String(productId)
+    );
 
+    recomputeTotal(cart);
     await cart.save();
     await cart.populate("items.productId");
 
-    cartCache.del(`cart:${user.id}`); // invalidate cache
+    delBothModeCaches(user.id);
 
     res.json({ message: "Item removed from cart", cart });
   } catch (error: any) {
@@ -239,7 +328,7 @@ export const clearCart = async (req: Request, res: Response): Promise<void> => {
     const user = req.user as AuthenticatedUser;
     await Cart.findOneAndDelete({ userId: user?.id });
 
-    cartCache.del(`cart:${user.id}`); // invalidate cache
+    delBothModeCaches(user.id);
 
     res.json({ message: "Cart cleared" });
   } catch (error: any) {

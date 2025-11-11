@@ -1,5 +1,5 @@
 // src/pages/Register.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
+import VZOTBackground from '../components/Layout/VZOTBackground';
 
 interface RegisterFormData {
   name: string;
@@ -132,24 +133,11 @@ const Register: React.FC = () => {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <img
-        src="/login.webp"
-        alt="E-commerce hero"
-        className="pointer-events-none select-none absolute inset-0 -z-10 h-full w-full object-cover"
-      />
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-transparent via-white/10 to-white/80" />
-
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
-        <div className="rounded-t-2xl bg-white/95 backdrop-blur-sm shadow-sm ring-1 ring-black/5 py-3">
-          <div className="flex items-center justify-center gap-3">
-            <img src="/logo.webp" alt="Nakoda Mobile" className="h-8 w-8 rounded-lg ring-1 ring-black/5 object-contain" />
-            <span className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">VZOT</span>
-          </div>
-        </div>
-      </div>
+      {/* Only gradient background */}
+      <VZOTBackground />
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex min-h-[calc(100vh-130px)] items-center lg:justify-end justify-center">
+        <div className="flex min-h-screen items-center justify-center">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -157,24 +145,24 @@ const Register: React.FC = () => {
             className="w-full max-w-md rounded-[28px] bg-white/95 backdrop-blur-sm shadow-[0_20px_60px_rgba(2,6,23,0.18)] ring-1 ring-black/5 p-6 md:p-8"
           >
             <div className="text-center mb-2">
-              <div className="mx-auto h-14 w-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-4">
+              <div className="mx-auto h-14 w-14 bg-[#33e49c] rounded-full flex items-center justify-center shadow-lg shadow-[#33e49c]/20 mb-4">
                 <User className="h-7 w-7 text-white" />
               </div>
               <h2 className="text-2xl font-semibold text-gray-900">Create your account</h2>
               <p className="text-sm text-gray-600 mt-1">Join thousands of satisfied customers</p>
             </div>
 
-            {/* Google only. Phone OTP removed */}
+            {/* Google only */}
             <div className="mt-6">
               <button
                 type="button"
                 onClick={() => handleSocialLogin('google')}
                 disabled={socialLoading === 'google'}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#33e49c] disabled:opacity-50"
               >
                 {socialLoading === 'google'
-                  ? <div className="animate-spin h-5 w-5 border-2 border-emerald-600 border-t-transparent rounded-full" />
-                  : <Chrome className="h-5 w-5 text-red-500" />
+                  ? <div className="animate-spin h-5 w-5 border-2 border-[#33e49c] border-t-transparent rounded-full" />
+                  : <Chrome className="h-5 w-5 text-[#103744]" />
                 }
                 <span className="text-gray-800 font-medium">Sign up with Google</span>
               </button>
@@ -199,7 +187,7 @@ const Register: React.FC = () => {
                   <input
                     id="name" name="name" type="text" autoComplete="name" required
                     value={formData.name} onChange={handleChange} placeholder="Enter your full name"
-                    className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33e49c] focus:border-transparent"
                   />
                 </div>
               </div>
@@ -214,7 +202,7 @@ const Register: React.FC = () => {
                     id="email" name="email" type="email" autoComplete="email" required
                     value={formData.email} onChange={handleChange} placeholder="Enter your email"
                     className={`block w-full rounded-xl bg-white pl-10 pr-10 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent ${
-                      emailExists ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-emerald-500'
+                      emailExists ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-[#33e49c]'
                     }`}
                   />
                   {emailExists && (
@@ -232,7 +220,6 @@ const Register: React.FC = () => {
                 )}
               </div>
 
-              {/* Phone is now required */}
               <div>
                 <label htmlFor="phone" className="block text-sm font-medium text-gray-800 mb-1.5">
                   Phone Number *
@@ -249,7 +236,7 @@ const Register: React.FC = () => {
                     maxLength={15}
                     pattern="^[0-9]{7,15}$"
                     title="Enter 7 to 15 digits"
-                    className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33e49c] focus:border-transparent"
                   />
                 </div>
               </div>
@@ -264,7 +251,7 @@ const Register: React.FC = () => {
                     id="password" name="password" type={showPassword ? 'text' : 'password'}
                     autoComplete="new-password" required value={formData.password} onChange={handleChange}
                     placeholder="Create a strong password"
-                    className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-12 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-12 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33e49c] focus:border-transparent"
                   />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center">
                     {showPassword ? <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" /> : <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />}
@@ -314,7 +301,7 @@ const Register: React.FC = () => {
                     className={`block w-full rounded-xl bg-white pl-10 pr-12 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent ${
                       formData.confirmPassword && formData.password !== formData.confirmPassword
                         ? 'border-red-300 focus:ring-red-500'
-                        : 'border-gray-300 focus:ring-emerald-500'
+                        : 'border-gray-300 focus:ring-[#33e49c]'
                     }`}
                   />
                   <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center">
@@ -337,13 +324,13 @@ const Register: React.FC = () => {
                 <input
                   id="agreeToTerms" name="agreeToTerms" type="checkbox"
                   checked={formData.agreeToTerms} onChange={handleChange}
-                  className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded mt-1"
+                  className="h-4 w-4 text-[#33e49c] focus:ring-[#33e49c] border-gray-300 rounded mt-1"
                 />
                 <label htmlFor="agreeToTerms" className="ml-3 text-sm text-gray-600">
                   I agree to the{' '}
-                  <Link to="/terms" className="text-emerald-600 hover:text-emerald-500 font-medium">Terms and Conditions</Link>{' '}
+                  <Link to="/terms" className="text-[#33e49c] hover:text-[#22c98c] font-medium">Terms and Conditions</Link>{' '}
                   and{' '}
-                  <Link to="/privacy" className="text-emerald-600 hover:text-emerald-500 font-medium">Privacy Policy</Link>
+                  <Link to="/privacy" className="text-[#33e49c] hover:text-[#22c98c] font-medium">Privacy Policy</Link>
                 </label>
               </div>
 
@@ -351,7 +338,7 @@ const Register: React.FC = () => {
                 whileHover={{ scale: 1.005 }} whileTap={{ scale: 0.99 }}
                 type="submit"
                 disabled={isLoading || !formData.agreeToTerms || passwordStrength.score < 3}
-                className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold py-3 shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50"
+                className="w-full rounded-xl bg-[#33e49c] text-white font-semibold py-3 shadow-lg shadow-[#33e49c]/20 hover:bg-[#22c98c] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#33e49c] disabled:opacity-50"
               >
                 {isLoading ? 'Creating account…' : 'Create account'}
               </motion.button>
@@ -359,7 +346,7 @@ const Register: React.FC = () => {
 
             <div className="mt-5 text-center text-sm text-gray-700">
               Already have an account?{' '}
-              <Link to="/login" className="font-medium text-emerald-600 hover:text-emerald-500">Sign in</Link>
+              <Link to="/login" className="font-medium text-[#33e49c] hover:text-[#22c98c]">Sign in</Link>
             </div>
           </motion.div>
         </div>

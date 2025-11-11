@@ -1,14 +1,25 @@
-// src/pages/Cart.tsx — glass cards on dark gradient
+// src/pages/Cart.tsx — dark glass cart with dynamic wholesale pricing (frontend-only)
 import React, { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Minus, Trash2, ShoppingBag, ArrowLeft, ImageIcon, BadgePercent, ShieldCheck, Truck } from 'lucide-react';
+import {
+  Plus,
+  Minus,
+  Trash2,
+  ShoppingBag,
+  ArrowLeft,
+  ImageIcon,
+  BadgePercent,
+  ShieldCheck,
+  Truck
+} from 'lucide-react';
 import { useCartContext } from '../context/CartContext';
 import { useAuth } from '../hooks/useAuth';
 import toast from 'react-hot-toast';
 import type { CartItem } from '../types';
 import VZOTBackground from '../components/Layout/VZOTBackground';
-/* -------- Config (B2C: no MOQ) -------- */
+
+/* -------- Helpers -------- */
 const clampCartQty = (q: number) => Math.max(1, Math.floor(q || 1));
 const getMaxQtyFromItem = (item: any): number => {
   const p = item?.productId || item || {};
@@ -17,6 +28,7 @@ const getMaxQtyFromItem = (item: any): number => {
 };
 const getItemId = (item: any): string =>
   String(item?.productId?._id || item?.productId?.id || item?.productId || item?._id || item?.id || '');
+
 const FREE_SHIP_MIN = 1999;
 const SHIPPING_FLAT = 150;
 
@@ -25,15 +37,17 @@ const Cart: React.FC = () => {
     cartItems,
     updateQuantity,
     removeFromCart,
-    getTotalPrice,
-    getTotalItems,
-    isLoading,
-    error,
     refreshCart,
+    isLoading,
+    error
   } = useCartContext();
 
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // read current pricing mode set by header toggle
+  const pricingMode: 'retail' | 'wholesale' =
+    (localStorage.getItem('pricingMode') as any) === 'wholesale' ? 'wholesale' : 'retail';
 
   useEffect(() => {
     refreshCart(true);
@@ -68,7 +82,11 @@ const Cart: React.FC = () => {
 
   const renderProductImage = (item: any) => {
     const productData = item.productId || {};
-    const imageUrl = productData.image || productData.images?.[0] || item.image || item.images?.[0];
+    const imageUrl =
+      productData.image ||
+      productData.images?.[0] ||
+      item.image ||
+      item.images?.[0];
     const altText = String(productData.name || item.name || 'Product');
 
     return (
@@ -130,17 +148,47 @@ const Cart: React.FC = () => {
     );
   }
 
-  // Filled
-  const subtotal = getTotalPrice();
-  const totalItems = getTotalItems();
+  /* ------- Price resolver: retail vs wholesale per line ------- */
+  const getEffectiveUnit = (it: any) => {
+    const p = it?.productId || {};
+    const retail = Number(it?.unitRetailPrice ?? it?.price ?? p?.price ?? 0);
+    const wsEnabled = Boolean(p?.wholesaleEnabled ?? it?.wholesaleEnabled);
+    const wsPrice = Number(it?.wholesalePrice ?? p?.wholesalePrice);
+    const moq = Number(it?.moqApplied ?? p?.wholesaleMinQty ?? 1);
+    const qty = Number(it?.quantity ?? 1);
+
+    const eligible =
+      pricingMode === 'wholesale' &&
+      wsEnabled &&
+      Number.isFinite(wsPrice) &&
+      qty >= Math.max(1, moq);
+
+    return {
+      unit: eligible ? wsPrice : retail,
+      eligibleWholesale: eligible,
+      wsMin: Math.max(1, moq),
+      wsEnabled,
+      retail
+    };
+  };
+
+  /* Subtotal computed from effective unit per line */
+  const subtotal = cartItems.reduce((sum, it) => {
+    const { unit } = getEffectiveUnit(it);
+    const qty = Number(it?.quantity ?? 1);
+    return sum + unit * qty;
+  }, 0);
+
+  const totalItems = cartItems.reduce((n, it) => n + Number(it?.quantity ?? 0), 0);
   const qualifiesFree = subtotal >= FREE_SHIP_MIN;
   const shippingFee = qualifiesFree ? 0 : subtotal > 0 ? SHIPPING_FLAT : 0;
   const grandTotal = subtotal + shippingFee;
   const freeProgress = Math.min(100, Math.round((subtotal / FREE_SHIP_MIN) * 100));
 
   return (
-     <div className="relative min-h-screen text-white">
+    <div className="relative min-h-screen text-white">
       <VZOTBackground />
+
       <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 sm:mb-6">
@@ -155,8 +203,12 @@ const Cart: React.FC = () => {
           </div>
         </div>
 
-        {/* Free shipping bar (glass) */}
-        <div className={`mb-4 sm:mb-6 rounded-xl border ${qualifiesFree ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-white/10 bg-white/5'} backdrop-blur-sm`}>
+        {/* Free shipping bar */}
+        <div
+          className={`mb-4 sm:mb-6 rounded-xl border ${
+            qualifiesFree ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-white/10 bg-white/5'
+          } backdrop-blur-sm`}
+        >
           <div className="p-3 sm:p-4 flex items-center gap-3">
             <Truck className={`h-5 w-5 ${qualifiesFree ? 'text-emerald-300' : 'text-sky-300'}`} />
             <div className="flex-1">
@@ -184,56 +236,47 @@ const Cart: React.FC = () => {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Cart Items (glass card) */}
+          {/* Cart Items */}
           <div className="lg:col-span-2">
             <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm">
               <div className="p-3 sm:p-4 border-b border-white/10 flex items-center justify-between">
                 <h2 className="text-base sm:text-lg font-semibold text-white">Items</h2>
-                <div className="text-xs text-white/60">Tap and hold on quantity for faster edits</div>
+                <div className="text-xs text-white/60">
+                  {pricingMode === 'wholesale' ? 'Wholesale mode active' : 'Retail mode active'}
+                </div>
               </div>
 
               <div className="p-3 sm:p-4 space-y-3">
                 <AnimatePresence initial={false}>
                   {cartItems.map((item: any, index: number) => {
-                    let itemId = '';
-                    let productName = '';
-                    let productPrice = 0;
-                    let productCategory = '';
-                    let itemQuantity = 0;
+                    const p = item?.productId || {};
+                    const itemId = getItemId(item);
+                    const productName = String(p?.name ?? item?.name ?? 'Unknown Product');
+                    const productCategory = String(p?.category ?? item?.category ?? '');
+                    const quantity = Number(item?.quantity ?? 1);
+                    const maxQty = getMaxQtyFromItem(item);
 
-                    try {
-                      if (item.productId && typeof item.productId === 'object') {
-                        itemId = String(item.productId._id || item.productId.id || '');
-                        productName = String(item.productId.name || 'Unknown Product');
-                        productPrice = Number(item.price ?? item.productId.price ?? 0);
-                        productCategory = String(item.productId.category || '');
-                      } else {
-                        itemId = String(item.productId ?? item._id ?? item.id ?? '');
-                        productName = String(item.name || 'Unknown Product');
-                        productPrice = Number(item.price ?? 0);
-                        productCategory = String(item.category || '');
-                      }
-                      itemQuantity = Number(item.quantity || 0);
-                    } catch {
-                      return (
-                        <div key={`error-${index}`} className="p-3 bg-rose-500/10 border border-rose-400/30 rounded-md text-sm text-rose-100">
-                          Error loading an item. Refresh the page.
-                        </div>
-                      );
-                    }
+                    const { unit, eligibleWholesale, wsMin, wsEnabled, retail } = getEffectiveUnit(item);
+                    const atMin =
+                      pricingMode === 'wholesale' && wsEnabled
+                        ? quantity <= Math.max(1, wsMin)
+                        : quantity <= 1;
+                    const atMax = quantity >= maxQty;
+
+                    const minQtyForStepper =
+                      pricingMode === 'wholesale' && wsEnabled ? Math.max(1, wsMin) : 1;
 
                     const uniqueKey = itemId ? `${itemId}-${index}` : `fallback-${index}`;
                     if (!itemId || !productName) {
                       return (
-                        <div key={`err-${index}`} className="p-3 bg-rose-500/10 border border-rose-400/30 rounded-md text-sm text-rose-100">
+                        <div
+                          key={`err-${index}`}
+                          className="p-3 bg-rose-500/10 border border-rose-400/30 rounded-md text-sm text-rose-100"
+                        >
                           Error loading item. Please refresh.
                         </div>
                       );
                     }
-
-                    const maxQty = getMaxQtyFromItem(item);
-                    const atMin = itemQuantity <= 1;
-                    const atMax = itemQuantity >= maxQty;
 
                     return (
                       <motion.div
@@ -250,23 +293,36 @@ const Cart: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <h3 className="text-sm sm:text-base font-medium text-white truncate">{productName}</h3>
+                                <h3 className="text-sm sm:text-base font-medium text-white truncate">
+                                  {productName}
+                                  {eligibleWholesale && (
+                                    <span className="ml-2 text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/20">
+                                      Wholesale • MOQ {wsMin}
+                                    </span>
+                                  )}
+                                </h3>
                                 {productCategory && (
-                                  <p className="text-[11px] sm:text-xs text-white/60 mt-0.5 truncate">{productCategory}</p>
+                                  <p className="text-[11px] sm:text-xs text-white/60 mt-0.5 truncate">
+                                    {productCategory}
+                                  </p>
                                 )}
                               </div>
                               <div className="hidden sm:block text-right">
-                                <p className="text-base font-semibold text-white">₹{productPrice.toLocaleString()}</p>
-                                <p className="text-[11px] text-white/60">per item</p>
+                                <p className="text-base font-semibold text-white">
+                                  ₹{unit.toLocaleString()}
+                                </p>
+                                <p className="text-[11px] text-white/60">
+                                  per item{eligibleWholesale ? ' (WS)' : ' (Retail)'}
+                                </p>
                               </div>
                             </div>
 
                             <div className="mt-2 flex items-center justify-between gap-3">
-                              {/* Qty stepper (glass) */}
+                              {/* Qty stepper with correct min */}
                               <div className="inline-flex items-center rounded-md border border-white/15 bg-white/10 backdrop-blur px-1">
                                 <button
                                   type="button"
-                                  onClick={() => handleQuantityUpdate(item, itemQuantity - 1)}
+                                  onClick={() => handleQuantityUpdate(item, quantity - 1)}
                                   className="p-1.5 sm:p-2 disabled:opacity-50 hover:bg-white/10 rounded"
                                   disabled={isLoading || atMin}
                                   aria-label="Decrease quantity"
@@ -276,16 +332,19 @@ const Cart: React.FC = () => {
                                 <input
                                   aria-label="Quantity"
                                   className="w-10 sm:w-12 text-center py-1 outline-none text-sm bg-transparent text-white"
-                                  value={itemQuantity}
+                                  value={quantity}
+                                  min={minQtyForStepper}
                                   onChange={(e) => {
-                                    const n = parseInt(e.target.value.replace(/\D/g, '') || '1', 10);
+                                    const raw = e.target.value.replace(/\D/g, '');
+                                    const parsed = raw === '' ? minQtyForStepper : parseInt(raw, 10);
+                                    const n = Math.max(minQtyForStepper, parsed);
                                     handleQuantityUpdate(item, n);
                                   }}
                                   inputMode="numeric"
                                 />
                                 <button
                                   type="button"
-                                  onClick={() => handleQuantityUpdate(item, itemQuantity + 1)}
+                                  onClick={() => handleQuantityUpdate(item, quantity + 1)}
                                   className="p-1.5 sm:p-2 disabled:opacity-50 hover:bg-white/10 rounded"
                                   disabled={isLoading || atMax}
                                   aria-label="Increase quantity"
@@ -296,9 +355,21 @@ const Cart: React.FC = () => {
 
                               {/* Line total */}
                               <div className="text-right">
-                                <p className="text-base sm:text-lg font-bold text-white">
-                                  ₹{(productPrice * itemQuantity).toLocaleString()}
-                                </p>
+                                {/* show crossed retail if wholesale applied */}
+                                {eligibleWholesale ? (
+                                  <div className="flex flex-col items-end">
+                                    <p className="text-xs text-white/60 line-through">
+                                      ₹{(retail * quantity).toLocaleString()}
+                                    </p>
+                                    <p className="text-base sm:text-lg font-bold text-white">
+                                      ₹{(unit * quantity).toLocaleString()}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="text-base sm:text-lg font-bold text-white">
+                                    ₹{(unit * quantity).toLocaleString()}
+                                  </p>
+                                )}
                               </div>
 
                               {/* Remove */}
@@ -322,7 +393,7 @@ const Cart: React.FC = () => {
             </div>
           </div>
 
-          {/* Order Summary (glass) */}
+          {/* Order Summary */}
           <div className="lg:col-span-1 hidden lg:block">
             <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm p-5 sticky top-4">
               <h2 className="text-lg font-semibold text-white mb-4">Order Summary</h2>
@@ -370,12 +441,13 @@ const Cart: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile sticky footer summary (glass) */}
+      {/* Mobile sticky footer summary */}
       <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-slate-900/70 backdrop-blur">
         <div className="max-w-6xl mx-auto px-3 py-2.5 flex items-center justify-between gap-3 text-white">
           <div className="flex-1">
             <div className="text-[11px] text-white/70">
-              Subtotal ₹{subtotal.toLocaleString()} • {shippingFee === 0 ? 'Free shipping' : `Shipping ₹${shippingFee.toLocaleString()}`}
+              Subtotal ₹{subtotal.toLocaleString()} •{' '}
+              {shippingFee === 0 ? 'Free shipping' : `Shipping ₹${shippingFee.toLocaleString()}`}
             </div>
             <div className="text-base font-semibold">₹{grandTotal.toLocaleString()}</div>
           </div>
@@ -393,16 +465,22 @@ const Cart: React.FC = () => {
 
 export default Cart;
 
-/* --------- Types cleanup --------- */
+/* --------- Types --------- */
 export type CartItemWithProduct = CartItem & {
   productId?: {
     _id?: string;
     id?: string;
     name?: string;
-    price?: number;
+    price?: number;              // retail
     category?: string;
     image?: string;
     images?: string[];
     stockQuantity?: number;
+    wholesaleEnabled?: boolean;
+    wholesalePrice?: number;
+    wholesaleMinQty?: number;
   };
+  unitRetailPrice?: number;      // optional retail snapshot
+  wholesalePrice?: number;       // optional wholesale snapshot
+  moqApplied?: number;           // optional MOQ snapshot
 };

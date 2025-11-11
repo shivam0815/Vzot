@@ -34,7 +34,9 @@ export interface Product {
   updatedAt?: Date | string;
   compareAtPrice?: number | null;
   brand?: string;
-
+  wholesalePrice?: number | null;
+wholesaleMinQty?: number | null;
+ wholesaleEnabled?: boolean;
   // ➕ NEW SEO & catalog fields
   sku?: string;
   metaTitle?: string;
@@ -49,12 +51,13 @@ export interface CartItem {
   id: string;
   productId: string;
   name: string;
-  price: number;
-  quantity: number;
+  price: number;        // unit price actually used at add-to-cart time
+  quantity: number;     // enforced to be >= minQty
+  minQty?: number;      // NEW, for UI display and re-checks
   images?: string[];
   image?: string;
   category?: string;
-  originalPrice?: number;
+  originalPrice?: number | null;
   totalPrice?: number;
 }
 
@@ -80,6 +83,8 @@ export interface Address {
   pincode: string;
   country?: string;
 }
+export type PricingMode = 'retail' | 'wholesale';
+
 
 /**
  * Categories used on the site (runtime constant for FE widgets like Clara)
@@ -181,6 +186,9 @@ export interface IProduct {
   sku?: string;
   metaTitle?: string;
   metaDescription?: string;
+    wholesalePrice?: number | null;
+  wholesaleMinQty?: number | null;
+  wholesaleEnabled?: boolean;
 }
 
 export interface ICart {
@@ -375,6 +383,7 @@ export interface PaymentOrderData {
   total: number;
   extras?: IOrder['extras'];
   pricing?: IOrder['pricing'];
+   minQty?: number; 
 }
 
 /** Admin dashboard helpers (frontend only) **/

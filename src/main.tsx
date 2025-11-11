@@ -10,7 +10,7 @@ import { WishlistProvider } from './context/WishlistContext';
 import { ThemeProvider } from "./components/UI/ThemeProvider";
 import './index.css';
 import './i18n';
-
+import { PricingModeProvider } from './context/PricingModeProvider';
 // ✅ React Query
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -36,7 +36,9 @@ createRoot(rootEl).render(
           <CartProvider>
             <WishlistProvider>
               <ThemeProvider>
-                <App />
+                <PricingModeProvider>
+      <App />
+    </PricingModeProvider>
               </ThemeProvider>
             </WishlistProvider>
           </CartProvider>

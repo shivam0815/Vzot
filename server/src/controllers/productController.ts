@@ -24,6 +24,17 @@ const normArray = (v: any): string[] => {
 const normNumber = (v: any, def = 0): number =>
   v === '' || v == null || Number.isNaN(Number(v)) ? def : Number(v);
 
+const normBool = (v: any, def = false): boolean => {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y'].includes(s)) return true;
+    if (['false', '0', 'no', 'n'].includes(s)) return false;
+  }
+  return def;
+};
+
 const normSpecs = (value: any): Record<string, any> => {
   if (!value) return {};
   if (value instanceof Map) return Object.fromEntries(value as Map<string, any>);
@@ -106,12 +117,48 @@ async function fetchByHomeSort(
 const makeKey = (ver: string | number, query: any) =>
   'products:' + ver + ':' + crypto.createHash('sha1').update(JSON.stringify(query)).digest('hex');
 
+/* ─────────────────── Wholesale normalization (single price + MOQ) ─────────────────── */
+
+function normalizeWholesale(src: any) {
+  // default: wholesale disabled unless explicitly true
+  const wholesaleEnabled = normBool(src.wholesaleEnabled, false);
+
+  // allow both camelCase and CSV style headers
+  const wPriceRaw = src.wholesalePrice ?? src.WholesalePrice;
+  const wMinRaw = src.wholesaleMinQty ?? src.WholesaleMinQty ?? src.MOQ ?? src.MinQty;
+
+  const wholesalePrice =
+    wPriceRaw !== undefined && wPriceRaw !== null && String(wPriceRaw).trim() !== ''
+      ? normNumber(wPriceRaw)
+      : undefined;
+
+  const wholesaleMinQty =
+    wMinRaw !== undefined && wMinRaw !== null && String(wMinRaw).trim() !== ''
+      ? normNumber(wMinRaw)
+      : undefined;
+
+  if (wholesaleEnabled) {
+    if (!(wholesalePrice! > 0)) throw new Error('wholesalePrice required when wholesaleEnabled is true');
+    if (!(wholesaleMinQty! > 0)) throw new Error('wholesaleMinQty required when wholesaleEnabled is true');
+  }
+
+  return { wholesaleEnabled, wholesalePrice, wholesaleMinQty };
+}
+
 /* ─────────────────────────── Controllers ─────────────────────────── */
 
 // Create product
 export const createProduct = async (req: AuthRequest, res: Response) => {
   try {
     const body = req.body || {};
+// ---- CompareAtPrice (optional MRP / crossed price) ----
+const cmp =
+  body.compareAtPrice != null ? normNumber(body.compareAtPrice) : undefined;
+if (cmp != null && !(cmp > normNumber(body.price))) {
+  return res
+    .status(400)
+    .json({ success: false, message: 'compareAtPrice must be greater than price' });
+}
 
     const productData = {
       name: String(body.name || '').trim(),
@@ -121,6 +168,7 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
       category: body.category,
       subcategory: body.subcategory,
       brand: body.brand || 'Nakoda',
+compareAtPrice: cmp,
 
       stockQuantity: normNumber(body.stockQuantity, 0),
 
@@ -158,6 +206,9 @@ export const createProduct = async (req: AuthRequest, res: Response) => {
       metaTitle: typeof body.metaTitle === 'string' ? body.metaTitle.trim().slice(0, 60) : undefined,
       metaDescription:
         typeof body.metaDescription === 'string' ? body.metaDescription.trim().slice(0, 160) : undefined,
+
+      // wholesale fields
+      ...normalizeWholesale(body),
     };
 
     const product = new Product(productData);
@@ -290,8 +341,9 @@ export const getProducts = async (req: Request, res: Response) => {
       if (rx) query.brand = rx;
     }
 
-    if (typeof effectiveSearch === 'string' && effectiveSearch.trim().length >= 2) {
-      const rx = new RegExp(esc(effectiveSearch.trim()), 'i');
+    const effectiveSearchStr = String(effectiveSearch || '');
+    if (effectiveSearchStr.trim().length >= 2) {
+      const rx = new RegExp(esc(effectiveSearchStr.trim()), 'i');
       query.$or = (query.$or || []).concat([
         { name: rx },
         { description: rx },
@@ -499,11 +551,25 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     const body = req.body || {};
     const updateData: any = { ...body };
 
+    // Normalize standard fields
     if (updateData.stockQuantity !== undefined) {
       updateData.stockQuantity = normNumber(updateData.stockQuantity);
       updateData.inStock = updateData.stockQuantity > 0;
     }
     if (updateData.price !== undefined) updateData.price = normNumber(updateData.price);
+    // ---- compareAtPrice validation ----
+if (updateData.compareAtPrice !== undefined && updateData.compareAtPrice !== null) {
+  updateData.compareAtPrice = normNumber(updateData.compareAtPrice);
+  if (
+    updateData.price != null &&
+    !(updateData.compareAtPrice > updateData.price)
+  ) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'compareAtPrice must be greater than price' });
+  }
+}
+
     if (updateData.originalPrice !== undefined && updateData.originalPrice !== null) {
       updateData.originalPrice = normNumber(updateData.originalPrice);
     }
@@ -524,6 +590,24 @@ export const updateProduct = async (req: AuthRequest, res: Response) => {
     }
     if (updateData.metaDescription !== undefined && updateData.metaDescription !== null) {
       updateData.metaDescription = String(updateData.metaDescription).trim().slice(0, 160);
+    }
+
+    // Normalize wholesale fields if present in payload
+    if (
+      'wholesaleEnabled' in body ||
+      'wholesalePrice' in body ||
+      'wholesaleMinQty' in body ||
+      'WholesalePrice' in body ||
+      'WholesaleMinQty' in body ||
+      'MOQ' in body ||
+      'MinQty' in body
+    ) {
+      try {
+        const w = normalizeWholesale(body);
+        Object.assign(updateData, w);
+      } catch (e: any) {
+        return res.status(400).json({ success: false, message: e.message });
+      }
     }
 
     const product = await Product.findByIdAndUpdate(id, updateData, {
@@ -594,6 +678,13 @@ type CsvRow = {
   Specifications?: string;
   MetaTitle?: string;
   MetaDescription?: string;
+
+  // NEW optional wholesale columns (any casing supported by normalizeWholesale)
+  WholesaleEnabled?: string;  // "true"/"false"/"1"/"0"/"yes"/"no"
+  WholesalePrice?: string;
+  WholesaleMinQty?: string;   // or MOQ / MinQty also supported
+  MOQ?: string;
+  MinQty?: string;
 };
 
 export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
@@ -621,6 +712,9 @@ export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
           ? r.MetaDescription.trim().slice(0, 160)
           : undefined;
 
+      // wholesale fields normalized
+      const wholesale = normalizeWholesale(r);
+
       return {
         name: r.Name,
         description: r.Description,
@@ -640,9 +734,12 @@ export const bulkUploadProducts = async (req: AuthRequest, res: Response) => {
 
         isActive: true,
         status: 'active' as const,
+
+        ...wholesale,
       };
     });
 
+    // insertMany keeps your existing behavior; duplicates error are handled below
     const inserted = await Product.insertMany(toInsert, { ordered: false });
 
     try {

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Mail, Lock, Shield, Chrome } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
+import VZOTBackground from '../components/Layout/VZOTBackground';
 
 interface LoginFormData {
   email: string;
@@ -67,20 +68,10 @@ const Login: React.FC = () => {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <img src="/login.webp" alt="" className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover" />
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-r from-transparent via-white/10 to-white/80" />
-
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
-        <div className="rounded-t-2xl bg-white/95 backdrop-blur-sm shadow-sm ring-1 ring-black/5 py-3">
-          <div className="flex items-center justify-center gap-3">
-            <img src="/logo.webp" alt="Nakoda Mobile" className="h-8 w-8 rounded-lg ring-1 ring-black/5 object-contain" />
-            <span className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900">VZOT</span>
-          </div>
-        </div>
-      </div>
+      <VZOTBackground />
 
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex min-h-[calc(100vh-130px)] items-center lg:justify-end justify-center">
+        <div className="flex min-h-screen items-center justify-center">
           <motion.div
             initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
@@ -101,9 +92,15 @@ const Login: React.FC = () => {
                         <Mail className="h-5 w-5 text-gray-400" />
                       </div>
                       <input
-                        id="email" name="email" type="email" autoComplete="email" required
-                        value={formData.email} onChange={handleChange} placeholder="Email"
-                        className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        id="email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        value={formData.email}
+                        onChange={handleChange}
+                        placeholder="Email"
+                        className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33e49c] focus:border-transparent"
                       />
                     </div>
                   </div>
@@ -115,12 +112,26 @@ const Login: React.FC = () => {
                         <Lock className="h-5 w-5 text-gray-400" />
                       </div>
                       <input
-                        id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required
-                        value={formData.password} onChange={handleChange} placeholder="Password"
-                        className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-12 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        id="password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        required
+                        value={formData.password}
+                        onChange={handleChange}
+                        placeholder="Password"
+                        className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-12 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#33e49c] focus:border-transparent"
                       />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                        {showPassword ? <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" /> : <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />}
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                        ) : (
+                          <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -128,21 +139,26 @@ const Login: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <label className="flex items-center gap-2">
                       <input
-                        id="rememberMe" name="rememberMe" type="checkbox"
-                        checked={formData.rememberMe} onChange={handleChange}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        id="rememberMe"
+                        name="rememberMe"
+                        type="checkbox"
+                        checked={formData.rememberMe}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-gray-300 text-[#33e49c] focus:ring-[#33e49c]"
                       />
                       <span className="text-sm text-gray-700">Remember me</span>
                     </label>
-                    <Link to="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                    <Link to="/forgot-password" className="text-sm font-medium text-[#33e49c] hover:text-[#22c98c]">
                       Forgot password?
                     </Link>
                   </div>
 
                   <motion.button
-                    whileHover={{ scale: 1.005 }} whileTap={{ scale: 0.99 }}
-                    type="submit" disabled={isLoading}
-                    className="w-full rounded-xl bg-[#2563EB] text-white font-semibold py-3 shadow-sm hover:bg-[#1D4ED8] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                    whileHover={{ scale: 1.005 }}
+                    whileTap={{ scale: 0.99 }}
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full rounded-xl bg-[#33e49c] text-white font-semibold py-3 shadow-sm hover:bg-[#22c98c] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#33e49c] disabled:opacity-50"
                   >
                     {isLoading ? 'Signing in…' : 'Sign in'}
                   </motion.button>
@@ -160,11 +176,11 @@ const Login: React.FC = () => {
                     type="button"
                     onClick={() => handleSocialLogin('google')}
                     disabled={socialLoading === 'google'}
-                    className="w-full flex items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white py-3 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#33e49c] disabled:opacity-50"
                   >
                     {socialLoading === 'google'
-                      ? <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full" />
-                      : <Chrome className="h-5 w-5 text-red-500" />}
+                      ? <div className="animate-spin h-5 w-5 border-2 border-[#33e49c] border-t-transparent rounded-full" />
+                      : <Chrome className="h-5 w-5 text-[#103744]" />}
                     <span className="text-gray-800 font-medium">Continue with Google</span>
                   </button>
                 </>
@@ -176,23 +192,36 @@ const Login: React.FC = () => {
                       <Shield className="h-5 w-5 text-gray-400" />
                     </div>
                     <input
-                      id="totpToken" name="totpToken" type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
-                      required value={formData.totpToken} onChange={handleChange} placeholder="000000"
-                      className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      id="totpToken"
+                      name="totpToken"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={6}
+                      required
+                      value={formData.totpToken}
+                      onChange={handleChange}
+                      placeholder="000000"
+                      className="block w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 py-3 text-center text-2xl tracking-widest focus:outline-none focus:ring-2 focus:ring-[#33e49c] focus:border-transparent"
                     />
                   </div>
 
                   <motion.button
-                    whileHover={{ scale: 1.005 }} whileTap={{ scale: 0.99 }}
-                    type="submit" disabled={isLoading}
-                    className="mt-4 w-full rounded-xl bg-[#2563EB] text-white font-semibold py-3 shadow-sm hover:bg-[#1D4ED8] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                    whileHover={{ scale: 1.005 }}
+                    whileTap={{ scale: 0.99 }}
+                    type="submit"
+                    disabled={isLoading}
+                    className="mt-4 w-full rounded-xl bg-[#33e49c] text-white font-semibold py-3 shadow-sm hover:bg-[#22c98c] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#33e49c] disabled:opacity-50"
                   >
                     {isLoading ? 'Verifying…' : 'Verify Code'}
                   </motion.button>
 
                   <button
                     type="button"
-                    onClick={() => { setRequiresTwoFactor(false); setFormData((p) => ({ ...p, totpToken: '' })); }}
+                    onClick={() => {
+                      setRequiresTwoFactor(false);
+                      setFormData((p) => ({ ...p, totpToken: '' }));
+                    }}
                     className="mt-2 w-full text-center text-sm text-gray-600 hover:text-gray-800"
                   >
                     ← Back to login
@@ -204,7 +233,9 @@ const Login: React.FC = () => {
             {!requiresTwoFactor && (
               <div className="mt-5 text-center text-sm text-gray-700">
                 Don’t have an account?{' '}
-                <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">Sign up</Link>
+                <Link to="/register" className="font-medium text-[#33e49c] hover:text-[#22c98c]">
+                  Sign up
+                </Link>
               </div>
             )}
           </motion.div>

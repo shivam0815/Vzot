@@ -43,11 +43,12 @@ function getSort(
   return { createdAt: -1 };
 }
 
-/* Common projection inc. rating aliases */
+/* Common projection inc. rating aliases + WHOLESALE FIELDS */
 const LIST_FIELDS =
   'name description price stockQuantity category brand images ' +
   'rating averageRating reviews reviewsCount ratingsCount reviewCount ' +
-  'inStock isActive specifications createdAt updatedAt';
+  'inStock isActive specifications createdAt updatedAt ' +
+  'wholesaleEnabled wholesalePrice wholesaleMinQty';
 
 /* ------------------------------------------------------------------ */
 /* Routes                                                             */
@@ -170,6 +171,10 @@ router.get('/trending', async (req, res) => {
           createdAt: 1,
           updatedAt: 1,
           trendingScore: 1,
+          // wholesale fields
+          wholesaleEnabled: 1,
+          wholesalePrice: 1,
+          wholesaleMinQty: 1,
         },
       },
     ]);
@@ -180,6 +185,7 @@ router.get('/trending', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch trending products', error: error.message });
   }
 });
+
 // GET /products/slug/:slug  -> find by slug
 router.get('/slug/:slug', async (req, res) => {
   try {
@@ -281,7 +287,6 @@ router.get('/:id/related', async (req, res) => {
 /**
  * GET /products/:id (single product) — with Redis cache
  */
-// src/routes/products.ts  (single product route)
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -324,10 +329,7 @@ router.get('/:id', async (req, res) => {
 });
 
 
-/**
- * GET /products (main listing) — NOW USES CONTROLLER WITH VERSIONED CACHE
- * Handles: category, brand, search, price filters, pagination, home sorts (new/popular/trending)
- */
+ 
 router.get('/', productController.getProducts);
 
 export default router;
