@@ -445,7 +445,7 @@ const Header: React.FC = () => {
               <ShoppingCart className="h-5 w-5" />
               {getTotalItems() > 0 && (
                 <motion.span
-                  initial={{ scale: 0 }}
+                  initial={{ scale: 0 }}   
                   animate={{ scale: 1 }}
                   className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center"
                 >
@@ -485,7 +485,7 @@ const Header: React.FC = () => {
                   setIsMoreOpen(false);
                 }
               }}
-              className="lg:hidden p-1.5 rounded-full text-slate-800 dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5"
+              className="lg:hidden p-1.5 rounded-full text-slate-800 dark:text-slate-200 hover:bg-black/5 dark   :hover:bg-white/5"
               aria-label="Open menu"
             >
               {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
