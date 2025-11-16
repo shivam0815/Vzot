@@ -16,6 +16,7 @@ import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
 } from '@heroicons/react/24/solid';
+import type { Charges } from '../../types';
 
 /* =========================
    Types
@@ -24,7 +25,7 @@ type OrderStatus =
   | 'pending'
   | 'confirmed'
   | 'processing'
-  | 'shipped'
+  | 'shipped'    
   | 'delivered'
   | 'cancelled';
 
@@ -77,7 +78,7 @@ type GstDetails = {
   invoiceUrl?: string;
 };
 
-type Charges = { codCharge?: number; onlineFee?: number; onlineFeeGst?: number; };
+
 /** Full order (drawer fetch) – fields optional to be resilient */
 interface IOrderFull extends IOrder {
   shippingAddress?: {

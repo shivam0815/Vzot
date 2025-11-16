@@ -40,6 +40,11 @@ export type ShippingPaymentStatus =
 /* ------------------------------------------------------------------ */
 /* GST types                                                           */
 /* ------------------------------------------------------------------ */
+export interface ICharges {
+  codCharge?: number;
+  onlineFee?: number;
+  onlineFeeGst?: number;
+}
 
 export interface IGstDetails {
   wantInvoice?: boolean;      // whether customer asked for GST invoice
@@ -128,6 +133,7 @@ export interface IOrder extends Document {
 
   gst?: IGstDetails;
   hsn:number;
+  charges?: ICharges;
   status: OrderStatus;
   orderStatus: OrderStatus;
 
@@ -323,7 +329,11 @@ const OrderSchema = new Schema<IOrder, IOrderModel, IOrderMethods>(
 
     total: { type: Number, required: true, min: 0 },
     discount: { type: Number, min: 0, default: 0 },
-
+ charges: {
+      codCharge:     { type: Number, min: 0, default: 0 },
+      onlineFee:     { type: Number, min: 0, default: 0 },
+      onlineFeeGst:  { type: Number, min: 0, default: 0 },
+    },
     // GST stored here
     gst: { type: GstSchema, required: false, default: undefined },
 

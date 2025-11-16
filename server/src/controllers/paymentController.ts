@@ -156,7 +156,7 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // Compute/fallback pricing if frontend didn’t send them
+    // ---------- BASIC AMOUNTS (subtotal / tax / shipping) ----------
     const fallbackSubtotal =
       typeof orderData.subtotal === 'number'
         ? orderData.subtotal
@@ -166,13 +166,65 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
           );
 
     const subtotal = Math.max(0, Number(fallbackSubtotal));
-    const tax = typeof orderData.tax === 'number' ? Number(orderData.tax) : Math.round(subtotal * 0.18);
-    const shipping = typeof orderData.shipping === 'number' ? Number(orderData.shipping) : 0;
-    const total = typeof orderData.total === 'number' ? Number(orderData.total) : amount;
+    const tax =
+      typeof orderData.tax === 'number'
+        ? Number(orderData.tax)
+        : Math.round(subtotal * 0.18);
+    const shipping =
+      typeof orderData.shipping === 'number'
+        ? Number(orderData.shipping)
+        : 0;
 
-    // Build GST from payload
+    // ---------- CHARGES (COD / online fee) ----------
+    const pricing = orderData.pricing || {};
+    const chargesInput = orderData.charges || {};
+
+    let onlineFee =
+      Number(
+        pricing.convenienceFee ??
+          pricing.onlineFee ??
+          chargesInput.onlineFee ??
+          0
+      ) || 0;
+
+    let onlineFeeGst =
+      Number(
+        pricing.convenienceFeeGst ??
+          pricing.onlineFeeGst ??
+          chargesInput.onlineFeeGst ??
+          0
+      ) || 0;
+
+    let codCharge =
+      Number(
+        pricing.codCharges ??
+          pricing.codCharge ??
+          chargesInput.codCharge ??
+          0
+      ) || 0;
+
+    // If COD order and codCharge was not explicitly provided, derive it from totals
+    if (paymentMethod === 'cod' && codCharge <= 0) {
+      const clientTotal =
+        typeof orderData.total === 'number'
+          ? Number(orderData.total)
+          : Number(amount);
+
+      const baseSum = subtotal + tax + shipping + onlineFee + onlineFeeGst;
+      const diff = clientTotal - baseSum;
+
+      if (diff > 0) {
+        codCharge = diff;
+      }
+    }
+
+    // ---------- FINAL TOTAL (normalized) ----------
+    const total = subtotal + tax + shipping + codCharge + onlineFee + onlineFeeGst;
+
+    // ---------- GST BLOCK ----------
     const gstBlock = buildGstBlock(req.body, orderData.shippingAddress, { subtotal, tax });
 
+    // ---------- CREATE ORDER ----------
     const order = new Order({
       userId: new mongoose.Types.ObjectId(user.id),
       orderNumber: generateOrderNumber(),
@@ -188,7 +240,12 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
       status: 'pending',
       orderStatus: 'pending',
       paymentStatus: paymentMethod === 'cod' ? 'cod_pending' : 'awaiting_payment',
-      gst: gstBlock, // ⬅️ PERSIST GST
+      gst: gstBlock,
+      charges: {
+        codCharge: codCharge > 0 ? codCharge : 0,
+        onlineFee: onlineFee > 0 ? onlineFee : 0,
+        onlineFeeGst: onlineFeeGst > 0 ? onlineFeeGst : 0,
+      },
       customerNotes:
         (orderData?.extras?.orderNotes || '').toString().trim() || undefined,
       createdAt: new Date(),
@@ -213,7 +270,8 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
         orderStatus: order.orderStatus,
         paymentStatus: order.paymentStatus,
         items: order.items,
-        gst: order.gst, // ⬅️ return for quick verification
+        gst: order.gst,
+        charges: order.charges,
       },
     });
   } catch (error: any) {
