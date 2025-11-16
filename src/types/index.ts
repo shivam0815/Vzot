@@ -239,6 +239,11 @@ export interface OrderPricing {
   };
   total: number;
 }
+export interface Charges {
+  codCharge?: number;
+  onlineFee?: number;
+  onlineFeeGst?: number;
+}
 
 /**
  * Frontend Order shape
@@ -254,6 +259,7 @@ export interface Order {
   shipping?: number;
   total?: number;        // prefer this
   totalAmount?: number;  // kept for compatibility
+    charges?: Charges;
   status: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   orderStatus?: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   paymentStatus?: 'awaiting_payment' | 'paid' | 'failed' | 'cod_pending' | 'cod_paid' | 'pending' | 'completed' | 'refunded';
@@ -322,6 +328,7 @@ export interface IOrder {
   shipping: number;
   total?: number;        // allow both
   totalAmount?: number;  // legacy name in some code paths
+  charges?: Charges;
   paymentStatus: 'awaiting_payment' | 'paid' | 'failed' | 'cod_pending' | 'cod_paid' | 'pending' | 'completed' | 'refunded';
   orderStatus: 'pending' | 'confirmed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   trackingNumber?: string;

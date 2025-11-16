@@ -83,7 +83,7 @@ const Home: React.FC = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
-  const [company, setCompany] = useState(''); // honeypot
+  const [company, setCompany] = useState(''); 
 
   // Product lists
   const [hot, setHot] = useState<Product[]>([]);

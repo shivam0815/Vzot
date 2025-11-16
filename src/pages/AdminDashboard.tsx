@@ -859,7 +859,7 @@ const ProductManagement = memo<{
   });
   const [uploadedImages, setUploadedImages] = useState<S3UploadResult[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [, setUploadProgress] = useState(0);
 
   const [specificationsText, setSpecificationsText] = useState<string>('');
   const [specificationsError, setSpecificationsError] = useState<string | null>(null);

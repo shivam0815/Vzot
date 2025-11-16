@@ -50,6 +50,16 @@ interface OrderDetails {
   paymentSignature?: string;
   subtotal: number | string;
     charges?: Charges;
+    pricing?: {
+    codCharges?: number;
+    convenienceFee?: number;
+    convenienceFeeGst?: number;
+    gstSummary?: {
+      rate?: number;          // 0.18 (18%)
+      taxableValue?: number;  // subtotal for GST
+      gstAmount?: number;     // total GST
+    };
+  };
   tax: number | string;
   shipping: number | string;
   total: number | string;
@@ -119,34 +129,67 @@ const inr = (n: number) =>
  *  IMPORTANT: If both shipping & tax are 0 but total > subtotal, we treat the
  *  remainder as TAX (because shipping is added later after packing). */
 function deriveBreakdown(o: OrderDetails) {
-  const itemsSubtotal = (o.items || []).reduce((s, it) => s + toNum(it.quantity) * toNum(it.price), 0);
+  const itemsSubtotal = (o.items || []).reduce(
+    (s, it) => s + toNum(it.quantity) * toNum(it.price),
+    0
+  );
   const subtotal = toNum(o.subtotal) || itemsSubtotal;
 
-  // tax
+  const pricing: any = (o as any).pricing || {};
+
+  // ── TAX ──
   let tax =
     toNum((o as any).tax) ||
     toNum((o as any).taxes) ||
     toNum((o as any).gst) ||
-    toNum((o as any).vat);
-  const pct = toNum((o as any).gstPercent) || toNum((o as any).taxRate) || 0;
-  if (tax === 0 && pct > 0) tax = +(subtotal * (pct / 100)).toFixed(2);
+    toNum((o as any).vat) ||
+    toNum(pricing.gstSummary?.gstAmount);
+
+  const pctFromOrder = toNum((o as any).gstPercent || (o as any).taxRate);
+  const pctFromPricing =
+    typeof pricing.gstSummary?.rate === 'number'
+      ? Math.round((pricing.gstSummary.rate || 0) * 100)
+      : 0;
+
+  const pct = pctFromOrder || pctFromPricing || 0;
+
+  if (tax === 0 && pct > 0) {
+    tax = +(subtotal * (pct / 100)).toFixed(2);
+  }
   const taxLabel = pct > 0 ? `Tax (GST ${pct}%)` : 'Tax';
 
-  // shipping: prefer backend value; else rule
+  // ── SHIPPING ──
   const shipProvided =
     toNum((o as any).shipping) ||
     toNum((o as any).shippingFee) ||
     toNum((o as any).shippingCost) ||
     toNum((o as any).deliveryCharge);
+
   const freeEligible = subtotal >= FREE_SHIP_THRESHOLD;
   const shipping = shipProvided > 0 ? shipProvided : freeEligible ? 0 : SHIPPING_FLAT;
 
-  // extra charges
-  const codCharge = toNum(o.charges?.codCharge);
-  const onlineFee = toNum(o.charges?.onlineFee);
-  const onlineFeeGst = toNum(o.charges?.onlineFeeGst);
+  // ── EXTRA CHARGES (COD + online fee + GST on fee) ──
+  const codCharge = toNum(
+    o.charges?.codCharge ?? pricing.codCharges
+  );
+  const onlineFee = toNum(
+    o.charges?.onlineFee ?? pricing.convenienceFee
+  );
+  const onlineFeeGst = toNum(
+    o.charges?.onlineFeeGst ?? pricing.convenienceFeeGst
+  );
 
-  const total = Math.max(0, +(subtotal + tax + shipping + codCharge + onlineFee + onlineFeeGst).toFixed(2));
+  const total = Math.max(
+    0,
+    +(
+      subtotal +
+      tax +
+      shipping +
+      codCharge +
+      onlineFee +
+      onlineFeeGst
+    ).toFixed(2)
+  );
 
   return {
     subtotal: +subtotal.toFixed(2),
@@ -160,6 +203,7 @@ function deriveBreakdown(o: OrderDetails) {
     total,
   };
 }
+
 
 
 
