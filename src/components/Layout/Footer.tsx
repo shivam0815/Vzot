@@ -204,7 +204,7 @@ const Footer: React.FC = () => {
                 </a>
               </div>
             </div>
-            <div className="mt-5 text-[11px] text-white/60">Tue–Mon 11:00–20:00 IST</div>
+            <div className="mt-5 text-[11px] text-white/60">Tue–Sun 11:00–20:00 IST</div>
           </div>
         </div>
 

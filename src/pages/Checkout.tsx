@@ -20,6 +20,7 @@ import { useAuth } from '../hooks/useAuth';
 import { usePayment } from '../hooks/usePayment';
 import toast from 'react-hot-toast';
 import Input from '../components/Layout/Input';
+import VZOTBackground from '../components/Layout/VZOTBackground';
 
 interface Address {
   fullName: string;
@@ -85,11 +86,10 @@ const CheckoutPage: React.FC = () => {
   const { processPayment, isProcessing } = usePayment();
   const navigate = useNavigate();
 
-  // current pricing mode from header toggle
   const pricingMode: 'retail' | 'wholesale' =
     (localStorage.getItem('pricingMode') as any) === 'wholesale' ? 'wholesale' : 'retail';
 
-  // ------ price resolver identical to Cart ------
+  // price resolver
   const getEffectiveUnit = (it: any) => {
     const p = it?.productId || {};
     const retail = Number(it?.unitRetailPrice ?? it?.price ?? p?.price ?? 0);
@@ -113,7 +113,6 @@ const CheckoutPage: React.FC = () => {
     };
   };
 
-  // subtotal computed from effective unit prices
   const subtotalEff = useMemo(
     () =>
       cartItems.reduce((sum: number, it: any) => {
@@ -147,14 +146,12 @@ const CheckoutPage: React.FC = () => {
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<CouponResult | null>(null);
 
-  // Discounts (coupon only on frontend)
   const couponDiscount = appliedCoupon?.amount || 0;
   const monetaryDiscount = couponDiscount;
   const discountLabel = appliedCoupon ? `${appliedCoupon.code} discount` : '';
 
   const effectiveSubtotal = Math.max(0, subtotalEff - monetaryDiscount);
 
-  // Shipping calc on effective subtotal
   const qualifiesFreeShip =
     appliedCoupon?.freeShipping === true || effectiveSubtotal >= SHIPPING_FREE_THRESHOLD;
   const shippingFee = qualifiesFreeShip ? 0 : BASE_SHIPPING_FEE;
@@ -182,10 +179,14 @@ const CheckoutPage: React.FC = () => {
 
   const total = Math.max(
     0,
-    effectiveSubtotal + tax + shippingFee + codCharges + giftWrapFee + (method !== 'cod' ? totalProcessingFee : 0)
+    effectiveSubtotal +
+      tax +
+      shippingFee +
+      codCharges +
+      giftWrapFee +
+      (method !== 'cod' ? totalProcessingFee : 0)
   );
 
-  // ---------- persist + validators ----------
   useEffect(() => {
     try {
       const saved = localStorage.getItem('checkout:shipping');
@@ -200,11 +201,13 @@ const CheckoutPage: React.FC = () => {
       setErrors((e) => ({ ...e, [field]: '' }));
     };
 
-  const addrComboLen = (a: Address) => ((a.addressLine1 || '') + (a.addressLine2 || '')).trim().length;
+  const addrComboLen = (a: Address) =>
+    ((a.addressLine1 || '') + (a.addressLine2 || '')).trim().length;
   const minCombo = 3;
 
   const withFallback = (ship: Address, bill: Address) => {
-    const s = addrComboLen(ship) < minCombo && addrComboLen(bill) >= minCombo ? { ...bill } : ship;
+    const s =
+      addrComboLen(ship) < minCombo && addrComboLen(bill) >= minCombo ? { ...bill } : ship;
     const b = addrComboLen(bill) < minCombo ? { ...s } : bill;
     return { s, b };
   };
@@ -216,29 +219,37 @@ const CheckoutPage: React.FC = () => {
     const regEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!s.fullName.trim()) e.fullName = 'Full name is required';
-    if (!regPhone.test(s.phoneNumber.replace(/\D/g, ''))) e.phoneNumber = 'Enter valid 10-digit phone';
+    if (!regPhone.test(s.phoneNumber.replace(/\D/g, '')))
+      e.phoneNumber = 'Enter valid 10-digit phone';
     if (!regEmail.test(s.email)) e.email = 'Enter valid email';
-    if (addrComboLen(s) < minCombo) e.addressLine1 = `Address must be at least ${minCombo} characters`;
+    if (addrComboLen(s) < minCombo)
+      e.addressLine1 = `Address must be at least ${minCombo} characters`;
     if (!s.city.trim()) e.city = 'City is required';
     if (!s.state.trim()) e.state = 'State is required';
     if (!regPin.test(s.pincode)) e.pincode = 'Enter 6-digit pincode';
 
     if (!same) {
       if (!b.fullName.trim()) e.billing_fullName = 'Billing name required';
-      if (!regPhone.test(b.phoneNumber.replace(/\D/g, ''))) e.billing_phoneNumber = 'Valid phone required';
+      if (!regPhone.test(b.phoneNumber.replace(/\D/g, '')))
+        e.billing_phoneNumber = 'Valid phone required';
       if (!regEmail.test(b.email)) e.billing_email = 'Valid email required';
-      if (addrComboLen(b) < minCombo) e.billing_addressLine1 = `Billing address must be at least ${minCombo} chars`;
+      if (addrComboLen(b) < minCombo)
+        e.billing_addressLine1 = `Billing address must be at least ${minCombo} chars`;
       if (!b.city.trim()) e.billing_city = 'Billing city required';
       if (!b.state.trim()) e.billing_state = 'Billing state required';
       if (!regPin.test(b.pincode)) e.billing_pincode = 'Valid pincode required';
     }
 
     if (wantGSTInvoice) {
-      const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
-      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim())) e.gst_gstin = 'Enter valid 15-character GSTIN';
+      const GSTIN_REGEX =
+        /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/i;
+      if (!gst.gstin || !GSTIN_REGEX.test(gst.gstin.trim()))
+        e.gst_gstin = 'Enter valid 15-character GSTIN';
       if (!gst.legalName.trim()) e.gst_legalName = 'Legal/Business name required';
-      if (!gst.placeOfSupply.trim()) e.gst_placeOfSupply = 'Place of supply required';
-      if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email)) e.gst_email = 'Enter valid email';
+      if (!gst.placeOfSupply.trim())
+        e.gst_placeOfSupply = 'Place of supply required';
+      if (gst.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gst.email))
+        e.gst_email = 'Enter valid email';
     }
 
     setErrors(e);
@@ -258,7 +269,6 @@ const CheckoutPage: React.FC = () => {
     try {
       localStorage.setItem('checkout:shipping', JSON.stringify(ship2));
 
-      // build items with effective unit prices
       const items = cartItems.map((it: any) => {
         const { unit, eligibleWholesale, wsMin } = getEffectiveUnit(it);
         const pid = it.productId?._id || it.productId?.id || it.productId || it.id;
@@ -267,8 +277,8 @@ const CheckoutPage: React.FC = () => {
           name: it.productId?.name || it.name,
           image: it.productId?.image || it.image,
           quantity: Number(it.quantity || 1),
-          price: unit, // effective unit price that customer pays
-          pricingMode, // current mode snapshot
+          price: unit,
+          pricingMode,
           wholesaleApplied: Boolean(eligibleWholesale),
           wholesaleMinQty: wsMin,
         };
@@ -278,7 +288,7 @@ const CheckoutPage: React.FC = () => {
         items,
         shippingAddress: ship2,
         billingAddress: sameAsShipping ? ship2 : bill2,
-        subtotal: subtotalEff,                // effective subtotal BEFORE discounts
+        subtotal: subtotalEff,
         discount: monetaryDiscount,
         tax,
         shipping: shippingFee,
@@ -313,21 +323,41 @@ const CheckoutPage: React.FC = () => {
           convenienceFeeGst,
           convenienceFeeRate: ONLINE_FEE_RATE,
           convenienceFeeGstRate: ONLINE_FEE_GST_RATE,
-          gstSummary: { requested: wantGSTInvoice, rate: 0.18, taxableValue: effectiveSubtotal, gstAmount: tax },
+          gstSummary: {
+            requested: wantGSTInvoice,
+            rate: 0.18,
+            taxableValue: effectiveSubtotal,
+            gstAmount: tax,
+          },
           total,
         },
       };
 
-      const userDetails = { name: ship2.fullName, email: ship2.email, phone: ship2.phoneNumber };
-      const result = (await processPayment(total, method, orderData, userDetails)) as PaymentResult;
+      const userDetails = {
+        name: ship2.fullName,
+        email: ship2.email,
+        phone: ship2.phoneNumber,
+      };
+      const result = (await processPayment(
+        total,
+        method,
+        orderData,
+        userDetails
+      )) as PaymentResult;
 
       if (!result?.success || result.redirected) return;
 
       clearCart();
       const ord = result.order || {};
-      const orderId = ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
+      const orderId =
+        ord.orderNumber || ord._id || ord.paymentOrderId || ord.paymentId || null;
 
-      const successState = { orderId, order: ord, paymentMethod: result.method, paymentId: result.paymentId ?? null };
+      const successState = {
+        orderId,
+        order: ord,
+        paymentMethod: result.method,
+        paymentId: result.paymentId ?? null,
+      };
       const snapshot = {
         orderNumber: ord.orderNumber ?? orderId ?? undefined,
         _id: ord._id ?? orderId ?? undefined,
@@ -337,7 +367,10 @@ const CheckoutPage: React.FC = () => {
         shippingAddress: ord.shippingAddress ?? ship2,
       };
 
-      localStorage.setItem('lastOrderSuccess', JSON.stringify({ ...successState, snapshot }));
+      localStorage.setItem(
+        'lastOrderSuccess',
+        JSON.stringify({ ...successState, snapshot })
+      );
       const qs = orderId ? `?id=${encodeURIComponent(orderId)}` : '';
       navigate(`/order-success${qs}`, { state: successState, replace: true });
     } catch (error: any) {
@@ -346,13 +379,18 @@ const CheckoutPage: React.FC = () => {
     }
   };
 
+  // loading / auth / empty states – can keep existing simple backgrounds
   if (cartLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center bg-white p-8 rounded-2xl shadow-lg">
           <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Checkout</h3>
-          <p className="text-gray-600">Please wait while we prepare your order…</p>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Loading Checkout
+          </h3>
+          <p className="text-gray-600">
+            Please wait while we prepare your order…
+          </p>
         </div>
       </div>
     );
@@ -365,10 +403,16 @@ const CheckoutPage: React.FC = () => {
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Lock className="h-8 w-8 text-blue-600" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 mb-4">Login Required</h2>
-          <p className="text-gray-600 mb-8 leading-relaxed">Please log in to proceed with secure checkout</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+            Login Required
+          </h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">
+            Please log in to proceed with secure checkout
+          </p>
           <button
-            onClick={() => navigate('/login', { state: { from: { pathname: '/checkout' } } })}
+            onClick={() =>
+              navigate('/login', { state: { from: { pathname: '/checkout' } } })
+            }
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
           >
             Continue to Login
@@ -385,8 +429,12 @@ const CheckoutPage: React.FC = () => {
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Package className="h-8 w-8 text-gray-600" />
           </div>
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">Your Cart is Empty</h2>
-          <p className="text-gray-600 mb-8 leading-relaxed">Add products to your cart before checking out</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-4">
+            Your Cart is Empty
+          </h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">
+            Add products to your cart before checking out
+          </p>
           <button
             onClick={() => navigate('/products')}
             className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-xl font-semibold hover:from-blue-700 hover:to-blue-800 transform hover:scale-105 transition-all duration-200 shadow-lg"
@@ -398,30 +446,37 @@ const CheckoutPage: React.FC = () => {
     );
   }
 
+  // MAIN CHECKOUT
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="relative min-h-screen overflow-hidden">
+      <VZOTBackground />
+
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <button
             onClick={() => navigate('/cart')}
-            className="flex items-center text-blue-600 hover:text-blue-700 font-semibold transition-colors group"
+            className="flex items-center text-blue-300 hover:text-blue-100 font-semibold transition-colors group"
           >
             <ArrowLeft className="h-5 w-5 mr-2 transform group-hover:-translate-x-1 transition-transform" />
             Back to Cart
           </button>
+
           <div className="text-center">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-[0_6px_18px_rgba(0,0,0,0.7)]">
               Secure Checkout
             </h1>
-            <p className="text-gray-600 mt-1">
-              {pricingMode === 'wholesale' ? 'Wholesale mode active' : 'Retail mode active'}
+            <p className="mt-1 text-sm sm:text-base text-slate-100/80">
+              {pricingMode === 'wholesale'
+                ? 'Wholesale mode active'
+                : 'Retail mode active'}
             </p>
           </div>
+
           <div className="w-32" />
         </div>
 
         <form onSubmit={onSubmit} className="grid lg:grid-cols-5 gap-8">
-          {/* Order Summary */}
+          {/* ORDER SUMMARY */}
           <section className="lg:col-span-2 order-2 lg:order-1 bg-white rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xl border border-gray-100 h-fit lg:sticky lg:top-8">
             <div className="flex items-center mb-6">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
@@ -436,7 +491,10 @@ const CheckoutPage: React.FC = () => {
                 const qty = Number(it?.quantity ?? 1);
                 const name = it?.productId?.name || it?.name || 'Product';
                 return (
-                  <div key={it?.id || index} className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl">
+                  <div
+                    key={it?.id || index}
+                    className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl"
+                  >
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm sm:text-base font-semibold text-gray-900 truncate">
                         {name}
@@ -447,7 +505,8 @@ const CheckoutPage: React.FC = () => {
                         )}
                       </h4>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                        Qty: {qty} × {formatINR(unit)} {eligibleWholesale ? '(WS)' : '(Retail)'}
+                        Qty: {qty} × {formatINR(unit)}{' '}
+                        {eligibleWholesale ? '(WS)' : '(Retail)'}
                       </p>
                     </div>
                     <span className="font-bold text-sm sm:text-lg text-gray-900 ml-2">
@@ -461,44 +520,63 @@ const CheckoutPage: React.FC = () => {
             <div className="border-t border-gray-200 pt-6 space-y-2 sm:space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">Subtotal</span>
-                <span className="font-semibold">{formatINR(subtotalEff)}</span>
+                <span className="font-semibold text-gray-900">
+                  {formatINR(subtotalEff)}
+                </span>
               </div>
 
               {monetaryDiscount > 0 && (
                 <div className="flex justify-between text-green-700">
                   <span>{discountLabel || 'Discount'}</span>
-                  <span className="font-semibold">− {formatINR(monetaryDiscount)}</span>
+                  <span className="font-semibold">
+                    − {formatINR(monetaryDiscount)}
+                  </span>
                 </div>
               )}
 
               <div className="flex justify-between">
                 <span className="text-gray-600">Tax (18% GST)</span>
-                <span className="font-semibold">{formatINR(tax)}</span>
+                <span className="font-semibold text-gray-900">
+                  {formatINR(tax)}
+                </span>
               </div>
 
               <div className="flex justify-between">
                 <span className="text-gray-600">
-                  Shipping {qualifiesFreeShip && <span className="text-green-600 font-semibold">(Free)</span>}
+                  Shipping{' '}
+                  {qualifiesFreeShip && (
+                    <span className="text-green-600 font-semibold">
+                      (Free)
+                    </span>
+                  )}
                 </span>
-                <span className="font-semibold">{formatINR(shippingFee)}</span>
+                <span className="font-semibold text-gray-900">
+                  {formatINR(shippingFee)}
+                </span>
               </div>
 
               {method === 'cod' && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">COD Charges</span>
-                  <span className="font-semibold">{formatINR(codCharges)}</span>
+                  <span className="font-semibold text-gray-900">
+                    {formatINR(codCharges)}
+                  </span>
                 </div>
               )}
 
               {method !== 'cod' && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Payment Processing Fee</span>
-                  <span className="font-semibold">{formatINR(totalProcessingFee)}</span>
+                  <span className="text-gray-600">
+                    Payment Processing Fee
+                  </span>
+                  <span className="font-semibold text-gray-900">
+                    {formatINR(totalProcessingFee)}
+                  </span>
                 </div>
               )}
 
               <div className="flex justify-between font-bold text-base sm:text-lg pt-3 sm:pt-4 border-t border-gray-200">
-                <span>Total Amount</span>
+                <span className="text-gray-900">Total Amount</span>
                 <span className="text-blue-600">{formatINR(total)}</span>
               </div>
             </div>
@@ -513,7 +591,7 @@ const CheckoutPage: React.FC = () => {
             </div>
           </section>
 
-          {/* Forms */}
+          {/* FORMS */}
           <section className="lg:col-span-3 order-1 lg:order-2 bg-white rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xl border border-gray-100">
             {/* Shipping */}
             <div className="mb-6 sm:mb-8">
@@ -521,7 +599,9 @@ const CheckoutPage: React.FC = () => {
                 <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
                   <MapPin className="h-5 w-5 text-green-600" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">Shipping Address</h2>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Shipping Address
+                </h2>
               </div>
 
               <div className="space-y-5 sm:space-y-6">
@@ -542,7 +622,12 @@ const CheckoutPage: React.FC = () => {
                     field="phoneNumber"
                     label="Phone Number *"
                     value={shipping.phoneNumber}
-                    onChange={(v) => handleAddr(setShipping)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))}
+                    onChange={(v) =>
+                      handleAddr(setShipping)(
+                        'phoneNumber',
+                        v.replace(/\D/g, '').slice(0, 10)
+                      )
+                    }
                     placeholder="10-digit mobile number"
                     icon={Phone}
                     errors={errors}
@@ -611,7 +696,12 @@ const CheckoutPage: React.FC = () => {
                     field="pincode"
                     label="Pincode *"
                     value={shipping.pincode}
-                    onChange={(v) => handleAddr(setShipping)('pincode', v.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(v) =>
+                      handleAddr(setShipping)(
+                        'pincode',
+                        v.replace(/\D/g, '').slice(0, 6)
+                      )
+                    }
                     placeholder="6-digit pincode"
                     errors={errors}
                   />
@@ -622,10 +712,13 @@ const CheckoutPage: React.FC = () => {
                     type="checkbox"
                     defaultChecked
                     onChange={(e) => {
-                      if (!e.target.checked) localStorage.removeItem('checkout:shipping');
+                      if (!e.target.checked)
+                        localStorage.removeItem('checkout:shipping');
                     }}
                   />
-                  <span className="text-sm text-gray-700">Save this address for next time</span>
+                  <span className="text-sm text-gray-700">
+                    Save this address for next time
+                  </span>
                 </label>
               </div>
             </div>
@@ -638,7 +731,9 @@ const CheckoutPage: React.FC = () => {
                   checked={sameAsShipping}
                   onChange={(e) => setSameAsShipping(e.target.checked)}
                 />
-                <span className="text-sm text-gray-800">Billing address same as shipping</span>
+                <span className="text-sm text-gray-800">
+                  Billing address same as shipping
+                </span>
               </label>
             </div>
 
@@ -649,7 +744,9 @@ const CheckoutPage: React.FC = () => {
                   <div className="w-9 h-9 sm:w-10 sm:h-10 bg-amber-100 rounded-full flex items-center justify-center mr-3">
                     <MapPin className="h-5 w-5 text-amber-600" />
                   </div>
-                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">Billing Address</h2>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-900">
+                    Billing Address
+                  </h2>
                 </div>
 
                 <div className="space-y-5 sm:space-y-6">
@@ -667,7 +764,12 @@ const CheckoutPage: React.FC = () => {
                       field="billing_phoneNumber"
                       label="Phone Number *"
                       value={billing.phoneNumber}
-                      onChange={(v) => handleAddr(setBilling)('phoneNumber', v.replace(/\D/g, '').slice(0, 10))}
+                      onChange={(v) =>
+                        handleAddr(setBilling)(
+                          'phoneNumber',
+                          v.replace(/\D/g, '').slice(0, 10)
+                        )
+                      }
                       placeholder="10-digit mobile number"
                       icon={Phone}
                       errors={errors}
@@ -689,7 +791,9 @@ const CheckoutPage: React.FC = () => {
                     field="billing_addressLine1"
                     label="HouseNo and Floor *"
                     value={billing.addressLine1}
-                    onChange={(v) => handleAddr(setBilling)('addressLine1', v)}
+                    onChange={(v) =>
+                      handleAddr(setBilling)('addressLine1', v)
+                    }
                     placeholder="Area, Colony, Sector, Village"
                     icon={MapPin}
                     errors={errors}
@@ -698,7 +802,9 @@ const CheckoutPage: React.FC = () => {
                     field="billing_addressLine2"
                     label="Area & Colony *"
                     value={billing.addressLine2}
-                    onChange={(v) => handleAddr(setBilling)('addressLine2', v)}
+                    onChange={(v) =>
+                      handleAddr(setBilling)('addressLine2', v)
+                    }
                     placeholder="Area, Colony, Sector, Village"
                     icon={MapPin}
                     errors={errors}
@@ -708,7 +814,9 @@ const CheckoutPage: React.FC = () => {
                     field="billing_landmark"
                     label="Landmark (Optional)"
                     value={billing.landmark}
-                    onChange={(v) => handleAddr(setBilling)('landmark', v)}
+                    onChange={(v) =>
+                      handleAddr(setBilling)('landmark', v)
+                    }
                     placeholder="Near landmark, area, etc."
                     errors={errors}
                   />
@@ -737,7 +845,12 @@ const CheckoutPage: React.FC = () => {
                       field="billing_pincode"
                       label="Pincode *"
                       value={billing.pincode}
-                      onChange={(v) => handleAddr(setBilling)('pincode', v.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(v) =>
+                        handleAddr(setBilling)(
+                          'billing_pincode' as any,
+                          v.replace(/\D/g, '').slice(0, 6)
+                        )
+                      }
                       placeholder="6-digit pincode"
                       errors={errors}
                     />
@@ -747,18 +860,22 @@ const CheckoutPage: React.FC = () => {
             )}
 
             {/* Payment Method */}
-            <div className="border-t border-gray-200 pt-6 sm:pt-8">
+            <div className="border-top border-gray-200 pt-6 sm:pt-8">
               <div className="flex items-center mb-6">
                 <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
                   <CreditCard className="h-5 w-5 text-purple-600" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">Payment Method</h2>
+                <h2 className="text-xl font-bold text-gray-900">
+                  Payment Method
+                </h2>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
                 <label
                   className={`relative p-4 sm:p-6 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:-translate-y-1 ${
-                    method === 'razorpay' ? 'border-blue-500 bg-blue-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
+                    method === 'razorpay'
+                      ? 'border-blue-500 bg-blue-50 shadow-lg'
+                      : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <input
@@ -766,23 +883,35 @@ const CheckoutPage: React.FC = () => {
                     name="paymentMethod"
                     value="razorpay"
                     checked={method === 'razorpay'}
-                    onChange={(e) => setMethod(e.target.value as 'razorpay')}
+                    onChange={(e) =>
+                      setMethod(e.target.value as 'razorpay')
+                    }
                     className="sr-only"
                   />
-                  {method === 'razorpay' && <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-blue-600" />}
+                  {method === 'razorpay' && (
+                    <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-blue-600" />
+                  )}
                   <div className="text-center">
                     <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       <CreditCard className="h-6 w-6 text-blue-600" />
                     </div>
-                    <div className="font-bold text-sm sm:text-base text-gray-900 mb-1">Razorpay</div>
-                    <div className="text-xs text-gray-600">UPI, Cards, NetBanking</div>
-                    <div className="text-xs text-green-600 mt-1 font-semibold">Most Popular</div>
+                    <div className="font-bold text-sm sm:text-base text-gray-900 mb-1">
+                      Razorpay
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      UPI, Cards, NetBanking
+                    </div>
+                    <div className="text-xs text-green-600 mt-1 font-semibold">
+                      Most Popular
+                    </div>
                   </div>
                 </label>
 
                 <label
                   className={`relative p-4 sm:p-6 border-2 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:-translate-y-1 ${
-                    method === 'cod' ? 'border-green-500 bg-green-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'
+                    method === 'cod'
+                      ? 'border-green-500 bg-green-50 shadow-lg'
+                      : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   <input
@@ -793,13 +922,19 @@ const CheckoutPage: React.FC = () => {
                     onChange={(e) => setMethod(e.target.value as 'cod')}
                     className="sr-only"
                   />
-                  {method === 'cod' && <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-green-600" />}
+                  {method === 'cod' && (
+                    <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-green-600" />
+                  )}
                   <div className="text-center">
                     <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                       <IndianRupee className="h-6 w-6 text-green-600" />
                     </div>
-                    <div className="font-bold text-sm sm:text-base text-gray-900 mb-1">Cash on Delivery</div>
-                    <div className="text-xs text-gray-600">Pay at your door</div>
+                    <div className="font-bold text-sm sm:text-base text-gray-900 mb-1">
+                      Cash on Delivery
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Pay at your door
+                    </div>
                   </div>
                 </label>
               </div>
@@ -807,7 +942,9 @@ const CheckoutPage: React.FC = () => {
               {/* Notes & GST */}
               <div className="grid gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-800 mb-2">Order Notes</label>
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">
+                    Order Notes
+                  </label>
                   <textarea
                     value={orderNotes}
                     onChange={(e) => setOrderNotes(e.target.value)}
@@ -824,10 +961,18 @@ const CheckoutPage: React.FC = () => {
                     onChange={(e) => {
                       const checked = e.target.checked;
                       setWantGSTInvoice(checked);
-                      if (!checked) setGst({ gstin: '', legalName: '', placeOfSupply: '', email: user?.email || '' });
+                      if (!checked)
+                        setGst({
+                          gstin: '',
+                          legalName: '',
+                          placeOfSupply: '',
+                          email: user?.email || '',
+                        });
                     }}
                   />
-                  <span className="text-sm text-gray-800">Need GST invoice</span>
+                  <span className="text-sm text-gray-800">
+                    Need GST invoice
+                  </span>
                 </div>
 
                 {wantGSTInvoice && (
@@ -836,7 +981,12 @@ const CheckoutPage: React.FC = () => {
                       field="gst_gstin"
                       label="GSTIN *"
                       value={gst.gstin}
-                      onChange={(v) => setGst((s) => ({ ...s, gstin: v.toUpperCase().slice(0, 15) }))}
+                      onChange={(v) =>
+                        setGst((s) => ({
+                          ...s,
+                          gstin: v.toUpperCase().slice(0, 15),
+                        }))
+                      }
                       placeholder="15-character GSTIN"
                       errors={errors}
                     />
@@ -844,26 +994,76 @@ const CheckoutPage: React.FC = () => {
                       field="gst_legalName"
                       label="Legal / Business Name *"
                       value={gst.legalName}
-                      onChange={(v) => setGst((s) => ({ ...s, legalName: v }))}
+                      onChange={(v) =>
+                        setGst((s) => ({ ...s, legalName: v }))
+                      }
                       placeholder="Registered legal name"
                       errors={errors}
                     />
 
                     <div className="sm:col-span-1">
-                      <label className="block text-sm font-semibold text-gray-800 mb-2">Place of Supply (State) *</label>
+                      <label className="block text-sm font-semibold text-gray-800 mb-2">
+                        Place of Supply (State) *
+                      </label>
                       <select
                         value={gst.placeOfSupply}
-                        onChange={(e) => setGst((s) => ({ ...s, placeOfSupply: e.target.value }))}
+                        onChange={(e) =>
+                          setGst((s) => ({
+                            ...s,
+                            placeOfSupply: e.target.value,
+                          }))
+                        }
                         className="w-full px-4 py-3 border-2 rounded-xl bg-gray-50 border-gray-200 focus:bg-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                       >
                         <option value="">Select state…</option>
                         {[
-                          'Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu & Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Chandigarh','Dadra & Nagar Haveli & Daman & Diu','Andaman & Nicobar Islands'
+                          'Andhra Pradesh',
+                          'Arunachal Pradesh',
+                          'Assam',
+                          'Bihar',
+                          'Chhattisgarh',
+                          'Delhi',
+                          'Goa',
+                          'Gujarat',
+                          'Haryana',
+                          'Himachal Pradesh',
+                          'Jammu & Kashmir',
+                          'Jharkhand',
+                          'Karnataka',
+                          'Kerala',
+                          'Ladakh',
+                          'Lakshadweep',
+                          'Madhya Pradesh',
+                          'Maharashtra',
+                          'Manipur',
+                          'Meghalaya',
+                          'Mizoram',
+                          'Nagaland',
+                          'Odisha',
+                          'Puducherry',
+                          'Punjab',
+                          'Rajasthan',
+                          'Sikkim',
+                          'Tamil Nadu',
+                          'Telangana',
+                          'Tripura',
+                          'Uttar Pradesh',
+                          'Uttarakhand',
+                          'West Bengal',
+                          'Chandigarh',
+                          'Dadra & Nagar Haveli & Daman & Diu',
+                          'Andaman & Nicobar Islands',
                         ].map((st) => (
-                          <option key={st} value={st}>{st}</option>
+                          <option key={st} value={st}>
+                            {st}
+                          </option>
                         ))}
                       </select>
-                      {errors.gst_placeOfSupply && <p className="mt-1 text-xs text-red-600">{errors.gst_placeOfSupply}</p>}
+                      {errors.gst_placeOfSupply && (
+                        <p className="mt-1 text-xs text-red-600">
+                          {errors.gst_placeOfSupply}
+                        </p>
+                      )}
                     </div>
 
                     <Input
@@ -871,7 +1071,9 @@ const CheckoutPage: React.FC = () => {
                       label="Business Email (optional)"
                       type="email"
                       value={gst.email || ''}
-                      onChange={(v) => setGst((s) => ({ ...s, email: v }))}
+                      onChange={(v) =>
+                        setGst((s) => ({ ...s, email: v }))
+                      }
                       placeholder="For sending GST invoice"
                       errors={errors}
                     />
@@ -888,7 +1090,9 @@ const CheckoutPage: React.FC = () => {
                 {isProcessing ? (
                   <>
                     <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent mr-3"></div>
-                    {method === 'razorpay' ? 'Opening Razorpay...' : 'Placing Order...'}
+                    {method === 'razorpay'
+                      ? 'Opening Razorpay...'
+                      : 'Placing Order...'}
                   </>
                 ) : (
                   <>
@@ -920,7 +1124,8 @@ const CheckoutPage: React.FC = () => {
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 px-4">
-                  Your payment and personal information is protected with enterprise-grade encryption
+                  Your payment and personal information is protected with
+                  enterprise-grade encryption
                 </p>
               </div>
             </div>

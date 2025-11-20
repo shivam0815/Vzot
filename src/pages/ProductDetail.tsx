@@ -1,5 +1,5 @@
 // src/pages/ProductDetail.tsx — dark glass B2C detail page with pricing mode + MOQ
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -125,6 +125,8 @@ const ProductDetail: React.FC = () => {
   const { addToCart, isLoading } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist, isLoading: wishlistLoading } = useWishlist();
 
+
+
   /* Normalize images */
   const normalizedImages = useMemo<string[]>(() => {
     const raw = (product as any)?.images;
@@ -222,6 +224,24 @@ const ProductDetail: React.FC = () => {
   }, []);
 
   const [activeTab, setActiveTab] = useState<'description' | 'specifications' | 'reviews'>('description');
+
+  const imgContainerRef = useRef<HTMLDivElement | null>(null);
+const [zoomActive, setZoomActive] = useState(false);
+const [zoomPos, setZoomPos] = useState({ x: 0.5, y: 0.5 });
+
+const handleZoomMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+  if (!imgContainerRef.current) return;
+  const rect = imgContainerRef.current.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+
+  // clamp between 0–1
+  const nx = Math.min(1, Math.max(0, x));
+  const ny = Math.min(1, Math.max(0, y));
+  setZoomPos({ x: nx, y: ny });
+};
+
+const zoomBgPosition = `${zoomPos.x * 100}% ${zoomPos.y * 100}%`;
 
   /* Actions */
   const isUserLoggedIn = () => {
@@ -462,49 +482,91 @@ const ProductDetail: React.FC = () => {
         <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur shadow-sm sm:shadow-lg overflow-hidden mt-3 sm:mt-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8 p-4 sm:p-6">
             {/* Gallery */}
-            <div className="space-y-3 sm:space-y-4">
-              <div className="aspect-[4/4] sm:aspect-square bg-slate-800/60 rounded-xl overflow-hidden relative">
-                {currentImage ? (
-                  <img
-                    src={safeImage(currentImage)}
-                    alt={product.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).src = safeImage(undefined); }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-white/50">
-                    <div className="text-center">
-                      <div className="text-5xl sm:text-6xl mb-2">📷</div>
-                      <div>No Image Available</div>
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="space-y-3 sm:space-y-4 relative">
+  {/* MAIN IMAGE + ZOOM TRIGGER */}
+  <div
+    ref={imgContainerRef}
+    className="aspect-[4/4] sm:aspect-square bg-gray-100 rounded-xl overflow-hidden relative cursor-zoom-in"
+    onMouseEnter={() => setZoomActive(true)}
+    onMouseLeave={() => setZoomActive(false)}
+    onMouseMove={handleZoomMove}
+  >
+    {currentImage ? (
+      <>
+        <img
+          src={safeImage(currentImage)}
+          alt={product.name}
+          className="w-full h-full object-cover select-none"
+          onError={(e) => { (e.target as HTMLImageElement).src = safeImage(undefined); }}
+        />
 
-              {hasMultipleImages && (
-                <div className="flex gap-2 overflow-x-auto pb-1 snap-x [scrollbar-width:none] [-ms-overflow-style:none]">
-                  {validImages.map((img: string, index: number) => (
-                    <button
-                      key={index}
-                      onClick={() => setSelectedImage(index)}
-                      className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all snap-start ${
-                        selectedImage === index
-                          ? 'border-sky-500 shadow-md'
-                          : 'border-white/15 hover:border-white/25'
-                      }`}
-                      aria-label={`View image ${index + 1}`}
-                    >
-                      <img
-                        src={safeImage(img, 160, 160)}
-                        alt={`${product.name} view ${index + 1}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).src = safeImage(undefined, 160, 160); }}
-                      />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+        {/* small lens box on main image (desktop only) */}
+        {zoomActive && (
+          <div
+            className="hidden lg:block absolute w-28 h-28 border border-blue-400 bg-white/25 backdrop-blur-sm pointer-events-none rounded-md"
+            style={{
+              left: `${zoomPos.x * 100}%`,
+              top: `${zoomPos.y * 100}%`,
+              transform: 'translate(-50%, -50%)',
+            }}
+          />
+        )}
+      </>
+    ) : (
+      <div className="w-full h-full flex items-center justify-center text-gray-400">
+        <div className="text-center">
+          <div className="text-5xl sm:text-6xl mb-2">📷</div>
+          <div>No Image Available</div>
+        </div>
+      </div>
+    )}
+  </div>
+
+  {/* ZOOM WINDOW LIKE FLIPKART (right side, desktop only) */}
+  {currentImage && (
+    <div
+      className={`hidden lg:block absolute top-0 left-full ml-4 w-[420px] h-[420px] rounded-xl border bg-white shadow-lg overflow-hidden transition-opacity ${
+        zoomActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+    >
+      <div
+        className="w-full h-full bg-no-repeat"
+        style={{
+          backgroundImage: `url(${safeImage(currentImage, 1200, 1200)})`,
+          backgroundSize: '200%',       // zoom level (increase for more zoom)
+          backgroundPosition: zoomBgPosition,
+        }}
+      />
+    </div>
+  )}
+
+  {/* THUMBNAILS (unchanged except what we did earlier for hover-switch) */}
+  {hasMultipleImages && (
+    <div className="flex gap-2 overflow-x-auto pb-1 snap-x [scrollbar-width:none] [-ms-overflow-style:none]">
+      {validImages.map((img: string, index: number) => (
+        <button
+          key={index}
+          type="button"
+          onClick={() => setSelectedImage(index)}
+          onMouseEnter={() => setSelectedImage(index)}
+          onFocus={() => setSelectedImage(index)}
+          className={`flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border-2 transition-all snap-start ${
+            selectedImage === index ? 'border-blue-500 shadow-md' : 'border-gray-200 hover:border-gray-300'
+          }`}
+          aria-label={`View image ${index + 1}`}
+        >
+          <img
+            src={safeImage(img, 160, 160)}
+            alt={`${product.name} view ${index + 1}`}
+            className="w-full h-full object-cover"
+            onError={(e) => { (e.target as HTMLImageElement).src = safeImage(undefined, 160, 160); }}
+          />
+        </button>
+      ))}
+    </div>
+  )}
+</div>
+
 
             {/* Info */}
             <div className="space-y-4 sm:space-y-6">
