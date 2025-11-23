@@ -1,5 +1,4 @@
-// src/controllers/orderController.ts
-// B2C VERSION — No MOQ / No per-line max; stock-only clamping + GST mapping
+
 
 import { Request, Response } from "express";
 import mongoose from "mongoose";
@@ -11,7 +10,7 @@ import type {} from "../types/express";
 import { buildSrPayload, createShiprocketOrder } from "../services/shiprocketService";
 
 
-/* ───────────────── Types ───────────────── */
+
 interface AuthenticatedUser {
   id: string;
   email: string;
@@ -19,14 +18,12 @@ interface AuthenticatedUser {
   name?: string;
 }
 
-/* ───────────────── Small helpers ───────────────── */
+
 
 const cleanGstin = (s?: any) =>
   (s ?? "").toString().toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 15);
 
-/* ───────────────── CREATE ORDER (stock deduction, GST & emails) ───────────────── */
 
-// ───────── helpers (keep near top of file) ─────────
 type Addr = {
   fullName?: string; phoneNumber?: string; email?: string;
   addressLine1?: string; addressLine2?: string; city?: string;
@@ -47,6 +44,7 @@ const addrLen = (a: Addr) =>
   ((a.addressLine1 ?? "") + (a.addressLine2 ?? "")).trim().length;
 
 // ───────── createOrder ─────────
+// ───────── createOrder ─────────
 export const createOrder = async (req: Request, res: Response): Promise<void> => {
   try {
     const { shippingAddress, paymentMethod, billingAddress, extras } = req.body;
@@ -55,47 +53,92 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
     // Load cart
     const cart = await Cart.findOne({ userId }).populate("items.productId");
-    if (!cart || !cart.items?.length) { res.status(400).json({ message: "Cart is empty" }); return; }
+    if (!cart || !cart.items?.length) {
+      res.status(400).json({ message: "Cart is empty" });
+      return;
+    }
 
     // Addresses
     let ship = normAddr(shippingAddress);
     let bill = normAddr(billingAddress);
     if (addrLen(ship) < 3 && addrLen(bill) >= 3) ship = { ...bill };
     if (addrLen(ship) < 3) {
-      res.status(400).json({ ok: false, error: "Validation failed: address1+address2 must be >= 3 chars",
-        debug: { sa1: ship.addressLine1, sa2: ship.addressLine2, ba1: bill.addressLine1, ba2: bill.addressLine2 } });
+      res.status(400).json({
+        ok: false,
+        error: "Validation failed: address1+address2 must be >= 3 chars",
+        debug: {
+          sa1: ship.addressLine1,
+          sa2: ship.addressLine2,
+          ba1: bill.addressLine1,
+          ba2: bill.addressLine2,
+        },
+      });
       return;
     }
     if (addrLen(bill) < 3) bill = { ...ship };
 
     // Items
-    const orderItems: Array<{ productId: mongoose.Types.ObjectId; name: string; price: number; quantity: number; image: string; }> = [];
+    const orderItems: Array<{
+      productId: mongoose.Types.ObjectId;
+      name: string;
+      price: number;
+      quantity: number;
+      image: string;
+    }> = [];
     let subtotal = 0;
     for (const cartItem of cart.items) {
       const product = cartItem.productId as any;
-      if (!product || !product.isActive || !product.inStock) { res.status(400).json({ message: `Product unavailable: ${product?.name || "Unknown"}` }); return; }
+      if (!product || !product.isActive || !product.inStock) {
+        res
+          .status(400)
+          .json({ message: `Product unavailable: ${product?.name || "Unknown"}` });
+        return;
+      }
       const stock = Math.max(0, Number(product.stockQuantity ?? 0));
       const desired = Math.max(1, Number(cartItem.quantity) || 1);
-      if (stock < 1) { res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` }); return; }
+      if (stock < 1) {
+        res
+          .status(400)
+          .json({ message: `Insufficient stock for ${product?.name || "item"}.` });
+        return;
+      }
       const qty = Math.min(desired, stock);
-      if (qty < 1) { res.status(400).json({ message: `Insufficient stock for ${product?.name || "item"}.` }); return; }
+      if (qty < 1) {
+        res
+          .status(400)
+          .json({ message: `Insufficient stock for ${product?.name || "item"}.` });
+        return;
+      }
 
-      orderItems.push({ productId: product._id, name: product.name, price: cartItem.price, quantity: qty, image: product.images?.[0] || "" });
-      subtotal += cartItem.price * qty;
+      orderItems.push({
+        productId: product._id,
+        name: product.name,
+        price: cartItem.price,
+        quantity: qty,
+        image: product.images?.[0] || "",
+      });
+      subtotal += cartItem.price * qty; // subtotal is GST-INCLUSIVE product total
     }
 
-    // Pricing
+    // Pricing (product prices are GST inclusive)
     const FREE_SHIPPING_THRESHOLD = 2000;
     const SHIPPING_COST = 150;
     const COD_FEE = 25;
     const ONLINE_FEE_RATE = 0.02;     // 2%
     const ONLINE_FEE_GST_RATE = 0.18; // 18% on the fee
+    const GST_RATE = 0.18;            // 18% GST on products
 
     const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_COST;
-    const tax = Math.round(subtotal * 0.18);
+
+    // GST INCLUDED in subtotal:
+    // subtotal = taxableValue + GST → GST = subtotal * r / (1 + r)
+    const tax = Math.round((subtotal * GST_RATE) / (1 + GST_RATE)); // GST portion only (for display/invoice)
+    const taxableValue = subtotal - tax; // value before GST (for GST block)
 
     const isCOD = paymentMethod === "cod";
-    const baseBeforeOnlineFee = subtotal + tax + shipping;
+
+    // IMPORTANT: DO NOT add `tax` on top of subtotal; it is already included
+    const baseBeforeOnlineFee = subtotal + shipping;
 
     const onlineFee = isCOD ? 0 : Math.round(baseBeforeOnlineFee * ONLINE_FEE_RATE);
     const onlineFeeGst = isCOD ? 0 : Math.round(onlineFee * ONLINE_FEE_GST_RATE);
@@ -107,8 +150,11 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     const orderNumber = `NK${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const paymentOrderId = isCOD ? `cod_${Date.now()}` : undefined;
 
-    // GST block
-    const gstBlock = buildGstBlock(req.body, ship, { subtotal, tax });
+    // GST block — use taxable value + GST amount
+    const gstBlock = buildGstBlock(req.body, ship, {
+      subtotal: taxableValue,
+      tax,
+    });
 
     // Create order
     const order = new Order({
@@ -119,11 +165,10 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       billingAddress: bill,
       paymentMethod,
       paymentOrderId,
-      subtotal,
-      tax,
-      shipping,
+      subtotal,        
+      tax,               
       total,
-      charges: { codCharge, onlineFee, onlineFeeGst }, // <-- breakdown kept
+      charges: { codCharge, onlineFee, onlineFeeGst },
       status: "pending",
       orderStatus: "pending",
       paymentStatus: isCOD ? "cod_pending" : "awaiting_payment",
@@ -133,16 +178,17 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
     const savedOrder = await order.save();
 
-    // Shiprocket create (non-blocking)
+
     try {
-      const srPayload = buildSrPayload(savedOrder); // uses charges.codCharge and total
+      const srPayload = buildSrPayload(savedOrder); 
       const srRes = await createShiprocketOrder(srPayload);
       await Order.findByIdAndUpdate(savedOrder._id, {
         $set: {
           shipmentId: srRes?.shipment_id ?? undefined,
           shiprocketStatus: "ORDER_CREATED",
           shiprocketOrderId: srRes?.order_id ?? srRes?.orderId ?? undefined,
-          shiprocketChannelId: srRes?.channel_id ?? process.env.SHIPROCKET_CHANNEL_ID ?? undefined,
+          shiprocketChannelId:
+            srRes?.channel_id ?? process.env.SHIPROCKET_CHANNEL_ID ?? undefined,
           shiprocketResponse: srRes ?? null,
         },
       });
@@ -170,17 +216,39 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
     await Cart.findOneAndDelete({ userId });
 
     // Emails
-    const emailResults = { customerEmailSent: false, adminEmailSent: false, emailError: null as string | null };
+    const emailResults = {
+      customerEmailSent: false,
+      adminEmailSent: false,
+      emailError: null as string | null,
+    };
     try {
-      emailResults.customerEmailSent = await EmailAutomationService.sendOrderConfirmation(savedOrder as any, savedOrder.shippingAddress.email);
-      emailResults.adminEmailSent = await EmailAutomationService.notifyAdminNewOrder(savedOrder as any);
-    } catch (e: any) { emailResults.emailError = e?.message || "Email error"; }
+      emailResults.customerEmailSent =
+        await EmailAutomationService.sendOrderConfirmation(
+          savedOrder as any,
+          savedOrder.shippingAddress.email
+        );
+      emailResults.adminEmailSent =
+        await EmailAutomationService.notifyAdminNewOrder(savedOrder as any);
+    } catch (e: any) {
+      emailResults.emailError = e?.message || "Email error";
+    }
 
     // Sockets
     if (req.io) {
-      interface IUserSummary { _id: mongoose.Types.ObjectId; name?: string; email?: string; }
+      interface IUserSummary {
+        _id: mongoose.Types.ObjectId;
+        name?: string;
+        email?: string;
+      }
       let userDoc: IUserSummary | null = null;
-      try { userDoc = await mongoose.model<IUserSummary>("User").findById(savedOrder.userId).select("name email").lean().exec(); } catch {}
+      try {
+        userDoc = await mongoose
+          .model<IUserSummary>("User")
+          .findById(savedOrder.userId)
+          .select("name email")
+          .lean()
+          .exec();
+      } catch {}
       const userSummary = {
         _id: savedOrder.userId.toString(),
         name: userDoc?.name || savedOrder.shippingAddress?.fullName,
@@ -217,9 +285,12 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
       },
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || "Server error" });
+    res
+      .status(500)
+      .json({ success: false, message: error.message || "Server error" });
   }
 };
+
 
 
 

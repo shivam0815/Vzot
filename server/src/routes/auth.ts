@@ -15,8 +15,7 @@ import {
   forgotPassword,
   resetPasswordWithOtp,
   manualVerify,
-  // debugUserPassword,     // NEW
-  // forcePasswordReset,    // NEW
+  
 } from '../controllers/authController';
 import passport from '../config/passport';
 
@@ -51,11 +50,7 @@ router.post('/resend-verification-otp', resendVerificationOtp);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password-otp', resetPasswordWithOtp);
 
-// DEBUG ROUTES (REMOVE IN PRODUCTION)
-// router.post('/debug-user-password', debugUserPassword);
-// router.post('/force-password-reset', forcePasswordReset);
 
-// Testing route
 router.post('/manual-verify', manualVerify);
 
 // Protected routes (require authentication)

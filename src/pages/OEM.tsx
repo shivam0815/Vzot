@@ -9,7 +9,7 @@ import {
 import SEO from '../components/Layout/SEO';
 import { oemService } from '../services/oemService';
 import toast from 'react-hot-toast';
-// Optional Cloudinary helper (you already use it elsewhere)
+
 import { generateResponsiveImageUrl } from '../utils/cloudinaryBrowser';
 
 const isEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(e.trim());

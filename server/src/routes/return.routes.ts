@@ -32,9 +32,7 @@ router.get('/returns/:id', authenticate, getMyReturn);
 router.post('/returns', authenticate, upload.array('images', 6), createReturnRequest);
 router.patch('/returns/:id/cancel', authenticate, cancelMyReturn);
 
-/** ================ ADMIN =================
- * Prevent 304s/empty bodies from caches for these endpoints
- */
+
 router.use('/admin/returns', (_req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
@@ -42,8 +40,7 @@ router.use('/admin/returns', (_req, res, next) => {
   next();
 });
 
-// NOTE: use whichever signature your `authorize` supports.
-// If it expects an array, keep ['admin']; if it expects a string, use 'admin'.
+
 router.get('/admin/returns', authenticate, authorize(['admin']), adminListReturns);
 router.get('/admin/returns/:id', authenticate, authorize(['admin']), adminGetReturn);
 router.patch('/admin/returns/:id/decision', authenticate, authorize(['admin']), adminDecision);

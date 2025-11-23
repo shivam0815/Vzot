@@ -2,11 +2,7 @@ import express from 'express';
 
 const router = express.Router();
 
-/**
- * GET /api/support/config
- * Returns support/contact settings for the app.
- * You can later replace the env-based values with DB values.
- */
+
 router.get('/config', async (req, res) => {
   try {
     const config = {

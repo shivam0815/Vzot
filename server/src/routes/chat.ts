@@ -7,7 +7,7 @@ import { composeAnswer } from "../config/ai";
 
 const router = Router();
 
-// Use existing Product model if registered; else a loose fallback bound to "products"
+
 const Product: any =
   (mongoose.models as any).Product ||
   mongoose.model(

@@ -294,6 +294,8 @@ function getGstView(o?: IOrderFull) {
 }
 
 
+
+
 // helper inside OrdersTab component (top-level, before return)
 async function presign(file: File) {
   const qs = new URLSearchParams({
@@ -357,6 +359,9 @@ const Segment: React.FC<{
     })}
   </div>
 );
+
+
+
 
 const ChipButton: React.FC<
   React.ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }
@@ -1562,71 +1567,98 @@ const OrdersTab: React.FC = () => {
                 </div>
 
               
-                {/* Items */}
-<div>
-  <div className="font-semibold text-gray-900 mb-2">Items</div>
-  <div className="space-y-2">
-    {selected.items.map((it, idx) => {
-      const src = itemImage(it);
-const name =
-  (typeof it.productId === 'object' && (it.productId as any)?.name) ||
-  it.name || 'Item';
-      return (
-        <div key={idx} className="flex items-center gap-3 border rounded-2xl p-2">
-          <div className="w-12 h-12 rounded-xl bg-gray-100 border overflow-hidden flex items-center justify-center">
-            {src ? (
-              <img src={src} alt="" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-[10px] text-gray-500 px-1 text-center">{name}</span>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-gray-900 truncate">{name}</div>
-            <div className="text-xs text-gray-600">
-              Qty {it.quantity} × {currency(it.price)}
+                
+{/* Items */}
+{(() => {
+  const g = getGstView(selected); // derive safe GST view (percent, base, amount)
+
+  return (
+    <div>
+      <div className="font-semibold text-gray-900 mb-2">Items</div>
+      <div className="space-y-2">
+        {selected.items.map((it, idx) => {
+          const src = itemImage(it);
+          const name =
+            (typeof it.productId === 'object' &&
+              (it.productId as any)?.name) ||
+            it.name ||
+            'Item';
+          return (
+            <div
+              key={idx}
+              className="flex items-center gap-3 border rounded-2xl p-2"
+            >
+              <div className="w-12 h-12 rounded-xl bg-gray-100 border overflow-hidden flex items-center justify-center">
+                {src ? (
+                  <img src={src} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[10px] text-gray-500 px-1 text-center">
+                    {name}
+                  </span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">
+                  {name}
+                </div>
+                <div className="text-xs text-gray-600">
+                  Qty {it.quantity} × {currency(it.price)}
+                </div>
+              </div>
+              <div className="text-sm font-semibold">
+                {currency(it.quantity * it.price)}
+              </div>
             </div>
-          </div>
-          <div className="text-sm font-semibold">
-            {currency(it.quantity * it.price)}
-          </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 space-y-1 text-sm">
+        <div className="flex justify-between text-gray-600">
+          <span>Subtotal</span>
+          <span>{money(selected.subtotal)}</span>
         </div>
-      );
-    })}
-  </div>
 
-  <div className="mt-3 space-y-1 text-sm">
-    <div className="flex justify-between text-gray-600">
-      <span>Subtotal</span><span>{money(selected.subtotal)}</span>
-    </div>
-    <div className="flex justify-between text-gray-600">
-      <span>GST{selected.gst?.taxPercent ? ` (${selected.gst.taxPercent}%)` : ''}</span>
-      <span>{money(toNum(selected.gst?.taxAmount ?? selected.tax))}</span>
-    </div>
-    <div className="flex justify-between text-gray-600">
-      <span>Shipping</span><span>{money(selected.shipping)}</span>
-    </div>
+        <div className="flex justify-between text-gray-600">
+          <span>
+            GST Included{g.taxPercent ? ` (${g.taxPercent}%)` : ''}
+          </span>
+          <span>{money(toNum(g.taxAmount))}</span>
+        </div>
 
-    {!!selected.charges?.codCharge && (
-      <div className="flex justify-between text-gray-600">
-        <span>COD charge</span><span>{money(selected.charges.codCharge)}</span>
-      </div>
-    )}
-    {!!selected.charges?.onlineFee && (
-      <div className="flex justify-between text-gray-600">
-        <span>Payment processing fee</span><span>{money(selected.charges.onlineFee)}</span>
-      </div>
-    )}
-    {!!selected.charges?.onlineFeeGst && (
-      <div className="flex justify-between text-gray-600">
-        <span>Processing fee GST</span><span>{money(selected.charges.onlineFeeGst)}</span>
-      </div>
-    )}
+        <div className="flex justify-between text-gray-600">
+          <span>Shipping</span>
+          <span>{money(selected.shipping)}</span>
+        </div>
 
-    <div className="flex justify-between font-semibold border-t pt-2">
-      <span>Total</span><span>{money(selected.total)}</span>
+        {!!selected.charges?.codCharge && (
+          <div className="flex justify-between text-gray-600">
+            <span>COD charge</span>
+            <span>{money(selected.charges.codCharge)}</span>
+          </div>
+        )}
+        {!!selected.charges?.onlineFee && (
+          <div className="flex justify-between text-gray-600">
+            <span>Payment processing fee</span>
+            <span>{money(selected.charges.onlineFee)}</span>
+          </div>
+        )}
+        {!!selected.charges?.onlineFeeGst && (
+          <div className="flex justify-between text-gray-600">
+            <span>Processing fee GST</span>
+            <span>{money(selected.charges.onlineFeeGst)}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between font-semibold border-t pt-2">
+          <span>Total</span>
+          <span>{money(selected.total)}</span>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
+  );
+})()}
+
 
 
                 {/* Addresses */}

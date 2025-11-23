@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import speakeasy from 'speakeasy';
 
-// ✅ FIXED - Enhanced User Interface with all required properties
+
 export interface IUser {
   // Basic Info
   name: string;

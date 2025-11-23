@@ -7,7 +7,7 @@ import {
   getAllOrders,
   getOrderDetails,
   getOrderByIdAdmin,
-  // ⬇️ make sure these two are exported from your controller file
+  
   cancelOrder,
   trackOrder,
 } from '../controllers/orderController';
@@ -35,12 +35,7 @@ router.get('/', authenticate, getOrders);
 // Details expects :orderId (per your controller)
 router.get('/details/:orderId', authenticate, getOrderDetails);
 
-/**
- * NEW: Track + Cancel
- * - Track also expects :orderId (matches your controller)
- * - Cancel expects :id (matches your controller)
- * Keep these ABOVE '/:id' so the generic matcher doesn't swallow them.
- */
+
 router.get('/track/:orderId', authenticate, trackOrder);
 router.post('/:id/cancel', authenticate, cancelOrder);
 

@@ -166,10 +166,12 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
           );
 
     const subtotal = Math.max(0, Number(fallbackSubtotal));
-    const tax =
-      typeof orderData.tax === 'number'
-        ? Number(orderData.tax)
-        : Math.round(subtotal * 0.18);
+    // GST INCLUDED inside subtotal — extract only the GST portion
+const tax =
+  typeof orderData.tax === 'number'
+    ? Number(orderData.tax)
+    : +(subtotal * 18 / 118).toFixed(2);
+
     const shipping =
       typeof orderData.shipping === 'number'
         ? Number(orderData.shipping)
@@ -219,7 +221,8 @@ export const createPaymentOrder = async (req: Request, res: Response): Promise<v
     }
 
     // ---------- FINAL TOTAL (normalized) ----------
-    const total = subtotal + tax + shipping + codCharge + onlineFee + onlineFeeGst;
+    const total = subtotal + shipping + codCharge + onlineFee + onlineFeeGst;
+
 
     // ---------- GST BLOCK ----------
     const gstBlock = buildGstBlock(req.body, orderData.shippingAddress, { subtotal, tax });

@@ -122,3 +122,4 @@ export const adminDeleteNotification = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: e.message });
   }
 };
+        

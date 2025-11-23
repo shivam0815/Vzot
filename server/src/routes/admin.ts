@@ -31,6 +31,8 @@ import SupportTicket from '../models/SupportTicket';
 import SupportConfig from '../models/SupportConfig';
 import SupportFaq from '../models/SupportFaq';
 import ReturnRequest from '../models/ReturnRequest';
+import { getLiveCartsAdmin } from '../controllers/cartController';
+
 
 const resolveRange = (range?: string, from?: string, to?: string) => {
   if (from && to) return { since: new Date(from), until: new Date(to) };
@@ -668,7 +670,12 @@ router.post('/returns', [
 // ===============================
 // 🧑‍🧑‍🧒 ADMIN USERS
 // ===============================
-
+router.get(
+  '/carts/live',
+  authenticate,
+  ...adminOnly,
+  getLiveCartsAdmin as express.RequestHandler
+);
 // GET /api/admin/users
 router.get('/users',
   ...adminOnly,

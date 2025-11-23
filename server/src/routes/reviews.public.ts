@@ -137,9 +137,7 @@ r.post<CreateParams>(
   }
 );
 
-/* -------------------------------------------------------------------------- */
-/* PATCH: approve review (admin)                                               */
-/* -------------------------------------------------------------------------- */
+
 type ApproveParams = { id: string };
 
 r.patch<ApproveParams>("/reviews/:id/approve", param("id").isMongoId(), async (req, res) => {

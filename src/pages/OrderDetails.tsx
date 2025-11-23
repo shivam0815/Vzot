@@ -106,7 +106,7 @@ const fade = {
   exit: { opacity: 0, y: -14 },
 };
 const SHIPPING_FLAT = 150;
-const FREE_SHIP_THRESHOLD = 2000; // subtotal >= 2000 ⇒ free
+const FREE_SHIP_THRESHOLD = 2000; 
 
 
 const ORDER_FLOW: OrderDetails['status'][] = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
@@ -125,87 +125,87 @@ const toNum = (v: any) => {
 const inr = (n: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n);
 
-/** Robust breakdown. If API gives zeros, compute from items/percentages.
- *  IMPORTANT: If both shipping & tax are 0 but total > subtotal, we treat the
- *  remainder as TAX (because shipping is added later after packing). */
+
 function deriveBreakdown(o: OrderDetails) {
   const itemsSubtotal = (o.items || []).reduce(
     (s, it) => s + toNum(it.quantity) * toNum(it.price),
     0
   );
-  const subtotal = toNum(o.subtotal) || itemsSubtotal;
+
+  // 1) Subtotal (GST inclusive)
+  const subtotalRaw = toNum(o.subtotal) || itemsSubtotal;
+  const subtotal = +subtotalRaw.toFixed(2);
 
   const pricing: any = (o as any).pricing || {};
+  const charges: Charges = (o as any).charges || {};
 
-  // ── TAX ──
-  let tax =
-    toNum((o as any).tax) ||
-    toNum((o as any).taxes) ||
-    toNum((o as any).gst) ||
-    toNum((o as any).vat) ||
-    toNum(pricing.gstSummary?.gstAmount);
 
+  let tax = toNum((o as any).tax) || toNum(pricing.gstSummary?.gstAmount);
+
+  
   const pctFromOrder = toNum((o as any).gstPercent || (o as any).taxRate);
   const pctFromPricing =
     typeof pricing.gstSummary?.rate === 'number'
       ? Math.round((pricing.gstSummary.rate || 0) * 100)
       : 0;
 
-  const pct = pctFromOrder || pctFromPricing || 0;
+  const taxPercent = pctFromOrder || pctFromPricing || 0;
 
-  if (tax === 0 && pct > 0) {
-    tax = +(subtotal * (pct / 100)).toFixed(2);
+  
+  if (tax === 0 && taxPercent > 0 && subtotal > 0) {
+    
+    tax = +((subtotal * taxPercent) / (100 + taxPercent)).toFixed(2);
   }
-  const taxLabel = pct > 0 ? `Tax (GST ${pct}%)` : 'Tax';
 
-  // ── SHIPPING ──
-  const shipProvided =
+  const taxLabel =
+    taxPercent > 0
+      ? `GST included (${taxPercent}%)`
+      : 'GST included';
+
+  const taxFixed = +tax.toFixed(2);
+
+  
+  let shipping =
     toNum((o as any).shipping) ||
     toNum((o as any).shippingFee) ||
     toNum((o as any).shippingCost) ||
     toNum((o as any).deliveryCharge);
 
   const freeEligible = subtotal >= FREE_SHIP_THRESHOLD;
-  const shipping = shipProvided > 0 ? shipProvided : freeEligible ? 0 : SHIPPING_FLAT;
+  if (shipping === 0 && subtotal > 0) {
+    shipping = freeEligible ? 0 : SHIPPING_FLAT;
+  }
 
-  // ── EXTRA CHARGES (COD + online fee + GST on fee) ──
+  // 5) Extra charges: COD / online fee / fee GST
   const codCharge = toNum(
-    o.charges?.codCharge ?? pricing.codCharges
+    charges.codCharge ?? pricing.codCharges
   );
   const onlineFee = toNum(
-    o.charges?.onlineFee ?? pricing.convenienceFee
+    charges.onlineFee ?? pricing.convenienceFee
   );
   const onlineFeeGst = toNum(
-    o.charges?.onlineFeeGst ?? pricing.convenienceFeeGst
+    charges.onlineFeeGst ?? pricing.convenienceFeeGst
   );
 
-  const total = Math.max(
-    0,
-    +(
-      subtotal +
-      tax +
-      shipping +
-      codCharge +
-      onlineFee +
-      onlineFeeGst
-    ).toFixed(2)
-  );
+  
+  const totalRaw =
+    toNum(o.total) ||
+    subtotal + shipping + codCharge + onlineFee + onlineFeeGst;
+
+  const total = +totalRaw.toFixed(2);
 
   return {
-    subtotal: +subtotal.toFixed(2),
-    tax: +tax.toFixed(2),
+    subtotal,
+    tax: taxFixed,      
     taxLabel,
     shipping,
     freeEligible,
     codCharge,
     onlineFee,
     onlineFeeGst,
-    total,
+    total,             
   };
 }
-
-
-
 
 const niceDate = (s?: string) => {
   if (!s) return 'N/A';
@@ -273,7 +273,7 @@ const OrderDetailsPage: React.FC = () => {
 
   useEffect(() => {
     if (orderId) fetchOrderDetails(orderId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  
   }, [orderId]);
 
   const fetchOrderDetails = async (id: string) => {

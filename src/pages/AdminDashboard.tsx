@@ -14,7 +14,7 @@ import LowStockTab from '../components/Layout/LowStockTab';
 import PendingOrdersTab from '../components/Layout/PendingOrdersTab';
 import AdminNotifications from '../components/Layout/AdminNotifications';
 import AdminHelpSupport from '../components/Layout/AdminHelpSupport';
-
+import LiveCartsWidget from '../components/Layout/LiveCartsWidget';
 import { io } from "socket.io-client";
 import Papa from "papaparse";
 
@@ -1593,7 +1593,7 @@ const Overview = React.memo<{
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminData, onLogout }) => {
   const [activeTab, setActiveTab] = useState<
     'overview' | 'products' | 'inventory' | 'orders' | 'returns' | 'reviews' | 'payments' | 'blog' |
-    'users' | 'todaySales' | 'lowStock' | 'pendingOrders' | 'allOrders' | 'support' | 'notifications'
+    'users' | 'todaySales' | 'lowStock' | 'pendingOrders' | 'allOrders' | 'support' | 'notifications'|'liveCarts' 
   >('overview');
 
   const [stats, setStats] = useState({
@@ -1694,6 +1694,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ adminData, onLogout }) 
         return <PendingOrdersTab showNotification={showNotification} checkNetworkStatus={checkNetworkStatus} />;
       case 'notifications':
         return <AdminNotifications showNotification={showNotification} checkNetworkStatus={checkNetworkStatus} />;
+            case 'liveCarts':
+      return <LiveCartsWidget />;
     }
   };
 

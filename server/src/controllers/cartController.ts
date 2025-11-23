@@ -336,3 +336,78 @@ export const clearCart = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ message: error.message || "Server error" });
   }
 };
+/* ────────────────────────────────────────────────────────────── */
+/* ADMIN: LIVE / RECENT CARTS                                    */
+/* ────────────────────────────────────────────────────────────── */
+export const getLiveCartsAdmin = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = req.user as AuthenticatedUser;
+
+    // Sirf admin ko allow karo
+    if (!user || user.role !== "admin") {
+      res.status(403).json({ message: "Forbidden: Admin access only" });
+      return;
+    }
+
+    // Query param: sinceMinutes (default 60 min)
+    const rawMinutes =
+      Number(req.query.sinceMinutes) ||
+      Number(req.query.minutes) ||
+      60;
+
+    const minutes =
+      Number.isFinite(rawMinutes) && rawMinutes > 0 && rawMinutes <= 1440
+        ? rawMinutes
+        : 60;
+
+    const since = new Date(Date.now() - minutes * 60 * 1000);
+
+    // Sirf woh carts jinke items hain + jo recent update hue hain
+    const carts = await Cart.find({
+      updatedAt: { $gte: since },
+      "items.0": { $exists: true },
+    })
+      .populate("userId", "name email phoneNumber phone") // jo fields tumhare User model me hon
+      .populate("items.productId", "name title sku images price wholesalePrice");
+
+    // Admin UI ke liye thoda clean summary
+    const data = carts.map((c: any) => {
+      const u = c.userId || {};
+      return {
+        cartId: c._id,
+        userId: u._id,
+        userName: u.name || "",
+        userEmail: u.email || "",
+        userPhone: u.phoneNumber || u.phone || "",
+        totalAmount: c.totalAmount,
+        itemCount: (c.items || []).length,
+        updatedAt: c.updatedAt,
+        items: (c.items || []).map((it: any) => {
+          const p = it.productId || {};
+          return {
+            productId: p._id,
+            productName: p.name || p.title || "",
+            sku: p.sku || "",
+            quantity: it.quantity,
+            unitPrice: it.price,
+          };
+        }),
+      };
+    });
+
+    res.json({
+      success: true,
+      sinceMinutes: minutes,
+      count: data.length,
+      carts: data,
+    });
+  } catch (error: any) {
+    console.error("Admin live carts error:", error);
+    res
+      .status(500)
+      .json({ success: false, message: error.message || "Server error" });
+  }
+};

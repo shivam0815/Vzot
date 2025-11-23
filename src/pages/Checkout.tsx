@@ -159,7 +159,11 @@ const CheckoutPage: React.FC = () => {
   const giftWrapFee = giftWrap ? GIFT_WRAP_FEE : 0;
   const codCharges = method === 'cod' ? COD_FEE : 0;
 
-  const tax = useMemo(() => Math.round(effectiveSubtotal * 0.18), [effectiveSubtotal]);
+ const tax = useMemo(() => {
+  // GST included inside MRP (18%)
+  return Math.round(effectiveSubtotal * (18 / 118));
+}, [effectiveSubtotal]);
+
 
   const convenienceFee = useMemo(() => {
     if (method === 'cod') return 0;
@@ -180,7 +184,7 @@ const CheckoutPage: React.FC = () => {
   const total = Math.max(
     0,
     effectiveSubtotal +
-      tax +
+      
       shippingFee +
       codCharges +
       giftWrapFee +
@@ -534,12 +538,12 @@ const CheckoutPage: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex justify-between">
-                <span className="text-gray-600">Tax (18% GST)</span>
-                <span className="font-semibold text-gray-900">
-                  {formatINR(tax)}
-                </span>
-              </div>
+             <div className="flex justify-between">
+  <span className="text-gray-600">GST Included (18%)</span>
+  <span className="font-semibold text-gray-900">
+    {formatINR(tax)}
+  </span>
+</div>
 
               <div className="flex justify-between">
                 <span className="text-gray-600">

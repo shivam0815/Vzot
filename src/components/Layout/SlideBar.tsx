@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { key: 'todaySales', label: '🗓️ Today’s Sales' },
   { key: 'lowStock', label: '⚠️ Low Stock' },
   { key: 'pendingOrders', label: '⏳ Pending Orders' },
+   { key: 'liveCarts', label: '🛒 Live Carts' },
 ];
 
 const SlideBar = memo<SidebarProps>(({ activeTab, setActiveTab, adminData, onLogout }) => {

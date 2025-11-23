@@ -50,13 +50,7 @@ const LIST_FIELDS =
   'inStock isActive specifications createdAt updatedAt ' +
   'wholesaleEnabled wholesalePrice wholesaleMinQty';
 
-/* ------------------------------------------------------------------ */
-/* Routes                                                             */
-/* ------------------------------------------------------------------ */
 
-/**
- * GET /products/search?q=...&category=...&minPrice=...&maxPrice=...
- */
 router.get('/search', async (req, res) => {
   try {
     const { q, category, minPrice, maxPrice } = req.query as Record<string, string>;
