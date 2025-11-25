@@ -779,11 +779,34 @@ export const getMySupportTickets = async () => {
 
 
 
+export interface LiveCart {
+  _id: string;
+  userId?: string;
+  sessionId?: string;
+  itemsCount: number;
+  cartTotal: number;
+  updatedAt: string;
+  createdAt?: string;
+  // add any other fields your backend returns
+}
 
 
 
-
-
+export const getLiveCarts = async (
+  sinceMinutes: number = 60
+): Promise<{ success: boolean; carts: LiveCart[] }> => {
+  try {
+    log('🛒 Fetching live carts...', { sinceMinutes });
+    const { data } = await adminApi.get('/admin/carts/live', {
+      params: { sinceMinutes },
+    });
+    log('✅ Live carts fetched');
+    return data;
+  } catch (error: any) {
+    logError('❌ Get live carts failed:', error.response?.data || error.message);
+    throw error;
+  }
+};
 
 
 

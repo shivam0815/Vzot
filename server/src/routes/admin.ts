@@ -14,7 +14,14 @@ import {
   sendAdminOtp,
   verifyAdminOtp,
   updateProductStock, // ✅ added (matches controller + adminApi)
+   getUsers,
+  getUserAnalytics,
+  updateUser,
+  toggleUserStatus,
+  deleteUser,
+  sendPasswordResetEmail,
 } from '../controllers/adminController';
+
 import Product from '../models/Product';
 import Return from '../models/ReturnRequest';
 import Review from '../models/Review';
@@ -677,261 +684,61 @@ router.get(
   getLiveCartsAdmin as express.RequestHandler
 );
 // GET /api/admin/users
-router.get('/users',
+// GET /api/admin/users
+
+router.get(
+  '/users',
+  authenticate,
   ...adminOnly,
-  async (req: express.Request, res: express.Response) => {
-    try {
-      const {
-        page = 1,
-        limit = 10,
-        sortBy = 'createdAt',
-        sortOrder = 'desc',
-        q = '',
-        role = '',
-        status = '',
-        from = '',
-        to = ''
-      } = req.query as any;
-
-      const filter: any = {};
-
-      // search by name/email/phone
-      if (q) {
-        const rx = new RegExp(String(q), 'i');
-        filter.$or = [{ name: rx }, { email: rx }, { phone: rx }];
-      }
-
-      if (role) filter.role = role;
-      if (status) {
-        // map UI status -> boolean
-        // we only have active/inactive in model; treat banned as inactive for now
-        const map: Record<string, boolean> = { active: true, inactive: false, banned: false };
-        filter.isActive = map[String(status).toLowerCase()] ?? undefined;
-      }
-
-      // optional createdAt range
-      if (from || to) {
-        filter.createdAt = {};
-        if (from) filter.createdAt.$gte = new Date(from);
-        if (to) filter.createdAt.$lte = new Date(to);
-      }
-
-      const sort: any = { [String(sortBy)]: sortOrder === 'asc' ? 1 : -1 };
-
-      const pageNum = parseInt(String(page), 10);
-      const limitNum = parseInt(String(limit), 10);
-      const skip = (pageNum - 1) * limitNum;
-
-      const [items, total] = await Promise.all([
-        User.find(filter)
-          .sort(sort)
-          .skip(skip)
-          .limit(limitNum)
-          .select({ password: 0, refreshToken: 0 })
-          .lean(),
-        User.countDocuments(filter),
-      ]);
-
-      res.json({
-        success: true,
-        users: items.map((u: any) => ({
-          _id: u._id,
-          name: u.name,
-          email: u.email,
-          emailVerified: u.emailVerified ?? false,
-          phone: u.phone,
-          avatar: u.avatar,
-          role: u.role,
-          status: (u.isActive === false ? 'inactive' : 'active') as 'active' | 'inactive', // ✅ UI expects `status`
-          city: u.city,
-          country: u.country,
-          device: u.device,
-          createdAt: u.createdAt,
-          lastLoginAt: u.lastLoginAt,
-          // lightweight engagement
-          ordersCount: u.ordersCount ?? 0,
-          lifetimeValue: u.lifetimeValue ?? 0,
-          sessions7d: u.sessions7d ?? [],
-          avgSessionMins: u.avgSessionMins ?? 0,
-          totalMins30d: u.totalMins30d ?? 0,
-        })),
-      totalUsers: total,
-      totalPages: Math.ceil(total / limitNum),
-      currentPage: pageNum,
-      });
-    } catch (err: any) {
-      console.error('❌ Admin: users list error:', err);
-      res.status(500).json({ success: false, message: err.message || 'Failed to fetch users' });
-    }
-  }
+  getUsers as express.RequestHandler
 );
+
 
 
 // GET /api/admin/users/analytics
-router.get('/users/analytics', ...adminOnly, async (req, res) => {
-  try {
-    const { range = '7d', from = '', to = '' } = req.query as any;
-    const { since, until } = resolveRange(range, from, to);
+// GET /api/admin/users/analytics
+router.get(
+  '/users/analytics',
+  authenticate,
+  ...adminOnly,
+  getUserAnalytics as express.RequestHandler
+);
 
-    const totalUsers = await User.estimatedDocumentCount();
-    const newSignups = await User.countDocuments({ createdAt: { $gte: since, $lte: until } });
-    const activeFilter = { $or: [{ lastSeenAt: { $gte: since } }, { lastLoginAt: { $gte: since } }] };
-    const activeUsers = await User.countDocuments(activeFilter);
-
-    const sessionAgg = await User.aggregate([
-      { $group: {
-        _id: null,
-        totalSessionMs: { $sum: { $ifNull: ['$totalSessionMs', 0] } },
-        totalSessions: { $sum: { $ifNull: ['$sessionCount', 0] } },
-      }},
-    ]);
-    const totals = sessionAgg[0] || { totalSessionMs: 0, totalSessions: 0 };
-    const avgSessionMinutes = totals.totalSessions ? Math.round((totals.totalSessionMs / totals.totalSessions) / 60000) : 0;
-
-    // tiny 7d spark (optional fallback)
-    const trend7 = Array.from({ length: 7 }, () => Math.floor(Math.random() * 10));
-
-    res.json({
-      success: true,
-      analytics: {
-        dau: activeUsers,
-        wau: Math.max(activeUsers, Math.floor(activeUsers * 1.5)),
-        mau: Math.max(activeUsers, Math.floor(activeUsers * 2.2)),
-        avgSessionMins: avgSessionMinutes,
-        returning7d: Math.floor(totalUsers * 0.2),
-        trend7,
-      },
-    });
-  } catch (err: any) {
-    console.error('❌ Admin: users analytics error:', err);
-    res.status(500).json({ success: false, message: err.message || 'Failed to fetch user analytics' });
-  }
-});
-
-
-// PUT /api/admin/users/:id/status  -> activate/deactivate
-router.patch('/users/:id/status',
-  ...adminOnly,                       // ✅ keep auth consistent and avoid your 500 AUTH_ERROR
+// PATCH /api/admin/users/:id/status -> active / inactive / banned
+router.patch(
+  '/users/:id/status',
+  authenticate,
+  ...adminOnly,
   auditLog('user-status-update'),
-  async (req: express.Request, res: express.Response) => {
-    try {
-      const { status } = req.body as { status: 'active' | 'inactive' | 'banned' };
-      const map: Record<string, boolean> = { active: true, inactive: false, banned: false };
-      const isActive = map[String(status).toLowerCase()];
-      const user = await User.findByIdAndUpdate(
-        req.params.id,
-        { isActive: isActive },
-        { new: true }
-      ).select({ password: 0, refreshToken: 0 });
-
-      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-      res.json({ success: true, user, message: `User ${status}` });
-    } catch (err: any) {
-      console.error('❌ Admin: user status error:', err);
-      res.status(500).json({ success: false, message: err.message || 'Failed to update status' });
-    }
-  }
+  toggleUserStatus as express.RequestHandler
 );
 
-// PUT /api/admin/users/:id/role -> change role
-router.put('/users/:id/role',
-  ...secureAdminOnly,
-  auditLog('user-role-update'),
-  async (req: express.Request, res: express.Response) => {
-    try {
-      const { role } = req.body; // e.g., 'user' | 'admin'
-      const user = await User.findByIdAndUpdate(
-        req.params.id,
-        { role },
-        { new: true, runValidators: true }
-      ).select({ password: 0, refreshToken: 0 });
-
-      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-      res.json({ success: true, user });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message || 'Failed to update role' });
-    }
-  }
-);
-router.patch('/users/:id',
-  ...adminOnly,                       // ✅ use same guard that works for you
+// PATCH /api/admin/users/:id -> name/phone/role/status etc.
+router.patch(
+  '/users/:id',
+  authenticate,
+  ...adminOnly,
   auditLog('user-update'),
-  async (req: express.Request, res: express.Response) => {
-    try {
-      const allowed: Record<string, boolean> = {
-        name: true, phone: true, city: true, country: true, avatar: true, role: true, status: true,
-      };
-
-      const patch: any = {};
-      Object.keys(req.body || {}).forEach((k) => {
-        if (allowed[k]) patch[k] = (req.body as any)[k];
-      });
-
-      // map `status` -> `isActive`
-      if (patch.status) {
-        const map: Record<string, boolean> = { active: true, inactive: false, banned: false };
-        patch.isActive = map[String(patch.status).toLowerCase()] ?? true;
-        delete patch.status;
-      }
-
-      const updated = await User.findByIdAndUpdate(
-        req.params.id,
-        patch,
-        { new: true, runValidators: true }
-      ).select({ password: 0, refreshToken: 0 });
-
-      if (!updated) {
-        return res.status(404).json({ success: false, message: 'User not found' });
-      }
-
-      return res.json({ success: true, user: updated });
-    } catch (err: any) {
-      console.error('❌ Admin: user update error:', err);
-      res.status(500).json({ success: false, message: err.message || 'Failed to update user' });
-    }
-  }
+  updateUser as express.RequestHandler
 );
 
-
-
-router.delete('/users/:id',
+// DELETE /api/admin/users/:id -> soft delete via controller
+router.delete(
+  '/users/:id',
+  authenticate,
   ...adminOnly,
   auditLog('user-delete'),
-  async (req: express.Request, res: express.Response) => {
-    try {
-      const deleted = await User.findByIdAndDelete(req.params.id);
-      if (!deleted) return res.status(404).json({ success: false, message: 'User not found' });
-      res.json({ success: true, message: 'User deleted' });
-    } catch (err: any) {
-      console.error('❌ Admin: user delete error:', err);
-      res.status(500).json({ success: false, message: err.message || 'Failed to delete user' });
-    }
-  }
+  deleteUser as express.RequestHandler
 );
 
-/**
- * POST /api/admin/users/:id/password-reset
- * Stub: wire to your real email service
- */
-router.post('/users/:id/password-reset',
+// POST /api/admin/users/:id/password-reset
+router.post(
+  '/users/:id/password-reset',
+  authenticate,
   ...adminOnly,
   auditLog('user-password-reset'),
-  async (req: express.Request, res: express.Response) => {
-    try {
-      const user = await User.findById(req.params.id).select({ email: 1, name: 1 });
-      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-      // TODO: integrate your real email reset flow here
-      // await EmailService.sendPasswordReset(user.email, ...)
-
-      res.json({ success: true, message: 'Password reset email queued' });
-    } catch (err: any) {
-      console.error('❌ Admin: password reset error:', err);
-      res.status(500).json({ success: false, message: err.message || 'Failed to send reset email' });
-    }
-  }
+  sendPasswordResetEmail as express.RequestHandler
 );
-
 
 // ===============================
 // 💳 ADMIN PAYMENTS MANAGEMENT
@@ -1147,15 +954,7 @@ router.put('/payments/:id/status', [
   }
 });
 
-router.patch('/users/:id/status', ...secureAdminOnly, (req, res, next) => {
-  // translate { status: 'active'|'inactive'|'banned' } to isActive boolean
-  const map = { active: true, inactive: false, banned: false } as const;
-  if (typeof req.body?.status === 'string') {
-    req.body.isActive = map[req.body.status as keyof typeof map] ?? false;
-  }
-  // delegate to your existing PUT handler
-  (router as any).handle({ ...req, method: 'PUT' }, res, next);
-});
+
 
 router.get(
   '/products/low-stock',
@@ -1566,4 +1365,4 @@ router.delete(
 
 
 
-export default router;
+export default router; 

@@ -61,7 +61,13 @@ const rangeToLabel: Record<string, string> = {
 const upper = (v: unknown, fallback = '') => String(v ?? fallback).toUpperCase();
 
 // Normalize backend variability into safe, typed UI shape
-const normalizeUser = (u: UserRow): Required<UserRow> => {
+// Normalize backend variability into safe, typed UI shape
+const normalizeUser = (u: UserRow & {
+  lastCity?: string;
+  lastCountry?: string;
+  lastDeviceType?: string;
+  lastLogin?: string | Date;
+}): Required<UserRow> => {
   // Derive status if missing
   const normStatus: UserStatus =
     (u.status as UserStatus) ??
@@ -73,14 +79,22 @@ const normalizeUser = (u: UserRow): Required<UserRow> => {
     (u.isAdmin ? 'admin' : 'customer');
 
   // Map any unexpected 'user' to 'customer'
-  if (normRole as string === 'user') normRole = 'customer';
+  if ((normRole as string) === 'user') normRole = 'customer';
 
-  const orders = Number.isFinite(u.ordersCount) ? (u.ordersCount as number) : 0;
-  const ltv = Number.isFinite(u.lifetimeValue) ? (u.lifetimeValue as number) : 0;
+  const orders = Number.isFinite(u.ordersCount as number) ? (u.ordersCount as number) : 0;
+  const ltv = Number.isFinite(u.lifetimeValue as number) ? (u.lifetimeValue as number) : 0;
 
   const sessions = Array.isArray(u.sessions7d)
     ? u.sessions7d!.map(n => (Number.isFinite(n) ? Number(n) : 0))
     : [];
+
+  // 🔁 Map auth analytics fields -> UI fields
+  const city = u.city || (u as any).lastCity || '';
+  const country = u.country || (u as any).lastCountry || '';
+  const device = u.device || (u as any).lastDeviceType || '';
+  const lastLoginAtRaw = u.lastLoginAt || (u as any).lastLogin || '';
+  const lastLoginAt =
+    lastLoginAtRaw instanceof Date ? lastLoginAtRaw.toISOString() : String(lastLoginAtRaw || '');
 
   return {
     ...u,
@@ -94,16 +108,17 @@ const normalizeUser = (u: UserRow): Required<UserRow> => {
     email: u.email || '',
     phone: u.phone || '',
     avatar: u.avatar || '',
-    city: u.city || '',
-    country: u.country || '',
-    device: u.device || '',
-    lastLoginAt: u.lastLoginAt || '',
-    avgSessionMins: Number.isFinite(u.avgSessionMins!) ? u.avgSessionMins! : 0,
-    totalMins30d: Number.isFinite(u.totalMins30d!) ? u.totalMins30d! : 0,
+    city,
+    country,
+    device,
+    lastLoginAt,
+    avgSessionMins: Number.isFinite(u.avgSessionMins as number) ? (u.avgSessionMins as number) : 0,
+    totalMins30d: Number.isFinite(u.totalMins30d as number) ? (u.totalMins30d as number) : 0,
     isAdmin: !!u.isAdmin,
     isActive: u.isActive ?? (normStatus !== 'inactive'),
   };
 };
+
 
 // tiny inline sparkline
 const TinySpark: React.FC<{ vals?: number[] }> = ({ vals }) => {

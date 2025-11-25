@@ -1,11 +1,12 @@
-// src/controllers/authController.ts - PRODUCTION VERSION WITH ALL FIXES
-import { Request, Response } from 'express';
+// src/controllers/authController.ts - PRODUCTION VERSION WITH DEVICE + LOCATION ANALYTICS
+import { Request, Response, RequestHandler } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
+import { UAParser } from 'ua-parser-js';// npm i ua-parser-js
+import geoip from 'geoip-lite';             // npm i geoip-lite
 import User from '../models/User';
 import { emailService } from '../services/emailService';
-import { RequestHandler } from 'express';
 import { toIST } from '../config/time';
 
 // Interfaces
@@ -26,17 +27,14 @@ if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required but not set');
 }
 
-// JWT Helper Function
+// Helper: generate JWT token
 const generateToken = (userId: string, userRole: string): string => {
   try {
-    const payload = {
-      id: userId,
-      role: userRole
-    };
+    const payload = { id: userId, role: userRole };
     const secret = JWT_SECRET!;
     const options: SignOptions = {
       expiresIn: JWT_EXPIRES_IN as SignOptions['expiresIn'],
-      algorithm: 'HS256'
+      algorithm: 'HS256',
     };
     return jwt.sign(payload, secret, options);
   } catch (error) {
@@ -45,7 +43,50 @@ const generateToken = (userId: string, userRole: string): string => {
   }
 };
 
-// REGISTER with OTP - FIXED VERSION
+// Helper: extract IP from request
+const getClientIp = (req: Request): string => {
+  const xf = req.headers["x-forwarded-for"];
+  if (typeof xf === "string") return xf.split(",")[0].trim();
+  if (Array.isArray(xf)) return xf[0];
+
+  return (req.socket?.remoteAddress || req.ip || "").replace("::ffff:", "");
+};
+;
+
+// Helper: enrich user with device + location info and login history
+const enrichUserDeviceAndLocation = (req: Request, user: any) => {
+  const uaString = req.headers['user-agent'] || 'unknown';
+
+  const parser = new UAParser(uaString);
+  const ua = parser.getResult();
+
+  const ip = getClientIp(req);
+  const geo = ip ? geoip.lookup(ip) : null;
+
+  user.lastLogin = new Date();
+  user.lastLoginIP = ip;
+
+  user.lastDeviceType = ua.device?.type ?? 'desktop';
+  user.lastBrowser = ua.browser?.name ?? 'Unknown';
+  user.lastOS = ua.os?.name ?? 'Unknown';
+
+  user.lastCity = geo?.city ?? user.lastCity;
+  user.lastState = geo?.region ?? user.lastState;
+  user.lastCountry = geo?.country ?? user.lastCountry;
+
+  const history = {
+    ip,
+    userAgent: uaString,
+    timestamp: new Date(),
+    success: true,
+    location: geo ? `${geo.city || ''}, ${geo.region || ''}, ${geo.country || ''}`.trim() : undefined,
+  };
+
+  user.loginHistory = [...(user.loginHistory || []), history].slice(-10);
+};
+
+
+// REGISTER with OTP
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, phone, role = 'user' } = req.body;
@@ -56,7 +97,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       console.log('❌ Registration validation failed - missing fields');
       res.status(400).json({
         success: false,
-        message: 'Name, email, and password are required'
+        message: 'Name, email, and password are required',
       });
       return;
     }
@@ -67,7 +108,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       console.log('❌ Registration failed - user already exists:', email);
       res.status(400).json({
         success: false,
-        message: 'User with this email already exists'
+        message: 'User with this email already exists',
       });
       return;
     }
@@ -75,27 +116,27 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     console.log('🔐 Creating user - password will be hashed by model middleware');
     console.log('🔑 Original password length:', password?.length);
 
-    // Create user - let the model's pre-save middleware handle password hashing
+    // Create user
     const user = new User({
       name,
       email,
-      password: password, // ✅ Plain password - model will hash it
+      password, // model will hash
       phone,
       role,
       isVerified: false,
-      isActive: true
+      isActive: true,
     });
 
     // Generate email verification OTP
     const verificationOtp = user.generateEmailVerificationOtp();
-    
+
     console.log('💾 Saving user to database...');
-    await user.save(); // This triggers the pre-save middleware to hash the password
-    
+    await user.save();
+
     console.log('✅ User created successfully for:', email);
     console.log('📧 Generated OTP:', verificationOtp);
 
-    // ✅ FIXED: Test password against the saved user's hashed password
+    // Verify hash
     const savedUser = await User.findById(user.id).select('+password');
     const immediateTest = await bcrypt.compare(password, savedUser!.password!);
     console.log('🧪 Immediate password test after registration:', immediateTest);
@@ -109,36 +150,35 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       console.error('❌ Failed to send verification OTP:', emailError);
     }
 
-    // Generate token for response
+    // Generate token
     const token = generateToken(user.id.toString(), user.role);
-res.status(201).json({
-  success: true,
-  message: 'Registration successful. Please check your email for verification code.',
-  token,
-  user: {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-    isVerified: user.isVerified,
-    createdAtIST: toIST(user.createdAt),
-    updatedAtIST: toIST(user.updatedAt)
-  },
-  requiresEmailVerification: true
-});
 
-
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful. Please check your email for verification code.',
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        isVerified: user.isVerified,
+        createdAtIST: toIST(user.createdAt),
+        updatedAtIST: toIST(user.updatedAt),
+      },
+      requiresEmailVerification: true,
+    });
   } catch (error: any) {
     console.error('💥 Registration error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Registration failed'
+      message: error.message || 'Registration failed',
     });
   }
 };
 
-// LOGIN - PRODUCTION VERSION
+// LOGIN
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
@@ -148,18 +188,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!email || !password) {
       res.status(400).json({
         success: false,
-        message: 'Email and password are required'
+        message: 'Email and password are required',
       });
       return;
     }
 
     // Find user
     const user = await User.findOne({ email }).select('+password');
-    
+
     if (!user) {
       res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid email or password',
       });
       return;
     }
@@ -168,7 +208,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!user.isActive) {
       res.status(403).json({
         success: false,
-        message: 'Account has been deactivated. Please contact support.'
+        message: 'Account has been deactivated. Please contact support.',
       });
       return;
     }
@@ -179,7 +219,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         success: false,
         message: 'Please verify your email address with the OTP sent to your email',
         emailNotVerified: true,
-        email: user.email
+        email: user.email,
       });
       return;
     }
@@ -188,27 +228,23 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     if (!user.password) {
       res.status(500).json({
         success: false,
-        message: 'User password not found'
+        message: 'User password not found',
       });
       return;
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    
+
     if (!isPasswordValid) {
       res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid email or password',
       });
       return;
     }
 
-    // Update login history
-    const ip = req.ip || req.connection.remoteAddress || 'unknown';
-    const userAgent = req.get('User-Agent') || 'unknown';
-    user.lastLogin = new Date();
-    user.lastLoginIP = ip;
-    user.addLoginHistory(ip, userAgent, true);
+    // Enrich analytics: device + location + login history
+    enrichUserDeviceAndLocation(req, user);
     await user.save();
 
     // Generate token
@@ -216,26 +252,32 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     console.log('✅ Login successful for:', email);
 
     res.json({
-  success: true,
-  message: 'Login successful',
-  token,
-  user: {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    isVerified: user.isVerified,
-    createdAtIST: toIST(user.createdAt),
-    updatedAtIST: toIST(user.updatedAt),
-    ...(user.lastLogin ? { lastLoginIST: toIST(user.lastLogin) } : {}),
-  }
-});
-
+      success: true,
+      message: 'Login successful',
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified,
+        createdAtIST: toIST(user.createdAt),
+        updatedAtIST: toIST(user.updatedAt),
+        ...(user.lastLogin ? { lastLoginIST: toIST(user.lastLogin) } : {}),
+        // expose raw analytics fields
+        ...(user.lastDeviceType ? { lastDeviceType: user.lastDeviceType } : {}),
+        ...(user.lastBrowser ? { lastBrowser: user.lastBrowser } : {}),
+        ...(user.lastOS ? { lastOS: user.lastOS } : {}),
+        ...(user.lastCity ? { lastCity: user.lastCity } : {}),
+        ...(user.lastState ? { lastState: user.lastState } : {}),
+        ...(user.lastCountry ? { lastCountry: user.lastCountry } : {}),
+      },
+    });
   } catch (error: any) {
     console.error('Login error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Login failed'
+      message: error.message || 'Login failed',
     });
   }
 };
@@ -245,28 +287,34 @@ export const googleOAuthCallback: RequestHandler = async (req, res) => {
   try {
     const user: any = (req as any).user;
     if (!user) {
-      const FRONTEND = process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+      const FRONTEND =
+        process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
       return res.redirect(`${FRONTEND}/login?error=no_user_from_google`);
     }
 
     // Ensure verified/active flags
     if (!user.isVerified) {
       user.isVerified = true;
-      await user.save();
     }
     if (user.isActive === false) {
-      const FRONTEND = process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+      const FRONTEND =
+        process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
       return res.redirect(`${FRONTEND}/login?error=account_inactive`);
     }
 
-    const token = generateToken(user.id.toString(), user.role || 'user');
-    const FRONTEND = process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+    // Also capture device + location on Google login
+    enrichUserDeviceAndLocation(req, user);
+    await user.save();
 
-    // Send token to client via URL hash to avoid being logged by proxies
+    const token = generateToken(user.id.toString(), user.role || 'user');
+    const FRONTEND =
+      process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+
     return res.redirect(`${FRONTEND}/login-success#token=${token}`);
   } catch (error: any) {
     console.error('Google OAuth callback error:', error);
-    const FRONTEND = process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
+    const FRONTEND =
+      process.env.CLIENT_URL || process.env.FRONTEND_URL || 'http://localhost:5173';
     return res.redirect(`${FRONTEND}/login?error=oauth_internal_error`);
   }
 };
@@ -275,58 +323,52 @@ export const googleOAuthCallback: RequestHandler = async (req, res) => {
 export const verifyEmailOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, otp } = req.body;
-    
+
     if (!email || !otp) {
       res.status(400).json({
         success: false,
-        message: 'Email and OTP are required'
+        message: 'Email and OTP are required',
       });
       return;
     }
 
-    // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
       return;
     }
 
-    // Check if already verified
     if (user.isVerified) {
       res.status(400).json({
         success: false,
-        message: 'Email is already verified'
+        message: 'Email is already verified',
       });
       return;
     }
 
-    // Check OTP attempts
     if (user.emailVerificationAttempts >= 5) {
       res.status(429).json({
         success: false,
-        message: 'Too many verification attempts. Please request a new code.'
+        message: 'Too many verification attempts. Please request a new code.',
       });
       return;
     }
 
-    // Verify OTP
     if (!user.verifyEmailOtp(otp)) {
-      // Increment attempts
       user.emailVerificationAttempts += 1;
       await user.save();
 
       res.status(400).json({
         success: false,
         message: 'Invalid or expired OTP',
-        attemptsRemaining: 5 - user.emailVerificationAttempts
+        attemptsRemaining: 5 - user.emailVerificationAttempts,
       });
       return;
     }
 
-    // Update user as verified
     user.isVerified = true;
     user.emailVerificationOtp = undefined;
     user.emailVerificationOtpExpires = undefined;
@@ -337,14 +379,13 @@ export const verifyEmailOtp = async (req: Request, res: Response): Promise<void>
 
     res.json({
       success: true,
-      message: 'Email verified successfully! You can now log in.'
+      message: 'Email verified successfully! You can now log in.',
     });
-
   } catch (error: any) {
     console.error('Email OTP verification error:', error);
     res.status(500).json({
       success: false,
-      message: 'Email verification failed'
+      message: 'Email verification failed',
     });
   }
 };
@@ -353,11 +394,11 @@ export const verifyEmailOtp = async (req: Request, res: Response): Promise<void>
 export const resendVerificationOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       res.status(400).json({
         success: false,
-        message: 'Email is required'
+        message: 'Email is required',
       });
       return;
     }
@@ -366,7 +407,7 @@ export const resendVerificationOtp = async (req: Request, res: Response): Promis
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
       return;
     }
@@ -374,16 +415,14 @@ export const resendVerificationOtp = async (req: Request, res: Response): Promis
     if (user.isVerified) {
       res.status(400).json({
         success: false,
-        message: 'Email is already verified'
+        message: 'Email is already verified',
       });
       return;
     }
 
-    // Generate new OTP
     const verificationOtp = user.generateEmailVerificationOtp();
     await user.save();
 
-    // Send OTP email
     try {
       await emailService.sendVerificationOtp(user, verificationOtp);
       console.log('📧 Verification OTP resent to:', email);
@@ -394,14 +433,13 @@ export const resendVerificationOtp = async (req: Request, res: Response): Promis
 
     res.json({
       success: true,
-      message: 'Verification code sent successfully'
+      message: 'Verification code sent successfully',
     });
-
   } catch (error: any) {
     console.error('Resend verification OTP error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to resend verification code'
+      message: 'Failed to resend verification code',
     });
   }
 };
@@ -410,30 +448,27 @@ export const resendVerificationOtp = async (req: Request, res: Response): Promis
 export const forgotPassword = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       res.status(400).json({
         success: false,
-        message: 'Email is required'
+        message: 'Email is required',
       });
       return;
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      // Don't reveal if user exists or not
       res.json({
         success: true,
-        message: 'If an account with that email exists, a password reset code has been sent.'
+        message: 'If an account with that email exists, a password reset code has been sent.',
       });
       return;
     }
 
-    // Generate password reset OTP
     const resetOtp = user.generatePasswordResetOtp();
     await user.save();
 
-    // Send password reset OTP email
     try {
       await emailService.sendPasswordResetOtp(user, resetOtp);
       console.log('📧 Password reset OTP sent to:', email);
@@ -443,27 +478,26 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
     res.json({
       success: true,
-      message: 'If an account with that email exists, a password reset code has been sent.'
+      message: 'If an account with that email exists, a password reset code has been sent.',
     });
-
   } catch (error: any) {
     console.error('Forgot password error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to process password reset request'
+      message: 'Failed to process password reset request',
     });
   }
 };
 
-// RESET PASSWORD with OTP - FIXED VERSION (NO DOUBLE HASHING)
+// RESET PASSWORD with OTP
 export const resetPasswordWithOtp = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, otp, newPassword } = req.body;
-    
+
     if (!email || !otp || !newPassword) {
       res.status(400).json({
         success: false,
-        message: 'Email, OTP, and new password are required'
+        message: 'Email, OTP, and new password are required',
       });
       return;
     }
@@ -471,26 +505,24 @@ export const resetPasswordWithOtp = async (req: Request, res: Response): Promise
     if (newPassword.length < 6) {
       res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters long'
+        message: 'Password must be at least 6 characters long',
       });
       return;
     }
 
-    // Find user
     const user = await User.findOne({ email });
     if (!user) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
       return;
     }
 
-    // Verify password reset OTP
     if (!user.verifyPasswordResetOtp(otp)) {
       res.status(400).json({
         success: false,
-        message: 'Invalid or expired reset code'
+        message: 'Invalid or expired reset code',
       });
       return;
     }
@@ -498,14 +530,12 @@ export const resetPasswordWithOtp = async (req: Request, res: Response): Promise
     console.log('✅ Reset OTP verified successfully');
     console.log('🔐 Setting new password - model will handle hashing');
 
-    // ✅ FIX: Let the model's pre-save middleware handle hashing
-    user.password = newPassword;  // Plain password - model will hash it
+    user.password = newPassword;
     user.passwordResetOtp = undefined;
     user.passwordResetOtpExpires = undefined;
-    
-    await user.save(); // Pre-save middleware will hash the plain password
 
-    // ✅ Verify the password was saved correctly
+    await user.save();
+
     const savedUser = await User.findOne({ email }).select('+password');
     const finalTest = await bcrypt.compare(newPassword, savedUser!.password!);
     console.log('🧪 Final password test against saved hash:', finalTest);
@@ -514,7 +544,7 @@ export const resetPasswordWithOtp = async (req: Request, res: Response): Promise
       console.error('❌ Password verification failed after save!');
       res.status(500).json({
         success: false,
-        message: 'Password reset verification failed'
+        message: 'Password reset verification failed',
       });
       return;
     }
@@ -523,14 +553,13 @@ export const resetPasswordWithOtp = async (req: Request, res: Response): Promise
 
     res.json({
       success: true,
-      message: 'Password reset successfully'
+      message: 'Password reset successfully',
     });
-
   } catch (error: any) {
     console.error('Reset password error:', error);
     res.status(500).json({
       success: false,
-      message: 'Password reset failed'
+      message: 'Password reset failed',
     });
   }
 };
@@ -538,47 +567,52 @@ export const resetPasswordWithOtp = async (req: Request, res: Response): Promise
 // GET PROFILE
 export const getProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = req.user as AuthenticatedUser;
-    if (!user) {
+    const authUser = req.user as AuthenticatedUser;
+    if (!authUser) {
       res.status(401).json({
         success: false,
-        message: 'User not authenticated'
+        message: 'User not authenticated',
       });
       return;
     }
 
-    const userDetails = await User.findById(user.id).select('-password');
+    const userDetails = await User.findById(authUser.id).select('-password');
     if (!userDetails) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
       return;
     }
 
-    // ...
-const u = userDetails;
-res.json({
-  success: true,
-  user: {
-    id: u.id,
-    name: u.name,
-    email: u.email,
-    phone: u.phone,
-    role: u.role,
-    isVerified: u.isVerified,
-    isActive: u.isActive,
-    createdAtIST: toIST(u.createdAt),
-    updatedAtIST: toIST(u.updatedAt),
-    ...(u.lastLogin ? { lastLoginIST: toIST(u.lastLogin) } : {}),
-  }
-});
+    const u: any = userDetails;
 
+    res.json({
+      success: true,
+      user: {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        role: u.role,
+        isVerified: u.isVerified,
+        isActive: u.isActive,
+        createdAtIST: toIST(u.createdAt),
+        updatedAtIST: toIST(u.updatedAt),
+        ...(u.lastLogin ? { lastLoginIST: toIST(u.lastLogin) } : {}),
+        ...(u.lastDeviceType ? { lastDeviceType: u.lastDeviceType } : {}),
+        ...(u.lastBrowser ? { lastBrowser: u.lastBrowser } : {}),
+        ...(u.lastOS ? { lastOS: u.lastOS } : {}),
+        ...(u.lastCity ? { lastCity: u.lastCity } : {}),
+        ...(u.lastState ? { lastState: u.lastState } : {}),
+        ...(u.lastCountry ? { lastCountry: u.lastCountry } : {}),
+      },
+    });
   } catch (error: any) {
     console.error('Get profile error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to get profile'
+      message: error.message || 'Failed to get profile',
     });
   }
 };
@@ -586,11 +620,11 @@ res.json({
 // UPDATE PROFILE
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = req.user as AuthenticatedUser;
-    if (!user) {
+    const authUser = req.user as AuthenticatedUser;
+    if (!authUser) {
       res.status(401).json({
         success: false,
-        message: 'User not authenticated'
+        message: 'User not authenticated',
       });
       return;
     }
@@ -600,25 +634,25 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
     if (!name) {
       res.status(400).json({
         success: false,
-        message: 'Name is required'
+        message: 'Name is required',
       });
       return;
     }
 
     const updatedUser = await User.findByIdAndUpdate(
-      user.id,
+      authUser.id,
       {
         name,
         phone,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       },
-      { new: true }
+      { new: true },
     ).select('-password');
 
     if (!updatedUser) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
       return;
     }
@@ -633,27 +667,26 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
         phone: updatedUser.phone,
         role: updatedUser.role,
         isVerified: updatedUser.isVerified,
-        updatedAt: updatedUser.updatedAt
-      }
+        updatedAt: updatedUser.updatedAt,
+      },
     });
-
   } catch (error: any) {
     console.error('Update profile error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to update profile'
+      message: error.message || 'Failed to update profile',
     });
   }
 };
 
-// CHANGE PASSWORD - FIXED VERSION (NO DOUBLE HASHING)
+// CHANGE PASSWORD
 export const changePassword = async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = req.user as AuthenticatedUser;
-    if (!user) {
+    const authUser = req.user as AuthenticatedUser;
+    if (!authUser) {
       res.status(401).json({
         success: false,
-        message: 'User not authenticated'
+        message: 'User not authenticated',
       });
       return;
     }
@@ -663,7 +696,7 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
     if (!currentPassword || !newPassword) {
       res.status(400).json({
         success: false,
-        message: 'Current password and new password are required'
+        message: 'Current password and new password are required',
       });
       return;
     }
@@ -671,43 +704,44 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
     if (newPassword.length < 6) {
       res.status(400).json({
         success: false,
-        message: 'New password must be at least 6 characters long'
+        message: 'New password must be at least 6 characters long',
       });
       return;
     }
 
-    const userWithPassword = await User.findById(user.id).select('+password');
+    const userWithPassword = await User.findById(authUser.id).select('+password');
     if (!userWithPassword || !userWithPassword.password) {
       res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
       return;
     }
 
-    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, userWithPassword.password);
+    const isCurrentPasswordValid = await bcrypt.compare(
+      currentPassword,
+      userWithPassword.password,
+    );
     if (!isCurrentPasswordValid) {
       res.status(400).json({
         success: false,
-        message: 'Current password is incorrect'
+        message: 'Current password is incorrect',
       });
       return;
     }
 
-    // ✅ FIX: Let model handle hashing
-    userWithPassword.password = newPassword; // Plain password
-    await userWithPassword.save(); // Pre-save middleware will hash it
+    userWithPassword.password = newPassword;
+    await userWithPassword.save();
 
     res.json({
       success: true,
-      message: 'Password changed successfully'
+      message: 'Password changed successfully',
     });
-
   } catch (error: any) {
     console.error('Change password error:', error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to change password'
+      message: error.message || 'Failed to change password',
     });
   }
 };
@@ -718,7 +752,7 @@ export const testDB = async (req: Request, res: Response): Promise<void> => {
     const userCount = await User.countDocuments();
     const activeUserCount = await User.countDocuments({ isActive: true });
     const verifiedUserCount = await User.countDocuments({ isVerified: true });
-    
+
     const sampleUsers = await User.find({})
       .select('name email role isActive isVerified createdAt')
       .limit(3)
@@ -731,56 +765,55 @@ export const testDB = async (req: Request, res: Response): Promise<void> => {
         totalUsers: userCount,
         activeUsers: activeUserCount,
         verifiedUsers: verifiedUserCount,
-        sampleUsers: sampleUsers.map(user => ({
+        sampleUsers: sampleUsers.map((user) => ({
           id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
           isActive: user.isActive,
           isVerified: user.isVerified,
-          createdAt: user.createdAt
-        }))
-      }
+          createdAt: user.createdAt,
+        })),
+      },
     });
-
   } catch (error: any) {
     console.error('Database connection error:', error);
     res.status(500).json({
       success: false,
       error: 'Database connection failed',
-      message: error.message
+      message: error.message,
     });
   }
 };
 
-// MANUAL VERIFICATION (for testing - remove in production)
+// MANUAL VERIFICATION (for testing)
 export const manualVerify = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body;
-    
+
     const user = await User.findOneAndUpdate(
       { email },
       { isVerified: true },
-      { new: true }
+      { new: true },
     );
-    
+
     if (user) {
       console.log('✅ Manually verified:', email);
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: 'User verified manually',
-        user: { email: user.email, isVerified: user.isVerified }
+        user: { email: user.email, isVerified: user.isVerified },
       });
     } else {
-      res.status(404).json({ 
-        success: false, 
-        message: 'User not found' 
+      res.status(404).json({
+        success: false,
+        message: 'User not found',
       });
     }
   } catch (error: any) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Verification failed' 
+    res.status(500).json({
+      success: false,
+      message: 'Verification failed',
     });
   }
 };
@@ -789,11 +822,11 @@ export const manualVerify = async (req: Request, res: Response): Promise<void> =
 export const searchUsers = async (req: Request, res: Response): Promise<void> => {
   try {
     const { query } = req.params;
-    
+
     if (!query || query.length < 2) {
       res.status(400).json({
         success: false,
-        message: 'Search query must be at least 2 characters'
+        message: 'Search query must be at least 2 characters',
       });
       return;
     }
@@ -801,38 +834,39 @@ export const searchUsers = async (req: Request, res: Response): Promise<void> =>
     const users = await User.find({
       $or: [
         { email: { $regex: query, $options: 'i' } },
-        { name: { $regex: query, $options: 'i' } }
-      ]
+        { name: { $regex: query, $options: 'i' } },
+      ],
     })
-    .select('name email role isActive isVerified createdAt')
-    .limit(10)
-    .sort({ createdAt: -1 });
+      .select('name email role isActive isVerified createdAt')
+      .limit(10)
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
       count: users.length,
-      users: users.map(user => ({
+      users: users.map((user) => ({
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
         isActive: user.isActive,
         isVerified: user.isVerified,
-        createdAt: user.createdAt
-      }))
+        createdAt: user.createdAt,
+      })),
     });
-
   } catch (error: any) {
     console.error('Search users error:', error);
     res.status(500).json({
       success: false,
-      message: 'Search failed'
+      message: 'Search failed',
     });
   }
 };
+
+// UPDATE PREFERENCES
 export const updatePreferences = async (
-  req: Request & { user?: AuthenticatedUser }, 
-  res: Response
+  req: Request & { user?: AuthenticatedUser },
+  res: Response,
 ) => {
   try {
     const { preferences } = req.body as {
@@ -850,12 +884,14 @@ export const updatePreferences = async (
     await User.findByIdAndUpdate(
       req.user.id,
       { $set: { preferences } },
-      { new: true }
+      { new: true },
     );
 
     res.json({ success: true });
   } catch (err: any) {
     console.error('❌ updatePreferences error:', err);
-    res.status(500).json({ success: false, message: err.message || 'Failed to update preferences' });
+    res
+      .status(500)
+      .json({ success: false, message: err.message || 'Failed to update preferences' });
   }
 };

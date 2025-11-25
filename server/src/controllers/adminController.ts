@@ -8,7 +8,8 @@ import User from '../models/User';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { Parser as Json2CsvParser } from 'json2csv';
-
+import { emailService } from '../services/emailService';
+import mongoose from 'mongoose';
 interface AuthRequest extends Request {
   user?: {
     id: string;
@@ -484,21 +485,34 @@ export const getAdminStats = async (req: AuthRequest, res: Response): Promise<vo
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const todaySalesResult = await Order.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: today },
-          paymentStatus: { $in: ['paid', 'completed'] },
+    const PAID_STATUSES = ['paid', 'cod_paid', 'completed'];
+
+    
+
+const todaySalesResult = await Order.aggregate([
+  {
+    $match: {
+      createdAt: { $gte: today },
+      paymentStatus: { $in: PAID_STATUSES },
+      orderStatus: { $ne: 'cancelled' }, // status → orderStatus
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      total: {
+        $sum: {
+          $ifNull: ['$total', '$totalAmount'],
         },
       },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: '$totalAmount' },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+      count: { $sum: 1 },
+    },
+  },
+]);
+
+
+
+
 
     const stats = {
       totalProducts,
@@ -1042,5 +1056,444 @@ export const exportProductsCsv = async (req: AuthRequest, res: Response): Promis
   } catch (e: any) {
     console.error('❌ Export CSV error:', e);
     res.status(500).json({ success: false, message: 'Failed to export products' });
+  }
+};
+// ======================================
+// 👤 ADMIN USERS LIST + ANALYTICS
+// ======================================
+
+const buildDeviceString = (u: any): string => {
+  const parts: string[] = [];
+  if (u.lastDeviceType) parts.push(String(u.lastDeviceType));
+  if (u.lastBrowser) parts.push(String(u.lastBrowser));
+  if (u.lastOS) parts.push(String(u.lastOS));
+  return parts.join(' / ');
+};
+
+// GET USERS (for admin panel)
+export const getUsers = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = Math.max(parseInt(String(req.query.page ?? '1'), 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '10'), 10) || 10, 1), 200);
+
+    const q = String(req.query.q ?? '').trim();
+    const role = String(req.query.role ?? '').trim();      // 'customer' | 'admin' | 'seller' | ''
+    const status = String(req.query.status ?? '').trim();  // 'active' | 'inactive' | 'banned' | ''
+    const sortBy = String(req.query.sortBy ?? 'createdAt'); // 'createdAt' | 'lastLoginAt' | 'ordersCount' | 'lifetimeValue' | 'name'
+    const sortOrder = String(req.query.sortOrder ?? 'desc').toLowerCase() === 'asc' ? 1 : -1;
+
+    const filter: any = {};
+
+    // role mapping: backend has role 'user' | 'admin'
+    if (role === 'admin') {
+      filter.role = 'admin';
+    } else if (role === 'customer') {
+      filter.role = { $ne: 'admin' };
+    } else if (role === 'seller') {
+      // reserved
+    }
+
+    if (status) {
+      if (status === 'banned') {
+        filter.status = 'suspended';
+      } else if (status === 'inactive') {
+        filter.$or = [{ status: 'inactive' }, { isActive: false }];
+      } else if (status === 'active') {
+        filter.$or = [
+          { status: { $in: ['active', null] } },
+          { isActive: { $ne: false } },
+        ];
+      }
+    }
+
+    if (q) {
+      filter.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { phone: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    // 1) fetch all users first
+    const allUsers = await User.find(filter)
+      .select(
+        '+loginHistory +lastLogin +lastLoginIP +lastDeviceType +lastBrowser +lastOS +lastCity +lastState +lastCountry'
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // 2) aggregate orders per userId ← uses your Order model
+    const userObjectIds = allUsers.map((u: any) => u._id as mongoose.Types.ObjectId);
+
+     let orderStats: any[] = [];
+if (userObjectIds.length > 0) {
+  const PAID_STATUSES = ['paid', 'cod_paid', 'completed', 'cod_pending']; // 👈 yaha add
+
+  orderStats = await Order.aggregate([
+    {
+      $match: {
+        userId: { $in: userObjectIds },
+        paymentStatus: { $in: PAID_STATUSES },
+        orderStatus: { $ne: 'cancelled' }, // 👈 'status' → 'orderStatus'
+      },
+    },
+    {
+      $group: {
+        _id: '$userId',
+        ordersCount: { $sum: 1 },
+        lifetimeValue: {
+          $sum: {
+            $ifNull: ['$total', '$totalAmount'],
+          },
+        },
+      },
+    },
+  ]);
+}
+
+   
+    
+
+    const statsMap = new Map<
+      string,
+      { ordersCount: number; lifetimeValue: number }
+    >();
+    orderStats.forEach((s) => {
+      statsMap.set(String(s._id), {
+        ordersCount: s.ordersCount || 0,
+        lifetimeValue: s.lifetimeValue || 0,
+      });
+    });
+
+    // 3) map to UI shape + inject ordersCount & lifetimeValue
+    const mapped = allUsers.map((u: any) => {
+      const isAdmin = u.role === 'admin';
+      const isActiveFlag = u.isActive !== false;
+
+      let uiStatus: 'active' | 'inactive' | 'banned' = 'active';
+      if (u.status === 'suspended') uiStatus = 'banned';
+      else if (u.status === 'inactive' || !isActiveFlag) uiStatus = 'inactive';
+
+      let uiRole: 'customer' | 'admin' | 'seller' = isAdmin ? 'admin' : 'customer';
+
+      const device = buildDeviceString(u);
+      const createdAtISO = u.createdAt ? new Date(u.createdAt).toISOString() : '';
+      const lastLoginAtISO = u.lastLogin ? new Date(u.lastLogin).toISOString() : '';
+
+      const stats = statsMap.get(String(u._id)) || { ordersCount: 0, lifetimeValue: 0 };
+
+      return {
+        _id: String(u._id),
+        name: u.name || '',
+        email: u.email || '',
+        emailVerified: !!u.isVerified,
+        phone: u.phone || '',
+        avatar: u.avatar || '',
+        role: uiRole,
+        status: uiStatus,
+        city: u.lastCity || '',
+        country: u.lastCountry || u.lastState || '',
+        device,
+        createdAt: createdAtISO,
+        lastLoginAt: lastLoginAtISO,
+
+        // NEW:
+        ordersCount: stats.ordersCount,
+        lifetimeValue: stats.lifetimeValue,
+
+        sessions7d: [],
+        avgSessionMins: 0,
+        totalMins30d: 0,
+        isAdmin,
+        isActive: isActiveFlag,
+      };
+    });
+
+    // 4) sort in-memory by requested field (now ordersCount / lifetimeValue work)
+    const sorted = [...mapped].sort((a, b) => {
+      const dir = sortOrder;
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name) * dir;
+        case 'lastLoginAt': {
+          const av = a.lastLoginAt ? new Date(a.lastLoginAt).getTime() : 0;
+          const bv = b.lastLoginAt ? new Date(b.lastLoginAt).getTime() : 0;
+          return (av - bv) * dir;
+        }
+        case 'ordersCount':
+          return ((a.ordersCount || 0) - (b.ordersCount || 0)) * dir;
+        case 'lifetimeValue':
+          return ((a.lifetimeValue || 0) - (b.lifetimeValue || 0)) * dir;
+        case 'createdAt':
+        default: {
+          const av = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bv = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return (av - bv) * dir;
+        }
+      }
+    });
+
+    const totalUsers = sorted.length;
+    const totalPages = Math.max(Math.ceil(totalUsers / limit), 1);
+    const start = (page - 1) * limit;
+    const paged = sorted.slice(start, start + limit);
+
+    res.json({
+      success: true,
+      users: paged,
+      totalUsers,
+      totalPages,
+      currentPage: page,
+    });
+  } catch (err: any) {
+    console.error('❌ getUsers error:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to load users',
+    });
+  }
+};
+
+
+// UPDATE USER (name/phone/role/status)
+export const updateUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params; // :id in route
+    const patch = req.body || {};
+
+    if (!id) {
+      res.status(400).json({ success: false, message: 'User ID is required' });
+      return;
+    }
+
+    const allowed: any = {};
+    if (patch.name !== undefined) allowed.name = String(patch.name);
+    if (patch.phone !== undefined) allowed.phone = String(patch.phone);
+    if (patch.role !== undefined) {
+      // UI role -> backend role
+      if (patch.role === 'admin') allowed.role = 'admin';
+      else allowed.role = 'user';
+    }
+    if (patch.status !== undefined) {
+      if (patch.status === 'banned') {
+        allowed.status = 'suspended';
+        allowed.isActive = false;
+      } else if (patch.status === 'inactive') {
+        allowed.status = 'inactive';
+        allowed.isActive = false;
+      } else if (patch.status === 'active') {
+        allowed.status = 'active';
+        allowed.isActive = true;
+      }
+    }
+
+    if (Object.keys(allowed).length === 0) {
+      res.json({ success: true, user: null, message: 'Nothing to update' });
+      return;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { $set: allowed },
+      { new: true, runValidators: true, context: 'query' }
+    ).lean();
+
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    res.json({ success: true, user });
+  } catch (err: any) {
+    console.error('❌ updateUser error:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to update user',
+    });
+  }
+};
+
+// TOGGLE USER STATUS (active/inactive/banned)
+export const toggleUserStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body as { status: 'active' | 'inactive' | 'banned' };
+
+    if (!id || !status) {
+      res.status(400).json({ success: false, message: 'User ID and status are required' });
+      return;
+    }
+
+    const patch: any = {};
+    if (status === 'banned') {
+      patch.status = 'suspended';
+      patch.isActive = false;
+    } else if (status === 'inactive') {
+      patch.status = 'inactive';
+      patch.isActive = false;
+    } else {
+      patch.status = 'active';
+      patch.isActive = true;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { $set: patch },
+      { new: true, runValidators: true, context: 'query' }
+    ).lean();
+
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    res.json({ success: true, status });
+  } catch (err: any) {
+    console.error('❌ toggleUserStatus error:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to toggle status',
+    });
+  }
+};
+
+// DELETE USER (soft delete: mark inactive)
+export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ success: false, message: 'User ID is required' });
+      return;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          isActive: false,
+          status: 'inactive',
+          deactivatedAt: new Date(),
+          deactivationReason: 'Deleted from admin',
+        },
+      },
+      { new: true }
+    ).lean();
+
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('❌ deleteUser error:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to delete user',
+    });
+  }
+};
+
+// SEND PASSWORD RESET EMAIL (admin-triggered)
+export const sendPasswordResetEmail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      res.status(400).json({ success: false, message: 'User ID is required' });
+      return;
+    }
+
+    const user: any = await User.findById(id);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    const otp = user.generatePasswordResetOtp();
+    await user.save();
+
+    try {
+      await emailService.sendPasswordResetOtp(user, otp);
+    } catch (emailErr: any) {
+      console.error('❌ sendPasswordResetEmail mail error:', emailErr);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send reset email',
+      });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('❌ sendPasswordResetEmail error:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to send reset email',
+    });
+  }
+};
+
+// USER ANALYTICS (DAU/WAU/MAU etc.)
+// Frontend sends ?range=7d|30d|90d (we mostly use it for label)
+export const getUserAnalytics = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const range = String(req.query.range ?? '7d') as '7d' | '30d' | '90d';
+
+    const users = await User.find({})
+      .select('lastLogin loginHistory isActive')
+      .lean();
+
+    const now = new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    const inLastDays = (d: any, days: number) =>
+      d && now.getTime() - new Date(d).getTime() <= days * dayMs;
+
+    const dau = users.filter(u => inLastDays(u.lastLogin, 1)).length;
+    const wau = users.filter(u => inLastDays(u.lastLogin, 7)).length;
+    const mau = users.filter(u => inLastDays(u.lastLogin, 30)).length;
+
+    // returning7d: users with ≥2 logins in last 7 days
+    let returning7d = 0;
+    const trend7 = new Array(7).fill(0); // last 7 days active users (rough)
+
+    users.forEach((u) => {
+      const hist: any[] = Array.isArray((u as any).loginHistory) ? (u as any).loginHistory : [];
+      const recent = hist.filter(h => inLastDays(h.timestamp, 7));
+      if (recent.length >= 2) returning7d += 1;
+
+      // trend buckets
+      const seenPerDay = new Set<number>();
+      recent.forEach((h) => {
+        const ts = new Date(h.timestamp).getTime();
+        const diffDays = Math.floor((now.getTime() - ts) / dayMs);
+        if (diffDays >= 0 && diffDays < 7) {
+          seenPerDay.add(diffDays);
+        }
+      });
+      seenPerDay.forEach((dIdx) => {
+        // 0 = today, 6 = 6 days ago -> reverse to [6..0] or keep [0..6]; frontend just draws spark.
+        trend7[6 - dIdx] += 1;
+      });
+    });
+
+    res.json({
+      success: true,
+      analytics: {
+        dau,
+        wau,
+        mau,
+        avgSessionMins: 0, // you can wire to real session data later
+        returning7d,
+        trend7,
+      },
+    });
+  } catch (err: any) {
+    console.error('❌ getUserAnalytics error:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || 'Failed to fetch user analytics',
+    });
   }
 };

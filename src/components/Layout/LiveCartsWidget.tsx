@@ -1,5 +1,6 @@
 // src/components/admin/LiveCartsWidget.tsx
 import React, { useCallback, useEffect, useState } from 'react';
+import { getLiveCarts } from '../../config/adminApi'; // adjust path if needed
 
 type LiveCartItem = {
   productId: string;
@@ -21,13 +22,6 @@ type LiveCart = {
   items: LiveCartItem[];
 };
 
-type LiveCartsResponse = {
-  success: boolean;
-  sinceMinutes: number;
-  count: number;
-  carts: LiveCart[];
-};
-
 const POLL_INTERVAL_MS = 20_000; // 20s
 
 const LiveCartsWidget: React.FC = () => {
@@ -38,41 +32,30 @@ const LiveCartsWidget: React.FC = () => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const fetchCarts = useCallback(async (opts?: { silent?: boolean }) => {
-    try {
-      if (!opts?.silent) setLoading(true);
-      setError(null);
+  const fetchCarts = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      try {
+        if (!opts?.silent) setLoading(true);
+        setError(null);
 
-      const res = await fetch(
-        `/api/admin/carts/live?sinceMinutes=${sinceMinutes}`,
-        {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Accept': 'application/json',
-          },
+        // ✅ use adminApi helper so Authorization header is attached
+        const res = await getLiveCarts(sinceMinutes);
+
+        if (!res.success) {
+          throw new Error('API responded with success=false');
         }
-      );
 
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(text || `Request failed with status ${res.status}`);
+        // If your getLiveCarts returns `carts`, this cast is fine for UI
+        setData((res as any).carts || []);
+        setLastUpdated(new Date());
+      } catch (err: any) {
+        setError(err?.message || 'Failed to load live carts');
+      } finally {
+        if (!opts?.silent) setLoading(false);
       }
-
-      const json = (await res.json()) as LiveCartsResponse;
-
-      if (!json.success) {
-        throw new Error('API responded with success=false');
-      }
-
-      setData(json.carts || []);
-      setLastUpdated(new Date());
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load live carts');
-    } finally {
-      if (!opts?.silent) setLoading(false);
-    }
-  }, [sinceMinutes]);
+    },
+    [sinceMinutes]
+  );
 
   // Initial load + refetch on sinceMinutes change
   useEffect(() => {
