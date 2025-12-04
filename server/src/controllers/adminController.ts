@@ -1046,7 +1046,7 @@ export const exportProductsCsv = async (req: AuthRequest, res: Response): Promis
       };
     });
 
-    const fields = Object.keys(rows[0] || { Name: '', Price: '' });
+    const fields = Object.keys(rows[0] || { Name: '', Price: '' });           
     const parser = new Json2CsvParser({ fields });
     const csv = parser.parse(rows);
 
@@ -1058,9 +1058,6 @@ export const exportProductsCsv = async (req: AuthRequest, res: Response): Promis
     res.status(500).json({ success: false, message: 'Failed to export products' });
   }
 };
-// ======================================
-// 👤 ADMIN USERS LIST + ANALYTICS
-// ======================================
 
 const buildDeviceString = (u: any): string => {
   const parts: string[] = [];
@@ -1077,14 +1074,14 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
     const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? '10'), 10) || 10, 1), 200);
 
     const q = String(req.query.q ?? '').trim();
-    const role = String(req.query.role ?? '').trim();      // 'customer' | 'admin' | 'seller' | ''
-    const status = String(req.query.status ?? '').trim();  // 'active' | 'inactive' | 'banned' | ''
-    const sortBy = String(req.query.sortBy ?? 'createdAt'); // 'createdAt' | 'lastLoginAt' | 'ordersCount' | 'lifetimeValue' | 'name'
+    const role = String(req.query.role ?? '').trim();      
+    const status = String(req.query.status ?? '').trim();  
+    const sortBy = String(req.query.sortBy ?? 'createdAt'); 
     const sortOrder = String(req.query.sortOrder ?? 'desc').toLowerCase() === 'asc' ? 1 : -1;
 
     const filter: any = {};
 
-    // role mapping: backend has role 'user' | 'admin'
+
     if (role === 'admin') {
       filter.role = 'admin';
     } else if (role === 'customer') {
@@ -1127,14 +1124,13 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
 
      let orderStats: any[] = [];
 if (userObjectIds.length > 0) {
-  const PAID_STATUSES = ['paid', 'cod_paid', 'completed', 'cod_pending']; // 👈 yaha add
-
+  const PAID_STATUSES = ['paid', 'cod_paid', 'completed', 'cod_pending']; 
   orderStats = await Order.aggregate([
     {
       $match: {
         userId: { $in: userObjectIds },
         paymentStatus: { $in: PAID_STATUSES },
-        orderStatus: { $ne: 'cancelled' }, // 👈 'status' → 'orderStatus'
+        orderStatus: { $ne: 'cancelled' }, 
       },
     },
     {
@@ -1166,48 +1162,49 @@ if (userObjectIds.length > 0) {
     });
 
     // 3) map to UI shape + inject ordersCount & lifetimeValue
-    const mapped = allUsers.map((u: any) => {
-      const isAdmin = u.role === 'admin';
-      const isActiveFlag = u.isActive !== false;
+   const mapped = allUsers.map((u: any) => {
+  const isAdmin = u.role === 'admin';
+  const isActiveFlag = u.isActive !== false;
 
-      let uiStatus: 'active' | 'inactive' | 'banned' = 'active';
-      if (u.status === 'suspended') uiStatus = 'banned';
-      else if (u.status === 'inactive' || !isActiveFlag) uiStatus = 'inactive';
+  let uiStatus: 'active' | 'inactive' | 'banned' = 'active';
+  if (u.status === 'suspended') uiStatus = 'banned';
+  else if (u.status === 'inactive' || !isActiveFlag) uiStatus = 'inactive';
 
-      let uiRole: 'customer' | 'admin' | 'seller' = isAdmin ? 'admin' : 'customer';
+  let uiRole: 'customer' | 'admin' | 'seller' = isAdmin ? 'admin' : 'customer';
 
-      const device = buildDeviceString(u);
-      const createdAtISO = u.createdAt ? new Date(u.createdAt).toISOString() : '';
-      const lastLoginAtISO = u.lastLogin ? new Date(u.lastLogin).toISOString() : '';
+  const device = buildDeviceString(u);
+  const createdAtISO = u.createdAt ? new Date(u.createdAt).toISOString() : '';
+  const lastLoginAtISO = u.lastLogin ? new Date(u.lastLogin).toISOString() : '';
 
-      const stats = statsMap.get(String(u._id)) || { ordersCount: 0, lifetimeValue: 0 };
+  const stats = statsMap.get(String(u._id)) || { ordersCount: 0, lifetimeValue: 0 };
 
-      return {
-        _id: String(u._id),
-        name: u.name || '',
-        email: u.email || '',
-        emailVerified: !!u.isVerified,
-        phone: u.phone || '',
-        avatar: u.avatar || '',
-        role: uiRole,
-        status: uiStatus,
-        city: u.lastCity || '',
-        country: u.lastCountry || u.lastState || '',
-        device,
-        createdAt: createdAtISO,
-        lastLoginAt: lastLoginAtISO,
+  return {
+    _id: String(u._id),
+    name: u.name || '',
+    email: u.email || '',
+    emailVerified: !!u.isVerified,
+    phone: u.phone || '',
+    avatar: u.avatar || '',
+    role: uiRole,
+    status: uiStatus,
 
-        // NEW:
-        ordersCount: stats.ordersCount,
-        lifetimeValue: stats.lifetimeValue,
+    // 🔽 यहाँ fallback ठीक किया
+    city: u.city || u.lastCity || '',
+    country: u.country || u.lastCountry || u.lastState || '',
 
-        sessions7d: [],
-        avgSessionMins: 0,
-        totalMins30d: 0,
-        isAdmin,
-        isActive: isActiveFlag,
-      };
-    });
+    device,
+    createdAt: createdAtISO,
+    lastLoginAt: lastLoginAtISO,
+    ordersCount: stats.ordersCount,
+    lifetimeValue: stats.lifetimeValue,
+    sessions7d: [],
+    avgSessionMins: 0,
+    totalMins30d: 0,
+    isAdmin,
+    isActive: isActiveFlag,
+  };
+});
+
 
     // 4) sort in-memory by requested field (now ordersCount / lifetimeValue work)
     const sorted = [...mapped].sort((a, b) => {

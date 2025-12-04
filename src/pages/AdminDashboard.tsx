@@ -1282,9 +1282,9 @@ const ProductManagement = memo<{
                   <option value="Car Chargers">Car Charger</option>
                   <option value="Bluetooth Speakers">Bluetooth Speaker</option>
                   <option value="Power Banks">Power Bank</option>
-                  <option value="Mobile ICs">Mobile ICs</option>
+      
                   <option value="Mobile Accessories">Mobile Accessories</option>
-                  <option value="Stencil">Stencils</option>
+                  
                   <option value="Others">Other</option>
                 </select>
               </div>
